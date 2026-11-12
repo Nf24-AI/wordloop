@@ -487,7 +487,7 @@ export default function App(){
   const fetchLocal=useCallback(async()=>{try{const [w,r]=await Promise.all([listWords(),listReviews()]);setWords(w);setReviews(r);setError('');void syncPush(w).catch(console.warn);}catch(e){setError(getError(e));}finally{setLoading(false);}},[]);
   useEffect(()=>{
     void fetchLocal();void lastBackupDate().then(setLastBackup).catch(()=>null);
-    const focus=()=>{void fetchLocal();},hash=()=>setPage(readHash()),on=()=>setOnline(true),off=()=>setOnline(false);
+    const focus=()=>{void fetchLocal();},hash=()=>setPage(readHash()),on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
     window.addEventListener('focus',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
     return()=>{window.removeEventListener('focus',focus);window.removeEventListener('hashchange',hash);window.removeEventListener('online',on);window.removeEventListener('offline',off);window.removeEventListener('beforeinstallprompt',bip);};
