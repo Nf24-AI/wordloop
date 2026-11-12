@@ -9,7 +9,7 @@
 | المهمة الجديدة | الأولوية | الحالة |
 |---|---|---|
 | [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | In progress — نشرت نسخة معزولة وتحتاج حماية دخول |
-| [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | To do |
+| [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | In progress — API tests and rate limiter on Staging |
 
 **تسلسل الإطلاق المعتمد:** `Feature Branch → Pull Request → Automated Tests → Staging/UAT → Security Checks → Owner Approval → Production`.
 
