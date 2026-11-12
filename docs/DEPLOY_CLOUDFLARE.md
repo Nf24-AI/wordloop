@@ -1,18 +1,17 @@
-# وضع النشر الحالي — 12 نوفمبر 2026
+# حالة نشر WordLoop — 12 نوفمبر 2026
 
-**تم إعداده على حساب Cloudflare المتصل بالفعل:**
-- إنشاء نطاق الحساب `nf24-wordloop.workers.dev`.
-- إنشاء قاعدة D1 المسماة `wordloop-push` وتنفيذ `worker/schema.sql`؛ تم التأكد من وجود `push_devices` والفهرس.
-- إنشاء Worker باسم `wordloop-local-first` وربطه بقاعدة D1.
-- حفظ أسرار `VAPID_PRIVATE_KEY` و`VAPID_SUBJECT` على Cloudflare دون إدراجها في GitHub.
-- ضبط Cron عند `0 17 * * *`، أي الساعة 8 مساءً في الرياض.
-- **تم تعطيل رابط الـWorker العام عمدًا**، لأن المستودع لم يُنشر بعد. النسخة الموجودة حاليًا في Cloudflare هي ملف تهيئة مؤقت وليست تطبيق WordLoop.
+**تم النشر إلى الإنتاج بنجاح.**
 
-**خطوة ينجزها مالك الحساب مرة واحدة:** افتح [Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers/workers-and-pages)، ثم `wordloop-local-first` ← **Settings → Builds → Connect → GitHub**. وافق على تثبيت/تفويض تطبيق Cloudflare GitHub واختر `Nf24-AI/wordloop`، الفرع `main`. حدّد Build command: `npm run build`، وDeploy command: `npx wrangler deploy`. هذا التفويض لا تسمح به وصلة Cloudflare API الحالية، وأعادت المحاولة خطأ `This project is disconnected from your Git account`.
+الرابط: https://wordloop-local-first.nf24-wordloop.workers.dev
 
-بعد نجاح البناء والنشر، فعّل عنوان `workers.dev` لهذا الـWorker في إعداداته، واختبر `/api/health` و`/api/push/key` ثم الإشعار على هاتف حقيقي.
+- Cloudflare Workers Builds مربوط بمستودع `Nf24-AI/wordloop` والفرع `main`، وأوامر `npm run build` و`npx wrangler deploy`.
+- قاعدة D1 باسم `wordloop-push` مجهزة ومربوطة باسم `PUSH_DB`، ولا تُحفظ فيها المفردات أو سجل التعلم.
+- تم حفظ `VAPID_PRIVATE_KEY` و`VAPID_SUBJECT` كأسرار في Cloudflare؛ لا تنسخهما إلى GitHub.
+- Cron مضبوط على `0 17 * * *` (الساعة 8 مساءً بتوقيت الرياض).
+- اختبارات GitHub البرمجية ناجحة، ونجح [Production smoke test](https://github.com/Nf24-AI/wordloop/actions/runs/43214112987) في التحقق عبر HTTPS من الصفحة الرئيسية وصحة الـAPI ومفتاح Push وملفات PWA.
+- **المتبقي قبل تأكيد نجاح التذكيرات:** اختبار «فعّل التذكير» ثم «جرّب التذكير» على هاتف حقيقي، والتحقق من وصول تذكير مجدول، وتجربة التخزين دون إنترنت والنسخ الاحتياطية.
 
-**لا تُنشئ قاعدة D1 أخرى ولا تغيّر مفاتيح VAPID الحالية**؛ الإرشادات العامة الواردة لاحقًا تصلح للتجهيز من الصفر فقط.
+> الإرشادات التالية للتجهيز من الصفر فقط؛ لا تُنشئ قاعدة D1 ثانية ولا تغيّر مفتاح VAPID الحالي ما لم تكن لديك خطة لنقل الاشتراكات.
 
 ---
 
