@@ -4,6 +4,22 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-12",
   "upload_source_maps": true,
-  "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
-  "triggers": { "crons": ["0 17 * * *"] }
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "0 17 * * *"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "PUSH_DB",
+      "database_name": "wordloop-push",
+      "database_id": "87f5d0d3-10ae-437e-b2c4-6e8dd9820b1c"
+    }
+  ]
 }
