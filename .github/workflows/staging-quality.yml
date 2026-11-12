@@ -22,7 +22,7 @@ jobs:
           cache: npm
       - name: Verify resource isolation
         run: |
-          node -e "const c=require('./wrangler.jsonc'); if(c.name!=='wordloop-staging'||c.workers_dev!==false||c.preview_urls!==false||c.d1_databases?.[0]?.database_name!=='wordloop-push-staging'||c.d1_databases?.[0]?.database_id==='87f5d0d3-10ae-437e-b2c4-6e8dd9820b1c')process.exit(1)"
+          node -e "const c=JSON.parse(require('fs').readFileSync('./wrangler.jsonc','utf8')); if(c.name!=='wordloop-staging'||c.workers_dev!==false||c.preview_urls!==false||c.d1_databases?.[0]?.database_name!=='wordloop-push-staging'||c.d1_databases?.[0]?.database_id==='87f5d0d3-10ae-437e-b2c4-6e8dd9820b1c')process.exit(1)"
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
