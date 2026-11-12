@@ -44,3 +44,24 @@ jobs:
           grep -q 'id="root"' /tmp/wordloop-index.html
           curl --fail --silent http://127.0.0.1:4173/manifest.webmanifest -o /tmp/wordloop-manifest.json
           echo "Staging API, index and PWA manifest served successfully."
+
+      - name: Verify unauthenticated visitors cannot access UAT
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://wordloop-staging.nf24-wordloop.workers.dev"
+          for endpoint in "/" "/api/health" "/sw.js"; do
+            status=$(curl -sS --max-time 20 -D /tmp/staging-headers -o /tmp/staging-body -w '%{http_code}' "$BASE$endpoint")
+            echo "$endpoint -> HTTP $status"
+            if [[ "$status" == "302" || "$status" == "303" || "$status" == "307" ]]; then
+              if ! grep -Eqi 'location: .*cloudflareaccess.com|location: .*/cdn-cgi/access/' /tmp/staging-headers; then
+                echo "Unexpected redirect: Access protection not verified"; exit 1
+              fi
+            elif [[ "$status" == "401" || "$status" == "403" ]]; then
+              if ! grep -Eqi 'cloudflare|access' /tmp/staging-headers /tmp/staging-body; then
+                echo "Denied response not verifiably from Access"; exit 1
+              fi
+            else
+              echo "UAT is not behind an expected Access login/denial"; exit 1
+            fi
+          done
