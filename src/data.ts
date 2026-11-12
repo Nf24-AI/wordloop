@@ -54,7 +54,7 @@ function text(v:unknown,max:number):v is string{return typeof v==='string'&&v.le
 function validWord(w:unknown):w is Word{
   if(!w||typeof w!=='object')return false;
   const x=w as Partial<Word>;
-  return text(x.id,80)&&text(x.term,100)&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&typeof x.fsrsState==='object'&&!!x.fsrsState&&!Array.isArray(x.fsrsState)&&text((x.fsrsState as Record<string,unknown>).dueAt,64);
+  return text(x.id,80)&&text(x.term,100)&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&typeof x.fsrsState==='object'&&!!x.fsrsState&&!Array.isArray(x.fsrsState)&&text((x.fsrsState as Record<string,unknown>).dueAt,64)&&Number.isFinite(Date.parse(String((x.fsrsState as Record<string,unknown>).dueAt)))&&x.dueAt===(x.fsrsState as Record<string,unknown>).dueAt;
 }
 function validReview(r:unknown):r is Review{
   if(!r||typeof r!=='object')return false;
