@@ -5,7 +5,7 @@ import {testBrowser} from '@codefusion-cc/web-push/testing';
 
 const base='https://wordloop-staging.nf24-wordloop.workers.dev';
 const untouchedDB={prepare(){throw new Error('Unsafe: invalid request reached database');}};
-const env={PUSH_DB:untouchedDB};
+const env={PUSH_DB:untouchedDB,PUSH_LIMIT:{limit:async()=>({success:true})}};
 const token='test-token-'.repeat(7);
 function post(route,body,origin=base){
   return new Request(base+route,{
@@ -58,4 +58,12 @@ test('unconfigured VAPID does not expose a public key or a private key',async()=
   assert.equal(response.status,503);
   const data=await response.json();
   assert.deepEqual(Object.keys(data),['error']);
+});
+
+
+test('native rate limiter returns HTTP 429 before touching D1',async()=>{
+  const denied={PUSH_DB:untouchedDB,PUSH_LIMIT:{limit:async()=>({success:false})}};
+  const response=await worker.fetch(post('/api/push/sync',{}),denied);
+  assert.equal(response.status,429);
+  assert.equal(response.headers.get('cache-control'),'no-store');
 });
