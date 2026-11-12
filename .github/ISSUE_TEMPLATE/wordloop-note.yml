@@ -1,0 +1,68 @@
+name: "WordLoop — ملاحظة أو تحسين"
+description: "سجّل ملاحظة على المنصة أو فكرة تطوير واضحة."
+title: "[To do] "
+labels: []
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: "القسم"
+      description: "أين تظهر الملاحظة؟"
+      options:
+        - "الرئيسية"
+        - "إضافة كلمة"
+        - "المراجعة وFSRS"
+        - "مكتبة الكلمات"
+        - "الإحصائيات"
+        - "الإعدادات والنسخ الاحتياطية"
+        - "الإشعارات"
+        - "الأداء والجوال"
+        - "الهوية البصرية واللفظية"
+        - "أخرى"
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: "نوع الملاحظة"
+      options:
+        - "Bug — مشكلة"
+        - "UX — تحسين تجربة"
+        - "UI — تحسين التصميم"
+        - "Feature — ميزة"
+        - "Content — نصوص وهوية لفظية"
+        - "Technical — مهمة تقنية"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: "ما المشكلة أو المطلوب؟"
+      placeholder: "اكتب ما لاحظته وما تريد تحسينه."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "النتيجة المتوقعة / معايير القبول"
+      placeholder: "كيف نعرف أن المهمة أُنجزت بالشكل المطلوب؟"
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "الأولوية المقترحة"
+      options:
+        - "P2 — عادية"
+        - "P1 — مرتفعة"
+        - "P0 — تمنع الاستخدام"
+        - "P3 — لاحقًا"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "صور أو خطوات تساعدنا"
+      description: "اختياري: أرفق صورة أو رابطًا أو خطوات لإعادة المشكلة."
+    validations:
+      required: false
