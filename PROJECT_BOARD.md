@@ -8,10 +8,12 @@
 
 | المهمة الجديدة | الأولوية | الحالة |
 |---|---|---|
-| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | To do |
+| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | In progress — نشرت نسخة معزولة وتحتاج حماية دخول |
 | [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | To do |
 
 **تسلسل الإطلاق المعتمد:** `Feature Branch → Pull Request → Automated Tests → Staging/UAT → Security Checks → Owner Approval → Production`.
+
+**حماية الإنتاج (مفعّلة):** غُيّر أمر بناء Production في Cloudflare من `wrangler deploy` إلى `wrangler versions upload`، حتى لا تؤدي تحديثات `main` إلى نشر تلقائي. يتطلب الإطلاق تفعيلًا يدويًا صريحًا للنسخة المرشحة بعد الموافقة. يجب التأكد من سجل Build عند أول إصدار بعد هذا التعديل.
 
 **قيود لا يمكن تجاوزها:** عزل D1 وVAPID لكل بيئة، وعدم استخدام بيانات مستخدمين حقيقيين في الاختبارات، وعدم تحويل كلمات المستخدم إلى تخزين سحابي، وعدم الإطلاق إذا فشلت اختبارات الأمان الحرجة أو التخزين/الاستعادة.
 
