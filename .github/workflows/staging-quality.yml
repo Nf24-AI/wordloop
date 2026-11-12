@@ -27,3 +27,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build -- --mode staging
+      - name: Smoke test local Staging Worker and HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev -- --mode staging --host 127.0.0.1 --port 4173 > /tmp/wordloop-staging-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:4173/api/health -o /tmp/wordloop-health.json; then break; fi
+            if [[ "$i" == 40 ]]; then cat /tmp/wordloop-staging-dev.log; exit 1; fi
+            sleep 2
+          done
+          node -e "const j=JSON.parse(require('fs').readFileSync('/tmp/wordloop-health.json','utf8'));if(j.service!=='wordloop'||j.storage!=='device-only')process.exit(1)"
+          curl --fail --silent http://127.0.0.1:4173/ -o /tmp/wordloop-index.html
+          grep -q 'id="root"' /tmp/wordloop-index.html
+          curl --fail --silent http://127.0.0.1:4173/manifest.webmanifest -o /tmp/wordloop-manifest.json
+          echo "Staging API, index and PWA manifest served successfully."
