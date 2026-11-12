@@ -2,7 +2,8 @@ import {loadVapidKey,parseSubscription,sendPush} from '@codefusion-cc/web-push';
 
 type Statement={bind:(...values:unknown[])=>Statement;run:()=>Promise<{meta:{changes:number}}> ;first:<T>()=>Promise<T|null>;all:<T>()=>Promise<{results:T[]}>};
 type D1Database={prepare:(sql:string)=>Statement};
-type Env={PUSH_DB?:D1Database;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
+type RateLimiter={limit:(args:{key:string;delta?:number})=>Promise<{success:boolean}>};
+type Env={PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
 type ScheduledController=unknown;
 type ExecutionContext={waitUntil:(promise:Promise<unknown>)=>void};
 type Subscription={endpoint:string;keys:{p256dh:string;auth:string}};
@@ -46,6 +47,15 @@ async function endpoint(request:Request,env:Env){
     return key?reply({publicKey:key.publicKey}):fail('لم تُفعّل الإشعارات بعد',503);
   }
   if(!originOK(request))return fail('طلب غير مسموح',403);
+  if(method==='POST'&&path.startsWith('/api/push/')){
+    if(!env.PUSH_LIMIT)return fail('خدمة الإشعارات غير جاهزة بعد',503);
+    // An approximate Cloudflare PoP-level limit. No IP addresses are persisted in our D1 database.
+    // The edge sets CF-Connecting-IP; the route is part of the bucket key.
+    const ip=request.headers.get('CF-Connecting-IP')||'unknown';
+    const delta=path==='/api/push/test'?5:1;
+    const rate=await env.PUSH_LIMIT.limit({key:path+':'+ip,delta});
+    if(!rate.success)return fail('طلبات كثيرة، جرّب بعد دقيقة',429);
+  }
   if(!env.PUSH_DB)return fail('خدمة الإشعارات غير جاهزة بعد',503);
   if(path==='/api/push/sync'&&method==='POST'){
     const data=await body(request);if(!data)return fail('طلب غير صالح');
