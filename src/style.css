@@ -394,3 +394,6 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
   .wash i{animation:none!important}
 }
 @media(forced-colors:active){.wash{display:none}.btn,.chip,.grade,.tile{border:1px solid ButtonText}}
+
+/* Staging-only environment label; visible on every screen. */
+.staging-pill{display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;background:#fce7b0;color:#342817;font-size:12px;font-weight:700;border:1px solid #e0bb6b;white-space:nowrap}
