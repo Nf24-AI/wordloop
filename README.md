@@ -1,5 +1,7 @@
 # WordLoop — Local-first PWA
 
+> **Product feedback / To do:** [WordLoop Project Board](PROJECT_BOARD.md) · [Open tasks](https://github.com/Nf24-AI/wordloop/issues?q=is%3Aissue+is%3Aopen) · [Add a note](https://github.com/Nf24-AI/wordloop/issues/new/choose)
+
 Arabic-first English vocabulary review app. One person's words stay in that browser/device. No user account, no cloud word database. Reference artwork is in `docs/identity-reference.png`.
 
 ## What is implemented
