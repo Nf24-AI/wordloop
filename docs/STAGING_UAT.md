@@ -17,7 +17,9 @@
 
 **Staging URL (Access sign-in required):** https://wordloop-staging.nf24-wordloop.workers.dev/
 
-**Access policy:** `WordLoop Staging - Owner UAT` protects the entire Worker; only the Cloudflare account owner's email is allowed. No anonymous or Everyone access. [Automated protection test](https://github.com/Nf24-AI/wordloop/actions/runs/43273787938) validates unauthenticated denial for `/`, `/api/health`, and `/sw.js`.
+**Access policy:** `WordLoop Staging - Owner UAT` protects the entire Worker; only the approved owner email is allowed. No anonymous or Everyone access.
+
+**Sign-in method (configured 12 Nov 2026):** Cloudflare Access **Email One-time PIN (OTP)** is the **only allowed identity provider** for this application (no Cloudflare-account sign-in or password form). Tester opens the Staging URL, enters the authorized email address, requests the code, and enters the emailed PIN. The session duration remains 12 hours. The existing email-allowlist policy is unchanged. An authenticated OTP email-delivery check still requires owner verification; never share the PIN in tickets or chat. [Access protection CI](https://github.com/Nf24-AI/wordloop/actions/runs/43273787938) verifies unauthenticated denial for `/`, `/api/health`, and `/sw.js`.
 
 ### What has been configured
 - [x] Cloudflare D1 test database with schema from `worker/schema.sql`
@@ -28,6 +30,7 @@
 - [x] Staging-only CI validates no production D1 ID is used and runs typecheck, tests, and build
 - [x] Worker-level Cloudflare Access is active before enabling public `workers.dev`; Preview URLs remain off
 - [x] Access login/deny protects UI, health API and Service Worker according to GitHub Actions test
+- [x] Access Identity Provider changed from Cloudflare login to Email One-time PIN; email allowlist preserved
 - [x] Staging-only `VAPID_SUBJECT` secret configured.
 
 ### Remaining Web Push setup and authenticated UAT
@@ -44,7 +47,7 @@
 
 ### UAT checklist
 - [x] Verified unauthorized visitors cannot access Staging UI, API or SW via CI.
-- [ ] Verify an authorized tester can successfully sign in and access Staging.
+- [ ] Verify the authorized tester receives an OTP email, signs in successfully and reaches Staging.
 - [ ] Add a vocabulary item and confirm it appears on the library page after refresh.
 - [ ] Add multiple items; confirm IndexedDB, due review, and sorting remain correct.
 - [ ] Review one item with each FSRS grade; check next due and counts.
