@@ -521,6 +521,7 @@ export default function App(){
       <header className="topbar">
         <a href="#/" aria-label="WordLoop، الرئيسية"><Logo/></a>
         <div className="topbar-end">
+          {import.meta.env.VITE_WORDLOOP_STAGE==='true'&&<span className="staging-pill" title="بيئة اختبار مع بيانات منفصلة عن الموقع الرئيسي">نسخة اختبار</span>}
           {!online&&<span className="net off"><WifiOff size={14}/>بدون إنترنت</span>}
           <button type="button" className={'icon-btn'+(page==='settings'?' on':'')} aria-label="الإعدادات" aria-current={page==='settings'?'page':undefined} onClick={()=>navigate('settings')}><Settings2 size={21} strokeWidth={1.8}/></button>
         </div>
