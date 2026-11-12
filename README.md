@@ -28,13 +28,17 @@ The vocabulary experience can be used without setting up Cloudflare or D1. `Enab
 
 **Limitations**: Web Push availability and delivery vary by platform/network/browser, and Cron is not an exact to-the-second guarantee. No cloud sync and no push without an active internet connection. On offline review, the previously scheduled push can be stale until the next successful sync. Browser storage may be evicted or cleared, and installed iOS PWA storage can be separate from Safari tab storage. Back up manually and save file outside the site/browser. Import/restore always asks for confirmation.
 
-## Next handoff to Claude
-Give Claude `docs/CLAUDE_FRONTEND_BRIEF.md` plus this project folder and visual reference. Claude should improve visual responsiveness, micro-interactions and all microcopy only. See `docs/VOICE_AND_DESIGN_SYSTEM.md`.
+## Frontend update (Claude, 2026-11-12)
+- Redesigned all screens in `src/App.tsx` / `src/style.css` (RTL, mobile-first, colour-wash identity, Saudi conversational copy). New «تقدّمك» progress page built only from local data.
+- Hash routes (`#/review`, `#/words`, `#/add`, `#/stats`, `#/settings`) so the phone back button works.
+- Fonts are self-hosted in `src/fonts/` (no request to Google, cached for offline use).
+- Approved fixes outside the UI: `vite` 7.3.8 → 8.3.5 (plugin-react 6 needs Vite 8), a type-only fix of the FSRS rating map in `src/data.ts`, and offline caching in `public/sw.js` (cache `wordloop-shell-v4`; push handlers unchanged).
+- Deployment: see `docs/DEPLOY_CLOUDFLARE.md`.
 
 ## Architecture/ownership
 - `src/data.ts` — vocabulary model, IndexedDB, FSRS, exports/imports (ChatGPT-owned).
 - `src/push.ts`, `worker/*` — push state/registration/delivery (ChatGPT-owned).
-- `src/App.tsx`, `src/style.css` — starter UI and copy (Claude can refine).
+- `src/App.tsx`, `src/style.css`, `src/fonts/` — UI, copy and fonts (Claude).
 - `public/sw.js` — offline shell + push (ChatGPT-owned).
 
 ## Security notes

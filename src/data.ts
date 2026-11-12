@@ -1,11 +1,11 @@
-import {DefaultScheduler, Rating} from 'ts-fsrs';
+import {DefaultScheduler, Rating, type Grade as FsrsGrade} from 'ts-fsrs';
 
 export type Grade='again'|'hard'|'good'|'easy';
 export type Word={id:string;term:string;meaning:string;example:string;translation:string;tag:string;createdAt:string;updatedAt:string;dueAt:string;fsrsState:Record<string,unknown>;archived:boolean;revision:number};
 export type Review={id:string;wordId:string;grade:Grade;reviewedAt:string;nextDueAt:string};
 export type Backup={app:'wordloop';version:1;exportedAt:string;words:Word[];reviews:Review[]};
 const DB='wordloop-local-v1', VERSION=1;
-const ratings:Record<Grade,Rating>={again:Rating.Again,hard:Rating.Hard,good:Rating.Good,easy:Rating.Easy};
+const ratings:Record<Grade,FsrsGrade>={again:Rating.Again,hard:Rating.Hard,good:Rating.Good,easy:Rating.Easy};
 let dbPromise:Promise<IDBDatabase>|null=null;
 const request=<T>(r:IDBRequest<T>):Promise<T>=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('تعذّر قراءة البيانات المحلية'));});
 function open():Promise<IDBDatabase>{
