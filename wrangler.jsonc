@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "wordloop-local-first",
+  "name": "wordloop-staging",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-12",
   "upload_source_maps": true,
@@ -18,8 +18,13 @@
   "d1_databases": [
     {
       "binding": "PUSH_DB",
-      "database_name": "wordloop-push",
-      "database_id": "87f5d0d3-10ae-437e-b2c4-6e8dd9820b1c"
+      "database_name": "wordloop-push-staging",
+      "database_id": "65707638-4977-4bde-b480-974fa12c340b"
     }
-  ]
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "WORDLOOP_ENV": "staging"
+  }
 }
