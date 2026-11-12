@@ -1,0 +1,42 @@
+name: Production smoke test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check WordLoop public HTTPS endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://wordloop-local-first.nf24-wordloop.workers.dev"
+          echo "Checking $BASE"
+          for attempt in {1..15}; do
+            if curl --fail --silent --show-error --location --max-time 15 "$BASE/api/health" -o /tmp/health.json; then
+              if node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/health.json'));if(j.service!=='wordloop'||j.storage!=='device-only')process.exit(1)"; then
+                break
+              fi
+            fi
+            if [[ "$attempt" -eq 15 ]]; then
+              echo "WordLoop health endpoint failed after 15 attempts."
+              exit 1
+            fi
+            sleep 8
+          done
+          curl --fail --silent --show-error --location --max-time 15 "$BASE/" -o /tmp/wordloop.html
+          grep -q 'id="root"' /tmp/wordloop.html
+          curl --fail --silent --show-error --location --max-time 15 "$BASE/manifest.webmanifest" -o /tmp/manifest.json
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/manifest.json'));if(j.short_name!=='WordLoop')process.exit(1)"
+          curl --fail --silent --show-error --location --max-time 15 "$BASE/sw.js" -o /tmp/sw.js
+          grep -q "addEventListener('push'" /tmp/sw.js
+          curl --fail --silent --show-error --location --max-time 15 "$BASE/api/push/key" -o /tmp/key.json
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/key.json'));if(typeof j.publicKey!=='string'||j.publicKey.length<40)process.exit(1)"
+          echo "WordLoop page, PWA, health and Web Push public key verified."
