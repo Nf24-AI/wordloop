@@ -4,11 +4,11 @@
 
 ## قرار معتمد — بيئة الاختبار قبل الإنتاج
 
-**اعتماد Staging / UAT:** تم اعتماد إنشاء بيئة اختبار مستقلة واستخدامها بوابة إلزامية قبل اعتماد أي تحديث للإنتاج. **الاعتماد هنا للسياسة والبنية المقترحة، ولا يعني إنشاء البيئة فعليًا بعد.**
+**اعتماد Staging / UAT:** البيئة التجريبية **أُنشئت ونُشرت** وهي محمية بـ Cloudflare Access (بريد المالك + رمز OTP). بقي إكمال مفتاح VAPID واختبارات الجوال والموافقة النهائية قبل اعتبار #2 مكتملًا.
 
 | المهمة الجديدة | الأولوية | الحالة |
 |---|---|---|
-| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | In progress — نشرت نسخة معزولة وتحتاج حماية دخول |
+| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | In progress — بيئة معزولة ومحمية عبر OTP؛ متبقي Push وUAT |
 | [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | In progress — API tests and rate limiter on Staging |
 
 **تسلسل الإطلاق المعتمد:** `Feature Branch → Pull Request → Automated Tests → Staging/UAT → Security Checks → Owner Approval → Production`.
@@ -18,6 +18,26 @@
 **قيود لا يمكن تجاوزها:** عزل D1 وVAPID لكل بيئة، وعدم استخدام بيانات مستخدمين حقيقيين في الاختبارات، وعدم تحويل كلمات المستخدم إلى تخزين سحابي، وعدم الإطلاق إذا فشلت اختبارات الأمان الحرجة أو التخزين/الاستعادة.
 
 > التنفيذ متوقف على استكمال #2 و#3؛ لا تعتبر فحوص GitHub البرمجية وحدها بديلًا عن تجربة UAT على الهاتف.
+
+
+## تغييرات المنتج والواجهة (لم تُنفّذ بعد)
+
+**التوثيق لا يعني التنفيذ:** تم تسجيل الملاحظات التسع التالية كـGitHub Issues؛ لا تظهر كتغييرات في Staging أو Production بعد. يبدأ تطويرها على فرع منفصل وتمر عبر الاختبارات والاعتماد قبل الترقية.
+
+| # | التعديل | الأولوية | الحالة |
+|---|---|---|---|
+| [#4](https://github.com/Nf24-AI/wordloop/issues/4) | التحقق من مشكلة عدم ظهور الإضافة الجديدة وإصلاحها | P0 | To do |
+| [#5](https://github.com/Nf24-AI/wordloop/issues/5) | أربعة أنواع: Vocabulary / Phrase / Sentence / Idiom | P1 | To do |
+| [#6](https://github.com/Nf24-AI/wordloop/issues/6) | أيقونة الإعدادات وتبديل العربية/الإنجليزية | P1 | To do |
+| [#7](https://github.com/Nf24-AI/wordloop/issues/7) | معلومات تعليمية عملية في الرئيسية | P2 | To do |
+| [#8](https://github.com/Nf24-AI/wordloop/issues/8) | إزالة أزرار الإضافة المكررة وCTA ذكي | P1 | To do |
+| [#9](https://github.com/Nf24-AI/wordloop/issues/9) | قائمة الزر الأوسط: إضافة / مراجعة / ممارسة | P1 | To do |
+| [#10](https://github.com/Nf24-AI/wordloop/issues/10) | إحصائيات بطاقات مميزة بدل خلطها بمحاولات المراجعة | P1 | To do |
+| [#11](https://github.com/Nf24-AI/wordloop/issues/11) | نقل خصوصية البيانات إلى الإعدادات | P2 | To do |
+| [#12](https://github.com/Nf24-AI/wordloop/issues/12) | تحسين نموذج إضافة البطاقات لكل نوع | P1 | To do |
+| [#13](https://github.com/Nf24-AI/wordloop/issues/13) | **Discovery فقط:** تصميم Practice للقراءة والاستماع | P2 | بانتظار اعتماد التصميم |
+
+**ترتيب مقترح:** #4 → #5 و#12 → #10 → #8 و#9 → #6 → #11 و#7؛ أما #13 فهو نقاش وتصميم قبل البرمجة. كل تطوير يمر عبر Staging المحمية، وتحتاج أي ترقية إلى Production إلى موافقة صاحب المنتج.
 
 
 ## افتح قوائم المهام
