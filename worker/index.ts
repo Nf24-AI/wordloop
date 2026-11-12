@@ -10,7 +10,24 @@ type PushRow={token_hash:string;endpoint:string;p256dh:string;auth_key:string;ne
 const reply=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(message:string,status=400)=>reply({error:message},status);
 const isObj=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
-async function body(request:Request){if(Number(request.headers.get('content-length')||0)>10000)return null;const v=await request.json().catch(()=>null);return isObj(v)?v:null;}
+// Stream incoming JSON with a hard 10 KB limit, including chunked requests.
+async function body(request:Request){
+  if(Number(request.headers.get('content-length')||0)>10000||!request.body)return null;
+  const reader=request.body.getReader(),decoder=new TextDecoder();
+  let size=0,json='';
+  try{
+    while(true){
+      const {done,value}=await reader.read();
+      if(done)break;
+      size+=value.byteLength;
+      if(size>10000){await reader.cancel();return null;}
+      json+=decoder.decode(value,{stream:true});
+    }
+    json+=decoder.decode();
+    const parsed:unknown=JSON.parse(json);
+    return isObj(parsed)?parsed:null;
+  }catch{return null;}finally{reader.releaseLock();}
+}
 async function hash(token:string){const bytes=new TextEncoder().encode(token);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
 async function send(env:Env,row:PushRow,title:string,bodyText:string){
   const vapid=env.VAPID_PRIVATE_KEY?await loadVapidKey(env.VAPID_PRIVATE_KEY):null;
@@ -35,7 +52,7 @@ async function endpoint(request:Request,env:Env){
     const token=data.token;
     const sub=data.subscription as Subscription|undefined;
     const next=data.nextDueAt;
-    if(typeof token!=='string'||token.length<60||token.length>120||!sub||typeof sub.endpoint!=='string'||sub.endpoint.length>2500||!sub.endpoint.startsWith('https://')||!isObj(sub.keys)||typeof sub.keys.p256dh!=='string'||typeof sub.keys.auth!=='string'||sub.keys.p256dh.length>250||sub.keys.auth.length>250||(next!==null&&(typeof next!=='string'||!Number.isFinite(Date.parse(next)))))return fail('بيانات الجهاز غير صحيحة');
+    if(typeof token!=='string'||token.length<60||token.length>120||!sub||typeof sub.endpoint!=='string'||sub.endpoint.length>2500||!sub.endpoint.startsWith('https://')||!isObj(sub.keys)||typeof sub.keys.p256dh!=='string'||typeof sub.keys.auth!=='string'||sub.keys.p256dh.length>250||sub.keys.auth.length>250||(next!==null&&(typeof next!=='string'||next.length>40||!Number.isFinite(Date.parse(next)))))return fail('بيانات الجهاز غير صحيحة');
     const hashValue=await hash(token);
     await env.PUSH_DB.prepare(`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at)
       VALUES (?1,?2,?3,?4,?5,?6)
