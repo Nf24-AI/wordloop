@@ -22,7 +22,7 @@
       "database_id": "65707638-4977-4bde-b480-974fa12c340b"
     }
   ],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "vars": {
     "WORDLOOP_ENV": "staging"
