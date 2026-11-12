@@ -52,7 +52,7 @@ async function endpoint(request:Request,env:Env){
     const token=data.token;
     const sub=data.subscription as Subscription|undefined;
     const next=data.nextDueAt;
-    if(typeof token!=='string'||token.length<60||token.length>120||!sub||typeof sub.endpoint!=='string'||sub.endpoint.length>2500||!sub.endpoint.startsWith('https://')||!isObj(sub.keys)||typeof sub.keys.p256dh!=='string'||typeof sub.keys.auth!=='string'||sub.keys.p256dh.length>250||sub.keys.auth.length>250||(next!==null&&(typeof next!=='string'||next.length>40||!Number.isFinite(Date.parse(next)))))return fail('بيانات الجهاز غير صحيحة');
+    if(typeof token!=='string'||token.length<60||token.length>120||!sub||typeof sub.endpoint!=='string'||sub.endpoint.length>2500||!sub.endpoint.startsWith('https://')||!isObj(sub.keys)||typeof sub.keys.p256dh!=='string'||typeof sub.keys.auth!=='string'||sub.keys.p256dh.length>250||sub.keys.auth.length>250||!parseSubscription(sub)||(next!==null&&(typeof next!=='string'||next.length>40||!Number.isFinite(Date.parse(next)))))return fail('بيانات الجهاز غير صحيحة');
     const hashValue=await hash(token);
     await env.PUSH_DB.prepare(`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at)
       VALUES (?1,?2,?3,?4,?5,?6)
