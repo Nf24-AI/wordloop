@@ -26,6 +26,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       // Wait for the reloaded app's IndexedDB hydration and route transition, not a fixed 150ms.
       // WebKit CI can display the previous route's heading before the Library data is rendered.
       // A genuinely missing card still fails when the third Library row never appears.
+      await page.goto(base()+'/#/words');
       await page.locator('.word-list .word-text b').nth(2).waitFor({timeout:10000});
       assert.deepEqual((await libraryTerms(page,base(),{navigate:false})).sort(),['eventually','overlook','reliable']);
       assert.deepEqual(errors,[]);await context.close();
