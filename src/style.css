@@ -186,6 +186,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .icon-btn.in-input{position:absolute;right:5px;top:4px;border-color:transparent;background:var(--mint);color:var(--teal-deep)}
 .field .chips{margin-block-start:4px}
 .inline-error{background:var(--danger-bg);color:var(--danger);padding:12px 16px;border-radius:var(--r-md);font-size:15px;line-height:1.6}
+.inline-error.soft{background:var(--cream);color:var(--ink-2);display:grid;gap:10px;justify-items:start}
 .form-foot{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-block-start:4px}
 .add-aside{position:sticky;inset-block-start:32px;overflow:hidden;border-radius:var(--r-xl);min-block-size:420px;padding:32px;display:grid;align-content:center;gap:26px}
 .aside-card{position:relative;z-index:1;background:#fffdf7;border-radius:20px;box-shadow:var(--shadow-paper);padding:26px 24px;transform:rotate(-3deg);display:grid;gap:8px;max-inline-size:320px;justify-self:center;inline-size:100%}

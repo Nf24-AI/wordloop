@@ -29,6 +29,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build -- --mode staging
+      - name: Install browsers for UI regression tests
+        run: npx playwright install --with-deps chromium webkit
+      - name: UI regression tests (Chromium + WebKit, iPhone viewport, local server only)
+        run: npm run test:e2e
       - name: Smoke test local Staging Worker and HTML
         shell: bash
         run: |

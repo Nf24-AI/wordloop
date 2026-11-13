@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
 import {ArrowDownToLine,ArrowLeft,ArrowUpFromLine,Bell,BellOff,BookOpen,Check,ChevronDown,CloudOff,Download,HardDrive,Home,Layers3,LineChart,Plus,RotateCcw,Search,Send,Settings2,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,lastBackupDate,listReviews,listWords,rememberBackup,restoreBackup,reviewWord,summary,validateBackup,type Grade,type Review,type Word} from './data';
+import {addWord,archiveWord,buildBackup,lastBackupDate,listReviews,listWords,normalizeTerm,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,validateBackup,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 
 /* ───────────── Navigation ───────────── */
@@ -62,6 +62,8 @@ const friendly:Record<string,string>={
   'حصل خطأ في الإشعارات':'صار خلل في التذكيرات. جرّب بعد شوي.',
 };
 function getError(e:unknown){
+  if(e instanceof DOMException&&e.name==='QuotaExceededError')return 'مساحة التخزين في المتصفح ممتلئة، فما انحفظ شي. فضّي مساحة في جهازك وجرّب مرة ثانية.';
+  if(e instanceof DOMException&&(e.name==='InvalidStateError'||e.name==='UnknownError'))return 'انقطع اتصال المتصفح بكلماتك المحفوظة، فما انحفظ هذا التغيير. حدّث الصفحة وجرّب مرة ثانية.';
   if(e instanceof SyntaxError)return 'هذا الملف ما ينقرأ. تأكد إنه ملف نسخة حمّلته من WordLoop.';
   if(e instanceof TypeError&&/fetch|network/i.test(e.message))return 'هذي الخطوة تحتاج إنترنت. اتصل وجرّب مرة ثانية.';
   if(e instanceof Error){if(friendly[e.message])return friendly[e.message];if(e.message.startsWith('هذا المتصفح لا يدعم الإشعارات'))return 'هذا المتصفح ما يدعم التذكيرات. على الآيفون، أضف WordLoop للشاشة الرئيسية وافتحه منها.';if(/[؀-ۿ]/.test(e.message))return e.message;}
@@ -179,21 +181,29 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
 }
 
 /* ───────────── Add word ───────────── */
-function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Promise<void>;notify:Notify;onNavigate:(p:Page)=>void}){
+function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Promise<Word[]|null>;notify:Notify;onNavigate:(p:Page)=>void}){
   const [term,setTerm]=useState(''),[meaning,setMeaning]=useState(''),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[tag,setTag]=useState('');
-  const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null);
+  const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
   const termRef=useRef<HTMLInputElement>(null);
   const tags=useMemo(()=>[...new Set(words.filter(w=>!w.archived).map(w=>w.tag).filter(Boolean))].slice(0,12),[words]);
-  const duplicate=term.trim()&&words.some(w=>!w.archived&&w.term.toLocaleLowerCase()===term.trim().toLocaleLowerCase());
+  const duplicate=term.trim()&&words.some(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(term));
   async function submit(e:FormEvent){
     e.preventDefault();setTried(true);setError('');
     if(!term.trim()||!meaning.trim()){(!term.trim()?termRef.current:document.getElementById('meaning'))?.focus();return;}
-    setLoading(true);
-    try{
-      await addWord({term,meaning,example,translation,tag});
-      const t=term.trim();setTerm('');setMeaning('');setExample('');setTranslation('');setTag('');setTried(false);setSaved(t);
-      notify(`حفظنا «${t}». بتطلع لك في المراجعة.`);await onSaved();termRef.current?.focus();
-    }catch(err){setError(getError(err));}finally{setLoading(false);}
+    setLoading(true);setUnsynced(null);
+    let word:Word;
+    // A failed save keeps every field so nothing typed is lost.
+    try{word=await addWord({term,meaning,example,translation,tag});}
+    catch(err){setError(getError(err));setLoading(false);return;}
+    // The card is committed on the device; the form can be cleared.
+    setTerm('');setMeaning('');setExample('');setTranslation('');setTag('');setTried(false);
+    await confirmVisible(word);setLoading(false);termRef.current?.focus();
+  }
+  /** #4: success is announced only once the saved card is in the refreshed list. */
+  async function confirmVisible(word:Word){
+    const list=await onSaved();
+    if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(`حفظنا «${word.term}». تلقاها في «كلماتي» وبتطلع لك في المراجعة.`);}
+    else{setSaved(null);setUnsynced(word);}
   }
   const missing=(v:string)=>tried&&!v.trim();
   return <div className="page add-page">
@@ -202,7 +212,7 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
       <form className="word-form" onSubmit={submit} noValidate>
         <div className={'field'+(missing(term)?' invalid':'')}>
           <label htmlFor="term">الكلمة بالإنجليزي</label>
-          <div className="input-wrap"><input ref={termRef} id="term" dir="ltr" lang="en" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="overlook" maxLength={100} value={term} onChange={e=>{setTerm(e.target.value);setSaved(null);}} aria-invalid={missing(term)} aria-describedby="term-hint"/><SpeakButton text={term} label="اسمع نطق الكلمة" className="icon-btn in-input"/></div>
+          <div className="input-wrap"><input ref={termRef} id="term" dir="ltr" lang="en" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="overlook" maxLength={100} value={term} onChange={e=>{setTerm(e.target.value);setSaved(null);setError('');}} aria-invalid={missing(term)} aria-describedby="term-hint"/><SpeakButton text={term} label="اسمع نطق الكلمة" className="icon-btn in-input"/></div>
           <p id="term-hint" className="hint">{missing(term)?'اكتب الكلمة أول.':duplicate?'هذي الكلمة موجودة عندك من قبل.':'كلمة أو عبارة قصيرة.'}</p>
         </div>
         <div className={'field'+(missing(meaning)?' invalid':'')}>
@@ -225,6 +235,7 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
           {tags.length>0&&<div className="chips" role="group" aria-label="تصنيفات سابقة">{tags.slice(0,6).map(t=><button type="button" key={t} className={'chip'+(tag===t?' on':'')} aria-pressed={tag===t} onClick={()=>setTag(tag===t?'':t)}>{t}</button>)}</div>}
         </div>
         {error&&<p className="inline-error" role="alert">{error}</p>}
+        {unsynced&&<div className="inline-error soft" role="alert"><p>انحفظت «<span dir="ltr">{unsynced.term}</span>» على جهازك، بس ما قدرنا نحدّث قائمة كلماتك الحين.</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>حدّث القائمة</button></div>}
         <div className="form-foot">
           <button disabled={loading} type="submit" className="btn btn-ink btn-lg">{loading?'نحفظ الكلمة…':'احفظ الكلمة'}{!loading&&<Check size={20}/>}</button>
           {saved&&<button type="button" className="btn btn-quiet" onClick={()=>onNavigate('words')}>شوف كلماتي</button>}
@@ -236,7 +247,7 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
 }
 
 /* ───────────── Review ───────────── */
-function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>Promise<void>;onNavigate:(p:Page)=>void}){
+function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>Promise<unknown>;onNavigate:(p:Page)=>void}){
   const dueIds=useCallback(()=>words.filter(w=>!w.archived&&isDue(w)).sort((a,b)=>a.dueAt.localeCompare(b.dueAt)).map(w=>w.id),[words]);
   const [queue,setQueue]=useState<string[]>(dueIds),[revealed,setRevealed]=useState(false),[busy,setBusy]=useState(false),[done,setDone]=useState(0),[msg,setMsg]=useState(''),[last,setLast]=useState<{term:string;next:string}|null>(null);
   const active=queue.length?words.find(w=>w.id===queue[0]):undefined;
@@ -300,7 +311,7 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
 }
 
 /* ───────────── Library ───────────── */
-function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];reviews:Review[];onArchived:()=>Promise<void>;onNavigate:(p:Page)=>void;notify:Notify}){
+function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];reviews:Review[];onArchived:()=>Promise<unknown>;onNavigate:(p:Page)=>void;notify:Notify}){
   const [q,setQ]=useState(''),[filter,setFilter]=useState<string>('all'),[open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null);
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
   const tags=useMemo(()=>{const m=new Map<string,number>();for(const w of active)m.set(w.tag,(m.get(w.tag)||0)+1);return [...m].sort((a,b)=>b[1]-a[1]).slice(0,6).map(x=>x[0]);},[active]);
@@ -388,7 +399,7 @@ function StatsPage({words,reviews,onNavigate}:{words:Word[];reviews:Review[];onN
 /* ───────────── Settings ───────────── */
 type InstallPrompt=Event&{prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>};
 function withTimeout<T>(p:Promise<T>,ms:number,fallback:T){return Promise.race([p,new Promise<T>(r=>setTimeout(()=>r(fallback),ms))]);}
-function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onInstalled,onRestored,notify}:{words:Word[];online:boolean;lastBackup:string|null;setLastBackup:(v:string)=>void;installPrompt:InstallPrompt|null;onInstalled:()=>void;onRestored:()=>Promise<void>;notify:Notify}){
+function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onInstalled,onRestored,notify}:{words:Word[];online:boolean;lastBackup:string|null;setLastBackup:(v:string)=>void;installPrompt:InstallPrompt|null;onInstalled:()=>void;onRestored:()=>Promise<unknown>;notify:Notify}){
   const input=useRef<HTMLInputElement>(null);
   const [push,setPush]=useState<string>('checking'),[busy,setBusy]=useState(false),[persisted,setPersisted]=useState<'yes'|'no'|'unsupported'|'checking'>('checking');
   const [permission,setPermission]=useState<string>(typeof Notification!=='undefined'?Notification.permission:'unsupported');
@@ -484,13 +495,22 @@ export default function App(){
   const [page,setPage]=useState<Page>(readHash),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [online,setOnline]=useState(()=>navigator.onLine),[toast,setToast]=useState<{id:number;text:string;tone:'ok'|'error'}|null>(null),[lastBackup,setLastBackup]=useState<string|null>(null),[installPrompt,setInstallPrompt]=useState<InstallPrompt|null>(null);
   const first=useRef(true);
-  const fetchLocal=useCallback(async()=>{try{const [w,r]=await Promise.all([listWords(),listReviews()]);setWords(w);setReviews(r);setError('');void syncPush(w).catch(console.warn);}catch(e){setError(getError(e));}finally{setLoading(false);}},[]);
+  const latest=useRef(0),[loadedOnce,setLoadedOnce]=useState(false);
+  const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
+    // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.
+    const ticket=++latest.current;
+    try{const [w,r]=await Promise.all([listWords(),listReviews()]);if(ticket===latest.current){setWords(w);setReviews(r);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
+    catch(e){if(ticket===latest.current)setError(getError(e));return null;}
+    finally{if(ticket===latest.current)setLoading(false);}
+  },[]);
   useEffect(()=>{
     void fetchLocal();void lastBackupDate().then(setLastBackup).catch(()=>null);
-    const focus=()=>{void fetchLocal();},hash=()=>setPage(readHash()),on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
+    // #4: iOS PWAs often resume without a window "focus" event, so also refresh on visibility/pageshow and on writes from other tabs.
+    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>setPage(readHash()),on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
+    const stopListening=onOtherTabChange(()=>{void fetchLocal();});
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
-    window.addEventListener('focus',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
-    return()=>{window.removeEventListener('focus',focus);window.removeEventListener('hashchange',hash);window.removeEventListener('online',on);window.removeEventListener('offline',off);window.removeEventListener('beforeinstallprompt',bip);};
+    window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
+    return()=>{stopListening();window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',visible);window.removeEventListener('pageshow',focus);window.removeEventListener('hashchange',hash);window.removeEventListener('online',on);window.removeEventListener('offline',off);window.removeEventListener('beforeinstallprompt',bip);};
   },[fetchLocal]);
   useEffect(()=>{document.title=page==='home'?'WordLoop — كلمة اليوم، تبقى معك':`${pageTitle[page]} · WordLoop`;if(first.current){first.current=false;return;}window.scrollTo({top:0});requestAnimationFrame(()=>document.querySelector<HTMLElement>('main h1')?.focus({preventScroll:true}));},[page]);
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
@@ -500,7 +520,7 @@ export default function App(){
 
   let content:ReactNode;
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label="نجهّز كلماتك"><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
-  else if(error&&!words.length)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>ما قدرنا نفتح كلماتك</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>جرّب مرة ثانية</button></div>;
+  else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>ما قدرنا نفتح كلماتك</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>جرّب مرة ثانية</button></div>;
   else content=page==='home'?<HomePage words={words} reviews={reviews} lastBackup={lastBackup} onNavigate={navigate}/>
     :page==='add'?<AddPage words={words} onSaved={fetchLocal} notify={notify} onNavigate={navigate}/>
     :page==='review'?<ReviewPage words={words} onReviewed={fetchLocal} onNavigate={navigate}/>
@@ -528,7 +548,7 @@ export default function App(){
       </header>
       {!online&&<p className="offline-note" role="status"><WifiOff size={15}/>أنت بدون إنترنت. كلماتك ومراجعتك شغّالة عادي.</p>}
       <main id="main" className="content" key={page}>
-        {error&&words.length>0&&<div className="banner" role="alert"><span>{error}</span><button type="button" className="icon-btn ghost" onClick={()=>setError('')} aria-label="إغلاق"><X size={16}/></button></div>}
+        {error&&loadedOnce&&<div className="banner" role="alert"><span>{error}</span><button type="button" className="icon-btn ghost" onClick={()=>setError('')} aria-label="إغلاق"><X size={16}/></button></div>}
         {content}
       </main>
     </div>
