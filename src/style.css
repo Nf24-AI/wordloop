@@ -454,3 +454,23 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .panel-head h2 svg{vertical-align:-3px}
 /* Learner text uses dir=auto for correct bidi; its alignment follows the container (left/centre in English, right in Arabic). Zero specificity: component rules still win. */
 :where(.app [dir=auto]:not(input,textarea)){text-align:match-parent}
+
+/* #7 / #11 useful Home + privacy in Settings */
+.privacy-line{border:0;background:none;padding:6px 0;cursor:pointer;text-decoration:underline;text-decoration-color:#1f6b5a55;text-underline-offset:4px;min-block-size:44px}
+.home-card{align-items:flex-start}
+.home-card .nudge-icon{margin-block-start:2px}
+.home-card .eyebrow{font-size:13px;color:var(--muted);letter-spacing:.01em}
+.home-card .home-term{font:400 22px/1.25 var(--en);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.home-card small span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.home-card small .kind-badge{margin-inline-end:4px}
+.home-wide{grid-column:1/-1}
+.tip{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-radius:var(--r-lg);background:#fbf4e4;border:1px solid #f0e2bf;color:#4a3d1c}
+.tip p{font-size:15px;line-height:1.75}
+.tip b{font-weight:700;margin-inline-end:4px}
+.tip-icon{display:grid;place-items:center;inline-size:34px;block-size:34px;flex:none;border-radius:11px;background:#f7e2ad;color:#7a5410}
+.privacy-list{display:grid;gap:12px;margin-block-start:14px}
+.privacy-list div{padding-block-start:12px;border-block-start:1px solid #1f6b5a24}
+.privacy-list dt{font-weight:700;color:var(--ink);font-size:15px}
+.privacy-list dd{margin:2px 0 0;font-size:15px;color:#33403a;line-height:1.8;max-inline-size:72ch}
+.rail-privacy{display:inline-flex;align-items:center;gap:8px;border:0;background:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:start;min-block-size:32px}
+@media(hover:hover){.rail-privacy:hover{color:var(--teal-deep);text-decoration:underline;text-underline-offset:3px}}

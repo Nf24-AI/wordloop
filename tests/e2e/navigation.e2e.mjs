@@ -14,7 +14,7 @@ const seed=(page,{due})=>page.evaluate(due=>new Promise(res=>{
   const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const tx=r.result.transaction('words','readwrite');for(const w of words)tx.objectStore('words').put(w);tx.oncomplete=()=>{r.result.close();res();};};
 }),due);
 /** Buttons inside <main> that lead to Add (by label). */
-const mainAddButtons=page=>page.locator('main button').filter({hasText:/أضف|تعلّمت كلمة/}).count();
+const mainAddButtons=page=>page.locator('main button').filter({hasText:/أضف بطاقة|أضف كلمة|تعلّمت كلمة/}).count();
 const hashOf=page=>page.evaluate(()=>location.hash||'#/');
 
 for(const [name,engine] of Object.entries(ENGINES)){

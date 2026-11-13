@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,Check,ChevronDown,CloudOff,Download,HardDrive,Headphones,Home,Languages,Layers3,LineChart,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,CONTENT_TYPES,isContentType,lastBackupDate,listReviews,listWords,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,TERM_LIMIT,validateBackup,type ContentType,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
@@ -56,6 +56,7 @@ function relative(iso:string,now=Date.now()){
   if(days<365)return T.inMonths(Math.round(days/30));
   return T.inYears(Math.round(days/365));
 }
+const daysBetween=(iso:string,now=Date.now())=>Math.round((new Date(dayKey(new Date(now))).getTime()-new Date(dayKey(new Date(iso))).getTime())/DAY);
 const isDue=(w:Word,now=Date.now())=>new Date(w.dueAt).getTime()<=now;
 const canSpeak=typeof window!=='undefined'&&'speechSynthesis' in window;
 function speak(text:string){if(!canSpeak||!text.trim())return;window.speechSynthesis.cancel();const voice=new SpeechSynthesisUtterance(text);voice.lang='en-US';voice.rate=.87;window.speechSynthesis.speak(voice);}
@@ -90,7 +91,9 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
   const stats=summary(words,reviews),now=Date.now();
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
   const dueWords=active.filter(w=>isDue(w,now));
-  const upcoming=active.filter(w=>!isDue(w,now));
+  const upcoming=active.filter(w=>!isDue(w,now)).sort((a,b)=>a.dueAt.localeCompare(b.dueAt));
+  const lastAdded=active.reduce<Word|undefined>((a,w)=>!a||w.createdAt>a.createdAt?w:a,undefined);
+  const dayIndex=Math.floor(new Date(dayKey(new Date(now))).getTime()/DAY);
   const backupStale=active.length>=5&&(!lastBackup||now-new Date(lastBackup).getTime()>14*DAY);
 
   if(!active.length)return <div className="home">
@@ -106,7 +109,7 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     <section className="how" aria-labelledby="how-title">
       <h2 id="how-title">{H.howTitle}</h2>
       <ol className="steps">{H.steps.map(([b,s])=><li key={b}><b>{b}</b><span>{s}</span></li>)}</ol>
-      <p className="privacy-line"><HardDrive size={16}/> {T.privacy} {H.noAccount}</p>
+      <button type="button" className="privacy-line" onClick={()=>onNavigate('settings')}><ShieldCheck size={16} aria-hidden="true"/>{H.privacyLink}</button>
     </section>
   </div>;
 
@@ -134,9 +137,19 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     </dl>
 
     <div className="home-row">
-      {backupStale?<button type="button" className="nudge" onClick={()=>onNavigate('settings')}><span className="nudge-icon warm"><Download size={20}/></span><span><b>{H.backupStaleTitle}</b><small>{lastBackup?H.backupLast(localDate(lastBackup)):H.backupNever} {H.backupWhy}</small></span><Fwd size={18}/></button>
-        :<div className="nudge static"><span className="nudge-icon mint"><HardDrive size={20}/></span><span><b>{T.privacy}</b><small>{H.privacyNote}</small></span></div>}
+      {lastAdded&&<button type="button" className="nudge home-card" data-home="last-added" onClick={()=>onNavigate('words')}>
+        <span className="nudge-icon mint"><BookOpen size={20}/></span>
+        <span><small className="eyebrow">{H.lastAddedTitle}</small><b dir="ltr" lang="en" className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meaning}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
+        <Fwd size={18}/>
+      </button>}
+      {/* When nothing is due the hero already names the next review; show it here only when it would otherwise be hidden. */}
+      {hasDue&&<div className="nudge static home-card" data-home="next">
+        <span className="nudge-icon warm"><CalendarClock size={20}/></span>
+        <span><small className="eyebrow">{H.nextTitle}</small>{next?<><b dir="ltr" lang="en" className="home-term">{next.term}</b><small>{H.nextIn(relative(next.dueAt,now))} · {localDate(next.dueAt)}</small></>:<small>{H.allDueNow}</small>}</span>
+      </div>}
+      {backupStale&&<button type="button" className="nudge home-wide" onClick={()=>onNavigate('settings')}><span className="nudge-icon warm"><Download size={20}/></span><span><b>{H.backupStaleTitle}</b><small>{lastBackup?H.backupLast(localDate(lastBackup)):H.backupNever} {H.backupWhy}</small></span><Fwd size={18}/></button>}
     </div>
+    <aside className="tip" aria-labelledby="tip-title"><span className="tip-icon" aria-hidden="true"><Lightbulb size={18}/></span><p><b id="tip-title">{H.tipTitle}</b> {H.tips[dayIndex%H.tips.length]}</p></aside>
   </div>;
 }
 
@@ -469,7 +482,10 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
   ];
   return <div className="page settings">
     <PageHead title={St.title} lead={St.lead}/>
-    <section className="privacy-hero"><Wash tone="cool"/><ShieldCheck size={28} strokeWidth={1.6}/><div><h2>{T.privacy}</h2><p>{St.privacyBody}</p></div></section>
+    <section className="privacy-hero" id="privacy" aria-labelledby="privacy-title"><Wash tone="cool"/><ShieldCheck size={28} strokeWidth={1.6} aria-hidden="true"/><div>
+      <h2 id="privacy-title">{St.privacyTitle}</h2><p>{St.privacyBody}</p>
+      <dl className="privacy-list">{St.privacyItems.map(([dt,dd])=><div key={dt}><dt>{dt}</dt><dd>{dd}</dd></div>)}</dl>
+    </div></section>
 
     <div className="settings-grid">
       <section className="panel" aria-labelledby="lang-title">
@@ -512,7 +528,6 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
         {installPrompt&&!standalone&&<button type="button" className="btn btn-quiet" onClick={()=>void install()}><Smartphone size={17}/>{St.installButton}</button>}
       </section>
     </div>
-    <p className="privacy-foot"><CloudOff size={17}/> {St.privacyFoot}</p>
   </div>;
 }
 
@@ -596,7 +611,12 @@ export default function App(){
   },[fetchLocal]);
   // #6: the document itself follows the UI language (screen readers, hyphenation, scrollbars, form controls).
   useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=T.dir;},[locale]);
-  useEffect(()=>{document.title=page==='home'?T.docTitleHome:`${T.nav[page]} · WordLoop`;if(first.current){first.current=false;return;}window.scrollTo({top:0});requestAnimationFrame(()=>document.querySelector<HTMLElement>('main h1')?.focus({preventScroll:true}));},[page,locale]);
+  useEffect(()=>{document.title=page==='home'?T.docTitleHome:`${T.nav[page]} · WordLoop`;if(first.current){first.current=false;return;}window.scrollTo({top:0});requestAnimationFrame(()=>{
+    // Move focus to the new page's heading for screen readers, but never steal it from a field the user already focused on this page.
+    const main=document.querySelector('main'),active=document.activeElement;
+    if(main&&active&&active!==document.body&&main.contains(active)&&!active.matches('h1'))return;
+    main?.querySelector<HTMLElement>('h1')?.focus({preventScroll:true});
+  });},[page,locale]);
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});},[locale]);
@@ -627,7 +647,7 @@ export default function App(){
       <p className="rail-tagline">{T.tagline}</p>
       <button type="button" className="btn btn-ink rail-add" aria-haspopup="dialog" aria-expanded={quickOpen} onClick={openQuick}><Plus size={18}/>{T.addOrReview}</button>
       <nav aria-label={T.navMain}><ul>{navItems.map(item=><li key={item.id}><button type="button" onClick={()=>navigate(item.id)} className={'rail-link'+(page===item.id?' on':'')} aria-current={page===item.id?'page':undefined}><item.icon size={20} strokeWidth={1.8}/><span>{T.nav[item.id]}</span>{item.id==='review'&&due>0&&<b className="count" aria-label={T.dueBadge(due)}>{due}</b>}</button></li>)}</ul></nav>
-      <div className="rail-foot"><span className={'net'+(online?'':' off')}>{online?<Wifi size={14}/>:<WifiOff size={14}/>}{online?T.online:T.offline}</span><span><HardDrive size={14}/>{T.privacy}</span></div>
+      <div className="rail-foot"><span className={'net'+(online?'':' off')}>{online?<Wifi size={14}/>:<WifiOff size={14}/>}{online?T.online:T.offline}</span><button type="button" className="rail-privacy" onClick={()=>navigate('settings')}><ShieldCheck size={14} aria-hidden="true"/>{T.settings.privacyTitle}</button></div>
     </aside>
     <div className="main-col">
       <header className="topbar">
