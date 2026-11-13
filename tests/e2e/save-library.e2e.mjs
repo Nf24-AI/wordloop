@@ -23,6 +23,9 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.getByRole('button',{name:'شوف كلماتي'}).click();
       assert.deepEqual((await libraryTerms(page,base(),{navigate:false})).sort(),['eventually','overlook','reliable']);
       await page.goto(base()+'/#/');await page.goto(base()+'/#/add');await page.reload();
+      // A WebKit page reload can resolve before React attaches its hashchange listener.
+      // Wait for the app's Add page to hydrate before navigating, so the hash event is observed.
+      await page.waitForSelector('#term',{timeout:10000});
       // Wait for the reloaded app's IndexedDB hydration and route transition, not a fixed 150ms.
       // WebKit CI can display the previous route's heading before the Library data is rendered.
       // A genuinely missing card still fails when the third Library row never appears.
