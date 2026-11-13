@@ -27,7 +27,13 @@ for(const [name,engine] of Object.entries(ENGINES)){
       // WebKit CI can display the previous route's heading before the Library data is rendered.
       // A genuinely missing card still fails when the third Library row never appears.
       await page.goto(base()+'/#/words');
-      await page.locator('.word-list .word-text b').nth(2).waitFor({timeout:10000});
+      try{await page.locator('.word-list .word-text b').nth(2).waitFor({timeout:10000});}
+      catch(e){
+        // Diagnose CI-only failures: is the card missing from storage (data loss) or only from the UI?
+        const db=await page.evaluate(()=>new Promise(res=>{const r=indexedDB.open('wordloop-local-v1');r.onerror=()=>res('open failed: '+r.error);r.onsuccess=()=>{try{const q=r.result.transaction('words').objectStore('words').getAll();q.onsuccess=()=>{res(q.result.map(w=>w.term));r.result.close();};q.onerror=()=>res('read failed: '+q.error);}catch(x){res('tx failed: '+x);}};})).catch(x=>'evaluate failed: '+x);
+        const ui=await page.locator('main').innerText().catch(()=>'(no main)');
+        throw new Error(`Library after reload is missing cards.\nhash=${await page.evaluate(()=>location.hash)}\nIndexedDB terms=${JSON.stringify(db)}\nUI=${JSON.stringify(ui.slice(0,600))}\npageerrors=${JSON.stringify(errors)}`,{cause:e});
+      }
       assert.deepEqual((await libraryTerms(page,base(),{navigate:false})).sort(),['eventually','overlook','reliable']);
       assert.deepEqual(errors,[]);await context.close();
     });
