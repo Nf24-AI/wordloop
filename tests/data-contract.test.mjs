@@ -16,9 +16,9 @@ function backup(words=[word()],reviews=[]){
   return {app:'wordloop',version:1,exportedAt:now,words,reviews};
 }
 
-test('accepts a well-formed local backup',()=>{
+test('accepts a well-formed v1 backup and returns it as v2 with legacy cards typed as vocabulary (#5)',()=>{
   const payload=backup();
-  assert.deepEqual(validateBackup(payload),payload);
+  assert.deepEqual(validateBackup(payload),{...payload,version:2,words:payload.words.map(w=>({...w,contentType:'vocabulary',note:''}))});
 });
 
 test('rejects corrupted FSRS scheduling dates before replacing stored data',()=>{
@@ -42,5 +42,5 @@ test('daily summary counts only active words, due cards, and Riyadh-local review
     word('w-3',{archived:true}),
   ];
   const reviews=[{id:'r-1',wordId:'w-1',grade:'good',reviewedAt:earlier,nextDueAt:later}];
-  assert.deepEqual(summary(words,reviews,new Date(now)),{total:2,due:1,reviewedToday:1});
+  assert.deepEqual(summary(words,reviews,new Date(now)),{inLibrary:2,dueNow:1,scheduledNext7Days:1,cardsReviewedToday:1,reviewAttemptsToday:1});
 });
