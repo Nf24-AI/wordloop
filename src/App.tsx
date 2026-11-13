@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {ArrowDownToLine,ArrowLeft,ArrowUpFromLine,Bell,BellOff,BookOpen,Check,ChevronDown,CloudOff,Download,HardDrive,Home,Layers3,LineChart,Plus,RotateCcw,Search,Send,Settings2,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {ArrowDownToLine,ArrowLeft,ArrowUpFromLine,Bell,BellOff,BookOpen,Check,ChevronDown,CloudOff,Download,HardDrive,Headphones,Home,Layers3,LineChart,Plus,RotateCcw,Search,Send,Settings2,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,isContentType,lastBackupDate,listReviews,listWords,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,TERM_LIMIT,validateBackup,type ContentType,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 
@@ -20,7 +20,7 @@ function readHash():Page{const h=window.location.hash.replace(/^#\/?/,'') as Pag
 const copy={
   due:'حان وقت المراجعة',noDue:'ما عليك مراجعة اليوم!',
   dueLead:'بضع دقائق اليوم تخلي كلماتك أقرب لذاكرتك.',
-  startReview:'ابدأ مراجعة اليوم',addWord:'أضف كلمة جديدة',
+  startReview:'ابدأ المراجعة',addWord:'أضف بطاقة',
   done:'خلصت مراجعتك، يعطيك العافية!',
   reveal:'شوف الإجابة',
   backup:'حمّل نسخة من كلماتك',restore:'رجّع كلماتك من ملف',
@@ -177,7 +177,6 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     <div className="home-row">
       {backupStale?<button type="button" className="nudge" onClick={()=>onNavigate('settings')}><span className="nudge-icon warm"><Download size={20}/></span><span><b>صار لك فترة ما حمّلت نسخة</b><small>{lastBackup?`آخر نسخة ${localDate(lastBackup)}.`:'ما حمّلت نسخة من قبل.'} نسخة وحدة تحمي كلماتك لو انمسحت بيانات المتصفح.</small></span><ArrowLeft size={18}/></button>
         :<div className="nudge static"><span className="nudge-icon mint"><HardDrive size={20}/></span><span><b>{copy.privacy}</b><small>ما نرفع كلماتك ولا مراجعاتك لأي خادم.</small></span></div>}
-      <button type="button" className="nudge ink" onClick={()=>onNavigate('add')}><span className="nudge-icon"><Plus size={22}/></span><span><b>تعلّمت كلمة جديدة؟</b><small>أضفها الحين قبل ما تطير.</small></span><ArrowLeft size={18}/></button>
     </div>
   </div>;
 }
@@ -377,9 +376,7 @@ function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];re
   const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(kind==='all'||w.contentType===kind)&&(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,w.meaning,w.tag,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter,kind]);
   async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onArchived();notify(`شلنا «${w.term}» من كلماتك.`);}catch(e){notify(getError(e),'error');}}
   return <div className="page">
-    <PageHead title="هذي كلماتك." lead={active.length?`${countWords(active.length)} في مكتبتك. كل وحدة منها خطوة في تعلّمك.`:'كل كلمة تضيفها بتلقاها هنا.'}>
-      <button type="button" className="btn btn-ink" onClick={()=>onNavigate('add')}><Plus size={18}/>أضف كلمة</button>
-    </PageHead>
+    <PageHead title="هذي كلماتك." lead={active.length?`${countWords(active.length)} في مكتبتك. كل وحدة منها خطوة في تعلّمك.`:'كل كلمة تضيفها بتلقاها هنا.'}/>
     {active.length>0&&<div className="library-tools">
       <label className="search"><Search size={19}/><span className="visually-hidden">ابحث في كلماتك</span><input type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder="دوّر على كلمة أو معنى…" enterKeyHint="search"/>{q&&<button type="button" className="icon-btn ghost" aria-label="امسح البحث" onClick={()=>setQ('')}><X size={17}/></button>}</label>
       <div className="chips" role="group" aria-label="عرض الكلمات">
@@ -552,6 +549,59 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
   </div>;
 }
 
+/* ───────────── Quick actions (#9) ───────────── */
+/**
+ * The central + (and the desktop rail button) opens this sheet instead of jumping straight to Add.
+ * Native <dialog> gives focus containment and Esc; the browser/phone Back button closes it too.
+ * Practice is visible but disabled ("قريبًا") until #13 is approved and built: it never navigates.
+ */
+function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClose:()=>void;due:number;nextDue:string|null;returnFocus:()=>HTMLElement|null}){
+  const ref=useRef<HTMLDialogElement>(null);
+  const pushed=useRef(false);
+  useEffect(()=>{
+    const d=ref.current;if(!d)return;
+    if(open&&!d.open){
+      d.showModal();
+      // An extra history entry lets the hardware/browser Back button close the sheet instead of leaving the page.
+      history.pushState({wlSheet:true},'',location.href);pushed.current=true;
+      d.querySelector<HTMLButtonElement>('.qa-item:not([aria-disabled=true])')?.focus();
+    }
+    if(!open&&d.open){d.close();returnFocus()?.focus();}
+  },[open,returnFocus]);
+  useEffect(()=>{
+    const onPop=()=>{if(pushed.current){pushed.current=false;onClose();}};
+    window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);
+  },[onClose]);
+  /** Dismiss: undo our history entry (its popstate closes the sheet). */
+  const dismiss=useCallback(()=>{if(pushed.current&&history.state?.wlSheet)history.back();else{pushed.current=false;onClose();}},[onClose]);
+  /** Choose: replace our history entry with the destination so Back returns to where the user was. */
+  function choose(p:Page){
+    pushed.current=false;onClose();
+    const target=p==='home'?'#/':'#/'+p;
+    if(location.hash===target||(p==='home'&&!location.hash)){history.replaceState(null,'',location.href.split('#')[0]+target);return;}
+    location.replace(target); // fires hashchange → page switch
+  }
+  const items:{id:string;label:string;note:string;icon:typeof Home;tone:string;onSelect?:()=>void;soon?:boolean}[]=[
+    {id:'add',label:'أضف بطاقة',note:'مفردة، عبارة، جملة أو تعبير اصطلاحي',icon:Plus,tone:'ink',onSelect:()=>choose('add')},
+    due>0
+      ?{id:'review',label:'راجع الحين',note:`${due===1?'بطاقة وحدة تنتظرك':due===2?'بطاقتين تنتظرك':due<=10?`${due} بطاقات تنتظرك`:`${due} بطاقة تنتظرك`}`,icon:Layers3,tone:'mint',onSelect:()=>choose('review')}
+      :{id:'review',label:'مراجعة',note:nextDue?`ما فيه شي مستحق الحين. أقرب مراجعة ${relative(nextDue)}.`:'ما فيه بطاقات للمراجعة بعد.',icon:Layers3,tone:'mint',onSelect:()=>choose('review')},
+    {id:'practice',label:'ممارسة',note:'قراءة واستماع ببطاقاتك. نشتغل عليها.',icon:Headphones,tone:'warm',soon:true},
+  ];
+  return <dialog ref={ref} className="sheet quick-sheet" aria-labelledby="qa-title"
+    onCancel={e=>{e.preventDefault();dismiss();}}
+    onClick={e=>{if(e.target===e.currentTarget)dismiss();}}>
+    <div className="qa-head"><h2 id="qa-title">وش تبي تسوي؟</h2><button type="button" className="icon-btn ghost" aria-label="إغلاق" onClick={dismiss}><X size={18}/></button></div>
+    <ul className="qa-list">{items.map(it=><li key={it.id}>
+      <button type="button" className={'qa-item'+(it.soon?' soon':'')} data-action={it.id} aria-disabled={it.soon||undefined} aria-describedby={'qa-'+it.id} onClick={()=>{if(!it.soon)it.onSelect?.();}}>
+        <span className={'nudge-icon '+it.tone}><it.icon size={21}/></span>
+        <span className="qa-text"><b>{it.label}{it.soon&&<i className="soon-badge">قريبًا</i>}</b><small id={'qa-'+it.id}>{it.note}</small></span>
+        {!it.soon&&<ArrowLeft size={18} aria-hidden="true"/>}
+      </button>
+    </li>)}</ul>
+  </dialog>;
+}
+
 /* ───────────── Shell ───────────── */
 export default function App(){
   const [page,setPage]=useState<Page>(readHash),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -579,6 +629,12 @@ export default function App(){
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   const navigate=(to:Page)=>{if(to===page){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
   const due=summary(words,reviews).dueNow;
+  const nextDue=useMemo(()=>{const t=Date.now();return words.filter(w=>!w.archived&&Date.parse(w.dueAt)>t).map(w=>w.dueAt).sort()[0]??null;},[words]);
+  const [quickOpen,setQuickOpen]=useState(false);
+  const quickTrigger=useRef<HTMLElement|null>(null);
+  const openQuick=(e:{currentTarget:HTMLElement})=>{quickTrigger.current=e.currentTarget;setQuickOpen(true);};
+  const closeQuick=useCallback(()=>setQuickOpen(false),[]);
+  const quickReturn=useCallback(()=>quickTrigger.current,[]);
 
   let content:ReactNode;
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label="نجهّز كلماتك"><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
@@ -595,7 +651,7 @@ export default function App(){
     <aside className="rail">
       <a href="#/" className="rail-brand" aria-label="WordLoop، الرئيسية"><Logo/></a>
       <p className="rail-tagline">كلمة اليوم، تبقى معك.</p>
-      <button type="button" className="btn btn-ink rail-add" onClick={()=>navigate('add')}><Plus size={18}/>{copy.addWord}</button>
+      <button type="button" className="btn btn-ink rail-add" aria-haspopup="dialog" aria-expanded={quickOpen} onClick={openQuick}><Plus size={18}/>أضف أو راجع</button>
       <nav aria-label="التنقل الرئيسي"><ul>{navItems.map(item=><li key={item.id}><button type="button" onClick={()=>navigate(item.id)} className={'rail-link'+(page===item.id?' on':'')} aria-current={page===item.id?'page':undefined}><item.icon size={20} strokeWidth={1.8}/><span>{item.label}</span>{item.id==='review'&&due>0&&<b className="count" aria-label={`${due} تنتظر`}>{due}</b>}</button></li>)}</ul></nav>
       <div className="rail-foot"><span className={'net'+(online?'':' off')}>{online?<Wifi size={14}/>:<WifiOff size={14}/>}{online?'متصل':'بدون إنترنت'}</span><span><HardDrive size={14}/>{copy.privacy}</span></div>
     </aside>
@@ -616,11 +672,12 @@ export default function App(){
     </div>
     <nav className="tabbar" aria-label="التنقل">
       {(['home','review','add','words','stats'] as Page[]).map(id=>{
-        if(id==='add')return <button key={id} type="button" className="tab-add" onClick={()=>navigate('add')} aria-label={copy.addWord} aria-current={page==='add'?'page':undefined}><Plus size={26}/></button>;
+        if(id==='add')return <button key={id} type="button" className="tab-add" aria-haspopup="dialog" aria-expanded={quickOpen} onClick={openQuick} aria-label="إجراءات سريعة: أضف بطاقة، راجع، مارس" aria-current={page==='add'?'page':undefined}><Plus size={26}/></button>;
         const item=navItems.find(n=>n.id===id)!;
         return <button key={id} type="button" className={'tab'+(page===id?' on':'')} aria-current={page===id?'page':undefined} onClick={()=>navigate(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{item.label}</span></button>;
       })}
     </nav>
+    <QuickActions open={quickOpen} onClose={closeQuick} due={due} nextDue={nextDue} returnFocus={quickReturn}/>
     <div className="toast-zone" aria-live="polite">{toast&&<div key={toast.id} className={'toast '+toast.tone} role={toast.tone==='error'?'alert':'status'}><span>{toast.text}</span><button type="button" className="icon-btn ghost" aria-label="إغلاق التنبيه" onClick={()=>setToast(null)}><X size={16}/></button></div>}</div>
   </div>;
 }
