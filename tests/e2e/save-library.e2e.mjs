@@ -73,7 +73,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
     await t.test('SAVE-06: new card is findable by search and the due filter; clearing filters shows all',async()=>{
       const {context,page}=await freshPage(browser,base());
       for(const [term,m] of [['overlook','يغفل عن'],['reliable','موثوق']]){await addCard(page,base(),term,m);await page.getByRole('status').filter({hasText:`«${term}»`}).waitFor();}
-      await page.goto(base()+'/#/words');await page.fill('input[type=search]','relia');
+      await page.goto(base()+'/#/words');await page.locator('.word-list .word').nth(1).waitFor(); // both cards listed before typing
+      await page.fill('input[type=search]','relia');
       await page.locator('.word-list .word').nth(1).waitFor({state:'detached'});
       assert.deepEqual(await libraryTerms(page,base(),{navigate:false}),['reliable']);
       await page.fill('input[type=search]','');

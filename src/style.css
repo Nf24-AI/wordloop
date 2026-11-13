@@ -65,7 +65,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .btn-danger{background:var(--danger);color:#fff}
 @media(hover:hover){.btn-ink:hover:not(:disabled){background:#283229}.btn-quiet:hover:not(:disabled){border-color:var(--ink-2)}}
 .btn-ink svg{transition:transform .2s var(--ease)}
-@media(hover:hover){.btn-ink:hover:not(:disabled) svg.lucide-arrow-left{transform:translateX(-3px)}}
+@media(hover:hover){.btn-ink:hover:not(:disabled) svg.lucide-arrow-left{transform:translateX(-3px)}.btn-ink:hover:not(:disabled) svg.lucide-arrow-right{transform:translateX(3px)}}
 .icon-btn{display:inline-grid;place-items:center;inline-size:44px;block-size:44px;border-radius:50%;border:1px solid var(--line-2);background:#ffffffb3;color:var(--ink-2);flex:none;transition:background-color .18s,border-color .18s}
 .icon-btn.ghost{border-color:transparent;background:transparent;inline-size:36px;block-size:36px}
 .icon-btn.on{background:var(--ink-btn);color:#fff;border-color:var(--ink-btn)}
@@ -133,7 +133,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .hero-count b{font:400 44px/1 var(--en);color:var(--ink)}
 .paper-stack{position:relative;z-index:1;block-size:260px;justify-self:center;inline-size:min(100%,280px)}
 .paper{position:absolute;inset-inline-start:50%;inset-block-start:50%;inline-size:190px;block-size:236px;margin:-118px -95px 0 0;border-radius:18px;background:#fffdf7;box-shadow:var(--shadow-paper);border:1px solid #ffffffd9;padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;direction:ltr;text-align:left;animation:paper-in .7s var(--ease) both}
-.paper span{font-size:13px;color:var(--muted);font-family:var(--ar);direction:rtl;text-align:right}
+.paper span{font-size:13px;color:var(--muted);font-family:var(--ar);text-align:start}
 .paper b{font:400 clamp(26px,3vw,34px)/1.1 var(--en);overflow-wrap:anywhere;color:var(--ink)}
 .paper.p1{transform:rotate(-5deg);z-index:3}
 .paper.p2{transform:rotate(7deg) translate(-38px,10px);z-index:2;animation-delay:.08s;background:#f8efdf}
@@ -246,7 +246,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .word.open{border-color:var(--line-2);box-shadow:0 14px 30px -22px #2a2a1a55}
 .word-main{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;inline-size:100%;padding:16px 20px;border:0;background:none;text-align:start;min-block-size:72px}
 .word-text{display:grid;gap:2px;min-inline-size:0}
-.word-text b{font:400 24px/1.2 var(--en);text-align:right;overflow-wrap:anywhere}
+.word-text b{font:400 24px/1.2 var(--en);text-align:start;overflow-wrap:anywhere}
 .word-text>span{font-size:15px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .due-pill{font-size:13px;color:var(--muted);background:var(--cream);padding:4px 12px;border-radius:var(--r-pill);white-space:nowrap}
 .due-pill.is-due{background:var(--peach);color:#7b3a20;font-weight:600}
@@ -445,3 +445,12 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .nudge-icon.ink{background:var(--ink-btn);color:#fff}
 .soon-badge{font:600 11.5px/1 var(--ar);font-style:normal;color:#8a4320;background:var(--peach);padding:4px 8px;border-radius:var(--r-pill)}
 .qa-head .icon-btn{inline-size:44px;block-size:44px}
+
+/* #6 language switch (segmented radio group) */
+.lang-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-block-start:14px;border-radius:var(--r-pill);background:#f1ede4;border:1px solid var(--line-2)}
+.lang-switch button{appearance:none;border:0;background:transparent;cursor:pointer;min-block-size:44px;border-radius:var(--r-pill);font:600 15px/1 var(--ar);color:var(--ink-2);transition:background-color .15s,color .15s,box-shadow .15s}
+.lang-switch button[aria-checked=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px #0000001f,0 0 0 1px var(--line-2)}
+.lang-switch button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.panel-head h2 svg{vertical-align:-3px}
+/* Learner text uses dir=auto for correct bidi; its alignment follows the container (left/centre in English, right in Arabic). Zero specificity: component rules still win. */
+:where(.app [dir=auto]:not(input,textarea)){text-align:match-parent}
