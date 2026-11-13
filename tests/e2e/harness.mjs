@@ -36,6 +36,10 @@ export async function addCard(page,base,term,meaning,{navigate=true}={}){
 
 export async function libraryTerms(page,base,{navigate=true}={}){
   if(navigate){await page.goto(base+'/#/words');await page.waitForSelector('main h1');}
+  // Wait for the Library to actually render (list or empty state) instead of a fixed delay:
+  // slow CI runners (WebKit on Linux) can take longer than any fixed timeout to paint the route.
+  await page.waitForFunction(()=>location.hash==='#/words');
+  await page.waitForSelector('main .word-list, main .empty');
   await page.waitForTimeout(150);
   return page.locator('.word-list .word-text b').allTextContents();
 }
