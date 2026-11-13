@@ -125,5 +125,17 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=320),true);
       await context.close();
     });
+
+    await t.test('the page follows a hash that changed during boot (before the hashchange listener existed)',async()=>{
+      const {context,page}=await freshPage(browser,base());
+      // Deterministically reproduce the CI WebKit race (navigating straight after a reload): the hash changes after the
+      // first render read it but before the app's hashchange listener exists, so that event is never delivered.
+      await page.addInitScript(()=>{const add=window.addEventListener;let done=false;window.addEventListener=function(type,...rest){if(type==='hashchange'&&!done){done=true;history.replaceState(null,'',location.pathname+'#/words');}return add.call(this,type,...rest);};});
+      await page.goto(base()+'/#/add');await page.reload(); // a hash-only goto keeps the document; reload runs the init script
+      await page.waitForFunction(()=>location.hash==='#/words');
+      await page.locator('main .empty, main .word-list').first().waitFor({timeout:5000});
+      assert.equal(await page.locator('#term').count(),0,'Add form must not stay on screen when the URL says Library');
+      await context.close();
+    });
   });
 }
