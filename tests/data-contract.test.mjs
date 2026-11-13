@@ -16,9 +16,9 @@ function backup(words=[word()],reviews=[]){
   return {app:'wordloop',version:1,exportedAt:now,words,reviews};
 }
 
-test('accepts a well-formed local backup',()=>{
+test('accepts a well-formed v1 backup and returns it as v2 with legacy cards typed as vocabulary (#5)',()=>{
   const payload=backup();
-  assert.deepEqual(validateBackup(payload),payload);
+  assert.deepEqual(validateBackup(payload),{...payload,version:2,words:payload.words.map(w=>({...w,contentType:'vocabulary',note:''}))});
 });
 
 test('rejects corrupted FSRS scheduling dates before replacing stored data',()=>{

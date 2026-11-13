@@ -1,6 +1,6 @@
-import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type ReactNode} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {ArrowDownToLine,ArrowLeft,ArrowUpFromLine,Bell,BellOff,BookOpen,Check,ChevronDown,CloudOff,Download,HardDrive,Home,Layers3,LineChart,Plus,RotateCcw,Search,Send,Settings2,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,lastBackupDate,listReviews,listWords,normalizeTerm,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,validateBackup,type Grade,type Review,type Word} from './data';
+import {addWord,archiveWord,buildBackup,isContentType,lastBackupDate,listReviews,listWords,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,TERM_LIMIT,validateBackup,type ContentType,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 
 /* ───────────── Navigation ───────────── */
@@ -13,7 +13,7 @@ const navItems:{id:Page;label:string;icon:typeof Home}[]=[
   {id:'stats',label:'تقدّمك',icon:LineChart},
   {id:'settings',label:'الإعدادات',icon:Settings2},
 ];
-const pageTitle:Record<Page,string>={home:'الرئيسية',review:'المراجعة',words:'كلماتي',add:'كلمة جديدة',stats:'تقدّمك',settings:'الإعدادات'};
+const pageTitle:Record<Page,string>={home:'الرئيسية',review:'المراجعة',words:'كلماتي',add:'بطاقة جديدة',stats:'تقدّمك',settings:'الإعدادات'};
 function readHash():Page{const h=window.location.hash.replace(/^#\/?/,'') as Page;return PAGES.includes(h)?h:'home';}
 
 /* ───────────── Copy (verbal identity) ───────────── */
@@ -36,7 +36,8 @@ const grades:{id:Grade;label:string;note:string;key:string}[]=[
 /* Friendly versions of messages thrown by data.ts / push.ts / the push Worker. */
 const friendly:Record<string,string>={
   'أحد النصوص أطول من اللازم':'فيه نص أطول من اللازم، اختصره شوي وجرّب.',
-  'هذه الكلمة موجودة عندك بالفعل':'هذي الكلمة موجودة عندك من قبل، تلقاها في «كلماتي».',
+  'هذه الكلمة موجودة عندك بالفعل':'هذي موجودة عندك من قبل بنفس النوع، تلقاها في «كلماتي».',
+  'نوع البطاقة غير معروف':'اختر نوع البطاقة أول.',
   'لم نجد الكلمة':'ما لقينا هذي الكلمة. يمكن تغيّرت من تبويب ثاني، حدّث الصفحة.',
   'لم يحن وقت مراجعة هذه الكلمة':'هذي الكلمة راجعتها قبل شوي، بترجع لك في وقتها.',
   'تغيرت هذه الكلمة في تبويب آخر، حدّث الصفحة':'هذي الكلمة تغيّرت في تبويب ثاني. حدّث الصفحة وكمّل.',
@@ -180,54 +181,108 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
   </div>;
 }
 
-/* ───────────── Add word ───────────── */
+/* ───────────── Card kinds (#5 / #12) ───────────── */
+const kinds:{id:ContentType;label:string;en:string;hint:string}[]=[
+  {id:'vocabulary',label:'مفردة',en:'Vocabulary',hint:'كلمة وحدة'},
+  {id:'phrase',label:'عبارة',en:'Phrase',hint:'كلمات تمشي مع بعض'},
+  {id:'sentence',label:'جملة',en:'Sentence',hint:'جملة كاملة'},
+  {id:'idiom',label:'تعبير اصطلاحي',en:'Idiom',hint:'معناه مو حرفي'},
+];
+const kindLabel=Object.fromEntries(kinds.map(k=>[k.id,k.label])) as Record<ContentType,string>;
+type Field={label:string;ph:string;hint?:string};
+type KindForm={title:string;lead:string;term:Field;multiline:boolean;meaning:Field;example?:Field;translation?:Field;note?:Field;noteFirst?:boolean;noun:string};
+const kindForm:Record<ContentType,KindForm>={
+  vocabulary:{title:'وش الكلمة الجديدة؟',lead:'اكتب معناها مثل ما فهمته، والباقي علينا.',noun:'الكلمة',multiline:false,
+    term:{label:'الكلمة بالإنجليزي',ph:'overlook',hint:'كلمة وحدة.'},meaning:{label:'وش معناها؟',ph:'يغفل عن، ما ينتبه له'},
+    example:{label:'جملة تذكّرك فيها',ph:'I overlooked an important email.'},translation:{label:'معنى الجملة',ph:'فاتتني رسالة مهمة.'}},
+  phrase:{title:'وش العبارة الجديدة؟',lead:'كلمتين أو أكثر تمشي مع بعض، وتحفظها كوحدة.',noun:'العبارة',multiline:false,
+    term:{label:'العبارة بالإنجليزي',ph:'in charge of',hint:'العبارة مثل ما تنقال، بدون باقي الجملة.'},meaning:{label:'وش تعني؟',ph:'مسؤول عن'},
+    example:{label:'جملة فيها العبارة',ph:"She's in charge of the new project."},translation:{label:'معنى الجملة',ph:'هي المسؤولة عن المشروع الجديد.'}},
+  sentence:{title:'وش الجملة اللي تبي تحفظها؟',lead:'جملة كاملة تبي تقولها بثقة لما تحتاجها.',noun:'الجملة',multiline:true,
+    term:{label:'الجملة بالإنجليزي',ph:'I forgot my keys at home.',hint:'جملة كاملة، لين 300 حرف.'},meaning:{label:'وش معناها بالعربي؟',ph:'نسيت مفاتيحي في البيت.'},
+    note:{label:'متى تقولها؟',ph:'لما تتأخر لأنك رجعت تدوّر على شي نسيته.'}},
+  idiom:{title:'وش التعبير الاصطلاحي؟',lead:'معنى التعبير الاصطلاحي مو مجموع كلماته، فاكتب المقصود منه.',noun:'التعبير',multiline:false,noteFirst:true,
+    term:{label:'التعبير بالإنجليزي',ph:'break the ice',hint:'التعبير مثل ما ينقال.'},
+    meaning:{label:'معناه الاصطلاحي',ph:'يكسر الحاجز ويبدأ الكلام بعفوية',hint:'اكتب المقصود منه، مو الترجمة الحرفية.'},
+    note:{label:'وش يقصد ومتى ينقال؟',ph:'ما له علاقة بالثلج. ينقال لما تبدأ حديث مع ناس ما تعرفهم عشان يخف التوتر.',hint:'شرحه بكلامك يساعدك تفهمه، مو تحفظه بس.'},
+    example:{label:'مثال',ph:'He told a joke to break the ice.'},translation:{label:'معنى المثال',ph:'قال نكتة عشان يكسر الحاجز.'}},
+};
+const LAST_KIND='wordloop-last-kind';
+function initialKind():ContentType{try{const v=localStorage.getItem(LAST_KIND);return isContentType(v)?v:'vocabulary';}catch{return 'vocabulary';}}
+
+function KindPicker({value,onChange}:{value:ContentType;onChange:(k:ContentType)=>void}){
+  const refs=useRef<(HTMLButtonElement|null)[]>([]);
+  // Radio-group keyboard behaviour: arrows move and select, Home/End jump.
+  function onKey(e:ReactKeyboardEvent,i:number){
+    const rtl=getComputedStyle(e.currentTarget).direction==='rtl';
+    const step=e.key==='ArrowDown'||e.key===(rtl?'ArrowLeft':'ArrowRight')?1:e.key==='ArrowUp'||e.key===(rtl?'ArrowRight':'ArrowLeft')?-1:0;
+    const to=e.key==='Home'?0:e.key==='End'?kinds.length-1:step?(i+step+kinds.length)%kinds.length:-1;
+    if(to<0)return;e.preventDefault();onChange(kinds[to].id);refs.current[to]?.focus();
+  }
+  return <div className="kinds" role="radiogroup" aria-label="نوع البطاقة">
+    {kinds.map((k,i)=><button key={k.id} ref={el=>{refs.current[i]=el;}} type="button" role="radio" data-kind={k.id} aria-checked={value===k.id} tabIndex={value===k.id?0:-1} className="kind" onClick={()=>onChange(k.id)} onKeyDown={e=>onKey(e,i)}>
+      <b>{k.label}</b><span dir="ltr" lang="en">{k.en}</span><small>{k.hint}</small>
+    </button>)}
+  </div>;
+}
+
+/* ───────────── Add card ───────────── */
 function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Promise<Word[]|null>;notify:Notify;onNavigate:(p:Page)=>void}){
-  const [term,setTerm]=useState(''),[meaning,setMeaning]=useState(''),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[tag,setTag]=useState('');
+  const [kind,setKindState]=useState<ContentType>(initialKind);
+  const [term,setTerm]=useState(''),[meaning,setMeaning]=useState(''),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState(''),[tag,setTag]=useState('');
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
-  const termRef=useRef<HTMLInputElement>(null);
+  const termRef=useRef<HTMLInputElement&HTMLTextAreaElement>(null);
+  const f=kindForm[kind],limit=TERM_LIMIT[kind];
   const tags=useMemo(()=>[...new Set(words.filter(w=>!w.archived).map(w=>w.tag).filter(Boolean))].slice(0,12),[words]);
-  const duplicate=term.trim()&&words.some(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(term));
+  const duplicate=term.trim()&&words.some(w=>!w.archived&&w.contentType===kind&&normalizeTerm(w.term)===normalizeTerm(term));
+  const tooLong=term.trim().length>limit;
+  function setKind(k:ContentType){setKindState(k);setError('');setSaved(null);try{localStorage.setItem(LAST_KIND,k);}catch{/* private mode */}}
   async function submit(e:FormEvent){
     e.preventDefault();setTried(true);setError('');
     if(!term.trim()||!meaning.trim()){(!term.trim()?termRef.current:document.getElementById('meaning'))?.focus();return;}
+    if(tooLong){termRef.current?.focus();return;}
     setLoading(true);setUnsynced(null);
     let word:Word;
-    // A failed save keeps every field so nothing typed is lost.
-    try{word=await addWord({term,meaning,example,translation,tag});}
+    // Only the fields this kind shows are saved; text typed under another kind stays in the form, unsaved.
+    try{word=await addWord({contentType:kind,term,meaning,example:f.example?example:'',translation:f.translation?translation:'',note:f.note?note:'',tag});}
     catch(err){setError(getError(err));setLoading(false);return;}
-    // The card is committed on the device; the form can be cleared.
-    setTerm('');setMeaning('');setExample('');setTranslation('');setTag('');setTried(false);
+    setTerm('');setMeaning('');setExample('');setTranslation('');setNote('');setTag('');setTried(false);
     await confirmVisible(word);setLoading(false);termRef.current?.focus();
   }
   /** #4: success is announced only once the saved card is in the refreshed list. */
   async function confirmVisible(word:Word){
     const list=await onSaved();
-    if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(`حفظنا «${word.term}». تلقاها في «كلماتي» وبتطلع لك في المراجعة.`);}
+    if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(`حفظنا «${word.term}» (${kindLabel[word.contentType]}). تلقاها في «كلماتي» وبتطلع لك في المراجعة.`);}
     else{setSaved(null);setUnsynced(word);}
   }
   const missing=(v:string)=>tried&&!v.trim();
+  const termHint=missing(term)?`اكتب ${f.noun} أول.`:tooLong?`${f.noun} أطول من ${limit} حرف، اختصرها شوي.`:duplicate?`${f.noun} هذي موجودة عندك من قبل كـ«${kindLabel[kind]}».`:f.term.hint;
+  const termProps={ref:termRef,id:'term',dir:'ltr' as const,lang:'en',autoComplete:'off',autoCapitalize:'none',spellCheck:false,placeholder:f.term.ph,maxLength:limit,value:term,
+    onChange:(e:{target:{value:string}})=>{setTerm(e.target.value);setSaved(null);setError('');},'aria-invalid':missing(term)||tooLong,'aria-describedby':'term-hint'};
+  const optional=(id:'example'|'translation'|'note',field:Field|undefined,value:string,set:(v:string)=>void,ltr:boolean,max:number)=>field&&<div className="field" key={id}>
+    <label htmlFor={id}>{field.label} <small>اختياري</small></label>
+    {ltr||id==='note'?<textarea id={id} dir={ltr?'ltr':undefined} lang={ltr?'en':undefined} rows={2} maxLength={max} placeholder={field.ph} value={value} onChange={e=>set(e.target.value)} aria-describedby={field.hint?id+'-hint':undefined}/>
+      :<input id={id} maxLength={max} placeholder={field.ph} value={value} onChange={e=>set(e.target.value)}/>}
+    {field.hint&&<p id={id+'-hint'} className="hint">{field.hint}</p>}
+  </div>;
+  const noteField=optional('note',f.note,note,setNote,false,NOTE_LIMIT);
+  const exampleFields=<>{optional('example',f.example,example,setExample,true,500)}{optional('translation',f.translation,translation,setTranslation,false,400)}</>;
   return <div className="page add-page">
-    <PageHead title="وش الكلمة الجديدة؟" lead="اكتب معناها مثل ما فهمته، والباقي علينا."/>
+    <PageHead title={f.title} lead={f.lead}/>
     <div className="add-layout">
       <form className="word-form" onSubmit={submit} noValidate>
-        <div className={'field'+(missing(term)?' invalid':'')}>
-          <label htmlFor="term">الكلمة بالإنجليزي</label>
-          <div className="input-wrap"><input ref={termRef} id="term" dir="ltr" lang="en" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="overlook" maxLength={100} value={term} onChange={e=>{setTerm(e.target.value);setSaved(null);setError('');}} aria-invalid={missing(term)} aria-describedby="term-hint"/><SpeakButton text={term} label="اسمع نطق الكلمة" className="icon-btn in-input"/></div>
-          <p id="term-hint" className="hint">{missing(term)?'اكتب الكلمة أول.':duplicate?'هذي الكلمة موجودة عندك من قبل.':'كلمة أو عبارة قصيرة.'}</p>
+        <KindPicker value={kind} onChange={setKind}/>
+        <div className={'field'+(missing(term)||tooLong?' invalid':'')}>
+          <label htmlFor="term">{f.term.label}</label>
+          <div className={'input-wrap'+(f.multiline?' multiline':'')}>{f.multiline?<textarea {...termProps} rows={3}/>:<input {...termProps}/>}<SpeakButton text={term} label={`اسمع نطق ${f.noun}`} className="icon-btn in-input"/></div>
+          <p id="term-hint" className="hint">{termHint}</p>
         </div>
         <div className={'field'+(missing(meaning)?' invalid':'')}>
-          <label htmlFor="meaning">وش معناها؟</label>
-          <input id="meaning" maxLength={240} placeholder="يغفل عن، ما ينتبه له" value={meaning} onChange={e=>setMeaning(e.target.value)} aria-invalid={missing(meaning)} aria-describedby={missing(meaning)?'meaning-hint':undefined}/>
-          {missing(meaning)&&<p id="meaning-hint" className="hint">اكتب المعنى عشان نقدر نحفظ الكلمة.</p>}
+          <label htmlFor="meaning">{f.meaning.label}</label>
+          <input id="meaning" maxLength={240} placeholder={f.meaning.ph} value={meaning} onChange={e=>setMeaning(e.target.value)} aria-invalid={missing(meaning)} aria-describedby="meaning-hint"/>
+          <p id="meaning-hint" className="hint">{missing(meaning)?`اكتب المعنى عشان نقدر نحفظ ${f.noun}.`:f.meaning.hint||''}</p>
         </div>
-        <div className="field">
-          <label htmlFor="example">جملة تذكّرك فيها <small>اختياري</small></label>
-          <textarea id="example" dir="ltr" lang="en" rows={2} maxLength={500} placeholder="I overlooked an important email." value={example} onChange={e=>setExample(e.target.value)}/>
-        </div>
-        <div className="field">
-          <label htmlFor="translation">معنى الجملة <small>اختياري</small></label>
-          <input id="translation" maxLength={400} placeholder="فاتتني رسالة مهمة." value={translation} onChange={e=>setTranslation(e.target.value)}/>
-        </div>
+        {f.noteFirst?<>{noteField}{exampleFields}</>:<>{exampleFields}{noteField}</>}
         <div className="field">
           <label htmlFor="tag">التصنيف <small>اختياري</small></label>
           <input id="tag" list="tag-list" maxLength={40} placeholder="عمل، قراءة، سفر…" value={tag} onChange={e=>setTag(e.target.value)}/>
@@ -237,11 +292,11 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
         {error&&<p className="inline-error" role="alert">{error}</p>}
         {unsynced&&<div className="inline-error soft" role="alert"><p>انحفظت «<span dir="ltr">{unsynced.term}</span>» على جهازك، بس ما قدرنا نحدّث قائمة كلماتك الحين.</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>حدّث القائمة</button></div>}
         <div className="form-foot">
-          <button disabled={loading} type="submit" className="btn btn-ink btn-lg">{loading?'نحفظ الكلمة…':'احفظ الكلمة'}{!loading&&<Check size={20}/>}</button>
+          <button disabled={loading} type="submit" className="btn btn-ink btn-lg">{loading?`نحفظ ${f.noun}…`:`احفظ ${f.noun}`}{!loading&&<Check size={20}/>}</button>
           {saved&&<button type="button" className="btn btn-quiet" onClick={()=>onNavigate('words')}>شوف كلماتي</button>}
         </div>
       </form>
-      <aside className="add-aside" aria-hidden="true"><Wash tone="warm"/><div className="aside-card"><span dir="ltr">{term.trim()||'overlook'}</span><p>{meaning.trim()||'يغفل عن، ما ينتبه له'}</p>{(example.trim()||!term.trim())&&<em dir="ltr">{example.trim()||'I overlooked an important email.'}</em>}</div><p className="aside-note">مو لازم تحفظها من أول مرة. كل ما رجعت لها في وقتها، تثبت أكثر.</p></aside>
+      <aside className="add-aside" aria-hidden="true"><Wash tone="warm"/><div className="aside-card"><i className="kind-badge">{kindLabel[kind]}</i><span dir="ltr" className={kind==='sentence'?'is-long':undefined}>{term.trim()||f.term.ph}</span><p>{meaning.trim()||f.meaning.ph}</p>{f.note&&(note.trim()||!term.trim())&&<small className="aside-note-text">{note.trim()||f.note.ph}</small>}{f.example&&(example.trim()||!term.trim())&&<em dir="ltr">{example.trim()||f.example.ph}</em>}</div><p className="aside-note">مو لازم تحفظها من أول مرة. كل ما رجعت لها في وقتها، تثبت أكثر.</p></aside>
     </div>
   </div>;
 }
@@ -295,10 +350,10 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
     <div className="last-line" aria-live="polite">{last?<>«<span dir="ltr">{last.term}</span>» بترجع لك {relative(last.next)}.</>:'فكّر في معناها، بعدين شوف الإجابة.'}</div>
     <article key={active.id} className={'card'+(revealed?' is-open':'')} aria-live="polite">
       <Wash tone="soft"/>
-      <div className="card-top"><span className="tag">{active.tag}</span><SpeakButton text={active.term} label={`اسمع نطق ${active.term}`}/></div>
-      <h2 dir="ltr" lang="en" className="term">{active.term}</h2>
+      <div className="card-top"><span className="card-labels"><span className="kind-badge">{kindLabel[active.contentType]}</span><span className="tag">{active.tag}</span></span><SpeakButton text={active.term} label={`اسمع نطق ${active.term}`}/></div>
+      <h2 dir="ltr" lang="en" className={'term'+(active.term.length>40?' term-long':'')}>{active.term}</h2>
       {active.example&&<p className="example" dir="ltr" lang="en">{active.example}</p>}
-      {revealed?<div className="answer"><strong>{active.meaning}</strong>{active.translation&&<p>{active.translation}</p>}</div>
+      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">المعنى الاصطلاحي</small>}<strong>{active.meaning}</strong>{active.note&&<p className="note">{active.note}</p>}{active.translation&&<p>{active.translation}</p>}</div>
         :<button ref={revealRef} type="button" className="btn btn-ink btn-lg reveal" onClick={()=>setRevealed(true)}>{copy.reveal}</button>}
     </article>
     {msg&&<p className="inline-error" role="alert">{msg}</p>}
@@ -312,12 +367,13 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
 
 /* ───────────── Library ───────────── */
 function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];reviews:Review[];onArchived:()=>Promise<unknown>;onNavigate:(p:Page)=>void;notify:Notify}){
-  const [q,setQ]=useState(''),[filter,setFilter]=useState<string>('all'),[open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null);
+  const [q,setQ]=useState(''),[filter,setFilter]=useState<string>('all'),[kind,setKind]=useState<ContentType|'all'>('all'),[open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null);
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
   const tags=useMemo(()=>{const m=new Map<string,number>();for(const w of active)m.set(w.tag,(m.get(w.tag)||0)+1);return [...m].sort((a,b)=>b[1]-a[1]).slice(0,6).map(x=>x[0]);},[active]);
   const reviewCount=useMemo(()=>{const m=new Map<string,number>();for(const r of reviews)m.set(r.wordId,(m.get(r.wordId)||0)+1);return m;},[reviews]);
+  const kindCounts=useMemo(()=>{const m=new Map<ContentType,number>();for(const w of active)m.set(w.contentType,(m.get(w.contentType)||0)+1);return m;},[active]);
   const now=Date.now(),dueCount=active.filter(w=>isDue(w,now)).length;
-  const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,w.meaning,w.tag,w.example,w.translation].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter]);
+  const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(kind==='all'||w.contentType===kind)&&(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,w.meaning,w.tag,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter,kind]);
   async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onArchived();notify(`شلنا «${w.term}» من كلماتك.`);}catch(e){notify(getError(e),'error');}}
   return <div className="page">
     <PageHead title="هذي كلماتك." lead={active.length?`${countWords(active.length)} في مكتبتك. كل وحدة منها خطوة في تعلّمك.`:'كل كلمة تضيفها بتلقاها هنا.'}>
@@ -330,19 +386,24 @@ function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];re
         <button type="button" className={'chip'+(filter==='due'?' on':'')} aria-pressed={filter==='due'} onClick={()=>setFilter('due')}>تنتظر مراجعة {dueCount>0&&<span className="chip-n">{dueCount}</span>}</button>
         {tags.length>1&&tags.map(t=><button type="button" key={t} className={'chip'+(filter===t?' on':'')} aria-pressed={filter===t} onClick={()=>setFilter(filter===t?'all':t)}>{t}</button>)}
       </div>
+      {kindCounts.size>1&&<div className="chips kind-chips" role="group" aria-label="نوع البطاقة">
+        <button type="button" className={'chip'+(kind==='all'?' on':'')} aria-pressed={kind==='all'} onClick={()=>setKind('all')}>كل الأنواع</button>
+        {kinds.filter(k=>kindCounts.has(k.id)).map(k=><button type="button" key={k.id} className={'chip'+(kind===k.id?' on':'')} aria-pressed={kind===k.id} onClick={()=>setKind(kind===k.id?'all':k.id)}>{k.label} <span className="chip-n">{kindCounts.get(k.id)}</span></button>)}
+      </div>}
     </div>}
     {!active.length?<div className="empty"><Wash tone="soft"/><BookOpen size={30} strokeWidth={1.6}/><h2>مكتبتك تنتظر أول كلمة</h2><p>أول كلمة تضيفها بتطلع هنا، ومعها موعد مراجعتها.</p><button type="button" className="btn btn-ink" onClick={()=>onNavigate('add')}>{copy.addWord}<ArrowLeft size={18}/></button></div>
-    :!list.length?<div className="empty small"><Search size={26} strokeWidth={1.6}/><h2>ما لقينا شي يطابق بحثك</h2><p>جرّب كلمة ثانية، أو امسح البحث وشوف كل كلماتك.</p><button type="button" className="btn btn-quiet" onClick={()=>{setQ('');setFilter('all');}}>اعرض كل الكلمات</button></div>
+    :!list.length?<div className="empty small"><Search size={26} strokeWidth={1.6}/><h2>ما لقينا شي يطابق بحثك</h2><p>جرّب كلمة ثانية، أو امسح البحث وشوف كل كلماتك.</p><button type="button" className="btn btn-quiet" onClick={()=>{setQ('');setFilter('all');setKind('all');}}>اعرض كل الكلمات</button></div>
     :<ul className="word-list" aria-label="الكلمات">{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,n=reviewCount.get(w.id)||0;return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><b dir="ltr" lang="en">{w.term}</b><span>{w.meaning}</span></span>
+        <span className="word-text"><i className="kind-badge">{kindLabel[w.contentType]}</i><b dir="ltr" lang="en">{w.term}</b><span>{w.meaning}</span></span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?'وقت مراجعتها':relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
       {isOpen&&<div className="word-detail" id={'wd-'+w.id}>
         {w.example&&<p className="example" dir="ltr" lang="en">{w.example}</p>}
         {w.translation&&<p className="translation">{w.translation}</p>}
-        <dl className="word-meta"><div><dt>التصنيف</dt><dd>{w.tag}</dd></div><div><dt>المرحلة</dt><dd>{stageLabel[stageOf(w)]}</dd></div><div><dt>راجعتها</dt><dd>{n?`${n} ${n===1?'مرة':n===2?'مرتين':'مرات'}`:'لسا'}</dd></div><div><dt>المراجعة الجاية</dt><dd>{due?'الحين':localDate(w.dueAt)}</dd></div></dl>
+        {w.note&&<p className="note"><b>{kindForm[w.contentType].note?.label||'ملاحظة'}</b> {w.note}</p>}
+        <dl className="word-meta"><div><dt>النوع</dt><dd>{kindLabel[w.contentType]}</dd></div><div><dt>التصنيف</dt><dd>{w.tag}</dd></div><div><dt>المرحلة</dt><dd>{stageLabel[stageOf(w)]}</dd></div><div><dt>راجعتها</dt><dd>{n?`${n} ${n===1?'مرة':n===2?'مرتين':'مرات'}`:'لسا'}</dd></div><div><dt>المراجعة الجاية</dt><dd>{due?'الحين':localDate(w.dueAt)}</dd></div></dl>
         <div className="word-actions"><SpeakButton text={w.term} label={`اسمع نطق ${w.term}`} className="btn btn-quiet sm"/><button type="button" className="btn btn-quiet sm danger" onClick={()=>setPending(w)}><Trash2 size={16}/>شيلها من كلماتي</button></div>
       </div>}
     </li>;})}</ul>}
