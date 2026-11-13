@@ -607,6 +607,9 @@ export default function App(){
     const stopListening=onOtherTabChange(()=>{void fetchLocal();});
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
     window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
+    // A hash navigation during initial hydration can precede registration of hashchange.
+    // Reconcile the current URL once after listeners mount, preventing URL/UI mismatch in WebKit.
+    hash();
     return()=>{stopListening();window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',visible);window.removeEventListener('pageshow',focus);window.removeEventListener('hashchange',hash);window.removeEventListener('online',on);window.removeEventListener('offline',off);window.removeEventListener('beforeinstallprompt',bip);};
   },[fetchLocal]);
   // #6: the document itself follows the UI language (screen readers, hyphenation, scrollbars, form controls).
