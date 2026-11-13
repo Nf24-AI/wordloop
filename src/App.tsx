@@ -91,7 +91,9 @@ function relative(iso:string,now=Date.now()){
   return 'بعد '+unit(Math.round(days/365),'سنة','سنتين','سنوات','سنة');
 }
 function countWords(n:number){if(n===0)return 'ولا كلمة';if(n===1)return 'كلمة وحدة';if(n===2)return 'كلمتين';if(n<=10)return `${n} كلمات`;return `${n} كلمة`;}
-function wordUnit(n:number){return n===1?'كلمة':n===2?'كلمتين':n>=3&&n<=10?'كلمات':'كلمة';}
+/** #10: unit for counts of cards (any kind) and of review attempts. */
+function cardUnit(n:number){return n===1?'بطاقة':n===2?'بطاقتين':n>=3&&n<=10?'بطاقات':'بطاقة';}
+function attempts(n:number){return n===1?'محاولة وحدة':n===2?'محاولتين':n<=10?`${n} محاولات`:`${n} محاولة`;}
 const isDue=(w:Word,now=Date.now())=>new Date(w.dueAt).getTime()<=now;
 const canSpeak=typeof window!=='undefined'&&'speechSynthesis' in window;
 function speak(text:string){if(!canSpeak||!text.trim())return;window.speechSynthesis.cancel();const voice=new SpeechSynthesisUtterance(text);voice.lang='en-US';voice.rate=.87;window.speechSynthesis.speak(voice);}
@@ -126,7 +128,6 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
   const dueWords=active.filter(w=>isDue(w,now));
   const upcoming=active.filter(w=>!isDue(w,now));
-  const weekAhead=upcoming.filter(w=>new Date(w.dueAt).getTime()<=now+7*DAY).length;
   const backupStale=active.length>=5&&(!lastBackup||now-new Date(lastBackup).getTime()>14*DAY);
 
   if(!active.length)return <div className="home">
@@ -150,7 +151,7 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     </section>
   </div>;
 
-  const hasDue=stats.due>0;
+  const hasDue=stats.dueNow>0;
   const next=upcoming[0];
   const preview=(hasDue?dueWords:upcoming).slice(0,3);
   return <div className="home">
@@ -161,16 +162,16 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
         <p className="lead">{hasDue?copy.dueLead:next?`أقرب مراجعة ${relative(next.dueAt,now)}. لين ذاك الوقت، تقدر تضيف كلمة جديدة.`:'تقدر تضيف كلمة جديدة الحين.'}</p>
         <div className="hero-actions">
           <button type="button" className="btn btn-ink btn-lg" onClick={()=>onNavigate(hasDue?'review':'add')}>{hasDue?copy.startReview:copy.addWord}<ArrowLeft size={20}/></button>
-          {hasDue&&<p className="hero-count"><b>{stats.due}</b><span>{wordUnit(stats.due)} تنتظرك</span></p>}
+          {hasDue&&<p className="hero-count"><b>{stats.dueNow}</b><span>{cardUnit(stats.dueNow)} تنتظرك الحين</span></p>}
         </div>
       </div>
       <div className="paper-stack" aria-hidden="true">{preview.map((w,i)=><div key={w.id} className={'paper p'+(i+1)}><span>{hasDue?'جاهزة للمراجعة':relative(w.dueAt,now)}</span><b dir="ltr">{w.term}</b></div>)}</div>
     </section>
 
     <dl className="facts">
-      <div><dt>في مكتبتك</dt><dd>{stats.total}<small>{wordUnit(stats.total)}</small></dd></div>
-      <div><dt>راجعتها اليوم</dt><dd>{stats.reviewedToday}<small>{stats.reviewedToday===1?'مراجعة':'مراجعات'}</small></dd></div>
-      <div><dt>تنتظرك هذا الأسبوع</dt><dd>{weekAhead}<small>{wordUnit(weekAhead)}</small></dd></div>
+      <div><dt>في مكتبتك</dt><dd>{stats.inLibrary}<small>{cardUnit(stats.inLibrary)}</small></dd></div>
+      <div><dt>راجعتها اليوم</dt><dd>{stats.cardsReviewedToday}<small>{cardUnit(stats.cardsReviewedToday)}</small></dd>{stats.reviewAttemptsToday>stats.cardsReviewedToday&&<p className="fact-note">في {attempts(stats.reviewAttemptsToday)}، لأن بعضها رجع لك بعد «نسيتها».</p>}</div>
+      <div><dt>مجدولة في الأيام السبعة الجاية</dt><dd>{stats.scheduledNext7Days}<small>{cardUnit(stats.scheduledNext7Days)}</small></dd></div>
     </dl>
 
     <div className="home-row">
@@ -433,12 +434,12 @@ function StatsPage({words,reviews,onNavigate}:{words:Word[];reviews:Review[];onN
     <PageHead title="تقدّمك" lead={data.activeDays?`راجعت في ${data.activeDays===1?'يوم واحد':data.activeDays===2?'يومين':data.activeDays<=10?`${data.activeDays} أيام`:`${data.activeDays} يوم`} من آخر 4 أسابيع. الاستمرار أهم من الكمية.`:'أول مراجعة لك بتبدأ ترسم هذي الصفحة.'}/>
     <div className="stats-grid">
       <section className="panel panel-wide">
-        <h2>وش ينتظرك هالأسبوع</h2><p className="panel-note">عدد الكلمات اللي بيحين وقت مراجعتها كل يوم.</p>
+        <h2>وش ينتظرك هالأسبوع</h2><p className="panel-note">عدد البطاقات اللي يحين موعد مراجعتها كل يوم. «اليوم» يشمل اللي فات موعدها.</p>
         <ol className="bars" aria-label="الكلمات المستحقة في الأيام السبعة الجاية">{data.ahead.map((d,i)=><li key={d.k} style={{'--i':i} as CSSProperties} title={`${d.label}: ${countWords(d.n)}`}><span className="bar-n">{d.n}</span><span className="bar" style={{blockSize:`${Math.max(d.n?8:2,100*d.n/maxAhead)}%`}} data-zero={d.n===0||undefined}/><span className="bar-label">{d.label}</span></li>)}</ol>
       </section>
       <section className="panel">
-        <h2>أيام مراجعتك</h2><p className="panel-note">آخر 4 أسابيع. كل مربع يوم، وكل ما غمق راجعت أكثر.</p>
-        <ol className="heat" aria-label="عدد المراجعات في آخر 28 يوم">{data.past.map(p=>{const lvl=p.n===0?0:Math.min(4,Math.ceil(4*p.n/maxPast));return <li key={p.k} className={'lv'+lvl+(p.k===today?' today':'')} title={`${localDate(p.date.toISOString())}: ${p.n} ${p.n===1?'مراجعة':'مراجعات'}`}><span className="visually-hidden">{localDate(p.date.toISOString())}: {p.n}</span></li>;})}</ol>
+        <h2>أيام مراجعتك</h2><p className="panel-note">آخر 4 أسابيع. كل مربع يوم، وكل ما غمق كانت محاولات المراجعة أكثر.</p>
+        <ol className="heat" aria-label="عدد محاولات المراجعة في آخر 28 يوم">{data.past.map(p=>{const lvl=p.n===0?0:Math.min(4,Math.ceil(4*p.n/maxPast));return <li key={p.k} className={'lv'+lvl+(p.k===today?' today':'')} title={`${localDate(p.date.toISOString())}: ${attempts(p.n)}`}><span className="visually-hidden">{localDate(p.date.toISOString())}: {p.n}</span></li>;})}</ol>
         <div className="heat-legend" aria-hidden="true"><span>أقل</span><i className="lv0"/><i className="lv1"/><i className="lv2"/><i className="lv3"/><i className="lv4"/><span>أكثر</span></div>
       </section>
       <section className="panel">
@@ -448,7 +449,7 @@ function StatsPage({words,reviews,onNavigate}:{words:Word[];reviews:Review[];onN
       <section className="panel panel-wide">
         <h2>كيف تقيّم تذكّرك</h2>
         {totalGrades?<>
-          <p className="panel-note">من {totalGrades} {totalGrades===1?'مراجعة':'مراجعات'} لحد الحين. «نسيتها» جزء طبيعي من التعلّم.</p>
+          <p className="panel-note">من {attempts(totalGrades)} لحد الحين. «نسيتها» جزء طبيعي من التعلّم.</p>
           <div className="stack" aria-hidden="true">{grades.map(g=>data.gradeN[g.id]>0&&<span key={g.id} style={{flexGrow:data.gradeN[g.id],background:gradeColor[g.id]}} title={`${g.label}: ${data.gradeN[g.id]}`}/>)}</div>
           <ul className="legend">{grades.map(g=><li key={g.id}><i style={{background:gradeColor[g.id]}}/><span>{g.label}</span><span className="lv"><b>{data.gradeN[g.id]}</b><small>{Math.round(100*data.gradeN[g.id]/totalGrades)}%</small></span></li>)}</ul>
         </>:<p className="panel-note">لما تراجع أول كلمة، بنوريك هنا كيف كانت تقييماتك.</p>}
@@ -577,7 +578,7 @@ export default function App(){
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   const navigate=(to:Page)=>{if(to===page){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
-  const due=summary(words,reviews).due;
+  const due=summary(words,reviews).dueNow;
 
   let content:ReactNode;
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label="نجهّز كلماتك"><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;

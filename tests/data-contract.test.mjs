@@ -42,5 +42,5 @@ test('daily summary counts only active words, due cards, and Riyadh-local review
     word('w-3',{archived:true}),
   ];
   const reviews=[{id:'r-1',wordId:'w-1',grade:'good',reviewedAt:earlier,nextDueAt:later}];
-  assert.deepEqual(summary(words,reviews,new Date(now)),{total:2,due:1,reviewedToday:1});
+  assert.deepEqual(summary(words,reviews,new Date(now)),{inLibrary:2,dueNow:1,scheduledNext7Days:1,cardsReviewedToday:1,reviewAttemptsToday:1});
 });

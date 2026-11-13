@@ -141,8 +141,31 @@ export async function restoreBackup(backup:unknown):Promise<void>{
 }
 export async function rememberBackup(){const tx=await transaction('meta','readwrite'),end=settled(tx);tx.objectStore('meta').put({key:'lastBackup',value:new Date().toISOString()});await end;}
 export async function lastBackupDate():Promise<string|null>{const v=await request<{key:string;value:string}|undefined>((await transaction('meta','readonly')).objectStore('meta').get('lastBackup'));return v?.value||null;}
-export function summary(words:Word[],reviews:Review[],now=new Date()){
-  const active=words.filter(w=>!w.archived),day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
-  const dayOf=(iso:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
-  return {total:active.length,due:active.filter(w=>new Date(w.dueAt).getTime()<=now.getTime()).length,reviewedToday:reviews.filter(r=>dayOf(r.reviewedAt)===day).length};
+const riyadhDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'});
+/** Calendar day (YYYY-MM-DD) in Asia/Riyadh. */
+export const riyadhDayOf=(d:Date|string)=>riyadhDay.format(typeof d==='string'?new Date(d):d);
+export type Summary={
+  /** Active (non-archived) cards. */
+  inLibrary:number;
+  /** Active cards with dueAt <= now. */
+  dueNow:number;
+  /** Active cards with now < dueAt <= now + 7 days: upcoming, not reviewed or completed. */
+  scheduledNext7Days:number;
+  /** Distinct cards with at least one review event today (Asia/Riyadh). */
+  cardsReviewedToday:number;
+  /** All review events today (Asia/Riyadh); the same card can count several times, e.g. after "again". */
+  reviewAttemptsToday:number;
+};
+/** #10: honest counters. Read-only; FSRS scheduling is not involved. */
+export function summary(words:Word[],reviews:Review[],now=new Date()):Summary{
+  const t=now.getTime(),week=t+7*86_400_000,day=riyadhDayOf(now);
+  const active=words.filter(w=>!w.archived),due=(w:Word)=>Date.parse(w.dueAt);
+  const today=reviews.filter(r=>riyadhDayOf(r.reviewedAt)===day);
+  return {
+    inLibrary:active.length,
+    dueNow:active.filter(w=>due(w)<=t).length,
+    scheduledNext7Days:active.filter(w=>due(w)>t&&due(w)<=week).length,
+    cardsReviewedToday:new Set(today.map(r=>r.wordId)).size,
+    reviewAttemptsToday:today.length,
+  };
 }
