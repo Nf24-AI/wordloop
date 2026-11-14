@@ -67,3 +67,26 @@ for(const [name,engine] of Object.entries(ENGINES)){
     });
   });
 }
+
+// Issue #26 (data part): a card with two meanings shows both in Library and Review, and search finds the second one.
+for(const [name,engine] of Object.entries(ENGINES)){
+  test(`[${name}] issue #26 meanings in the current UI`,async t=>{
+    const browser=await engine.launch();
+    t.after(()=>browser.close());
+    await t.test('UX-08 (data): both meanings visible in Library and Review; one card; search by second meaning',async()=>{
+      const {context,page,errors}=await freshPage(browser,server.base);
+      await data(page,async m=>m.addWord({term:'show',meanings:['يُظهر','عرض (فيلم، منتج)'],example:'',translation:'',tag:''}));
+      await page.goto(server.base+'/#/words');await page.reload();
+      const row=page.locator('.word-list .word-text');await row.first().waitFor();
+      assert.equal(await row.count(),1);
+      assert.match(await row.first().innerText(),/يُظهر؛ عرض \(فيلم، منتج\)/);
+      await page.fill('input[type=search]','فيلم');
+      await page.waitForTimeout(200);assert.equal(await page.locator('.word-list .word-text').count(),1,'found by the second meaning');
+      await page.evaluate(()=>new Promise(res=>{const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const tx=r.result.transaction('words','readwrite'),s=tx.objectStore('words');s.getAll().onsuccess=e=>{for(const w of e.target.result){w.dueAt=new Date(Date.now()-60000).toISOString();w.fsrsState={...w.fsrsState,dueAt:w.dueAt};s.put(w);}};tx.oncomplete=()=>{r.result.close();res();};};}));
+      await page.goto(server.base+'/#/review');await page.reload();
+      await page.locator('.reveal').click();
+      assert.match(await page.locator('.answer strong').innerText(),/يُظهر؛ عرض \(فيلم، منتج\)/);
+      assert.deepEqual(errors,[]);await context.close();
+    });
+  });
+}

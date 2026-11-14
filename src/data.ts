@@ -13,8 +13,8 @@ export const NOTE_LIMIT=500;
  * cards saved before #15 have no `deckId` (read as belonging to the default deck). Reading never rewrites storage.
  * `contentLanguage`/`meaningLanguage` are optional per-card overrides of the deck languages (#15/#19).
  */
-export type Word={id:string;deckId:string;contentType:ContentType;term:string;meaning:string;example:string;translation:string;note:string;tag:string;createdAt:string;updatedAt:string;dueAt:string;fsrsState:Record<string,unknown>;archived:boolean;revision:number;contentLanguage?:string;meaningLanguage?:string};
-type StoredWord=Omit<Word,'contentType'|'note'|'deckId'>&{contentType?:ContentType;note?:string;deckId?:string};
+export type Word={id:string;deckId:string;contentType:ContentType;term:string;meaning:string;meanings:string[];example:string;translation:string;note:string;tag:string;createdAt:string;updatedAt:string;dueAt:string;fsrsState:Record<string,unknown>;archived:boolean;revision:number;contentLanguage?:string;meaningLanguage?:string};
+type StoredWord=Omit<Word,'contentType'|'note'|'deckId'|'meanings'>&{contentType?:ContentType;note?:string;deckId?:string;meanings?:unknown};
 export type Review={id:string;wordId:string;grade:Grade;reviewedAt:string;nextDueAt:string};
 /** #15: a folder groups decks (e.g. «الإنجليزية»). */
 export type Folder={id:string;name:string;createdAt:string;updatedAt:string};
@@ -32,9 +32,30 @@ export const DEFAULT_DECK_ID='00000000-0000-4000-8000-00000000d001';
 /** Existing WordLoop content is English with Arabic meanings. */
 export const DEFAULT_CONTENT_LANGUAGE='en-US',DEFAULT_MEANING_LANGUAGE='ar-SA';
 export const NAME_LIMIT=60;
+/** #26: one card, one FSRS schedule, one or more meanings. Each meaning keeps the old 240-character limit. */
+export const MEANING_LIMIT=240,MAX_MEANINGS=10;
+/** A stored `meanings` value is used only if it is a well-formed list; anything else falls back to the legacy `meaning`. */
+function storedMeanings(v:unknown):string[]|null{
+  return Array.isArray(v)&&v.length>=1&&v.length<=MAX_MEANINGS&&v.every(m=>typeof m==='string'&&m.trim().length>0&&m.length<=MEANING_LIMIT)?[...v]:null;
+}
+/** Cleans meanings typed by the learner: trimmed, empty boxes dropped, exact repeats removed. Throws when none is left or a limit is exceeded. */
+export function cleanMeanings(input:readonly unknown[]):string[]{
+  const out:string[]=[];
+  for(const m of input){if(typeof m!=='string')continue;const t=m.trim();if(t&&!out.some(x=>x.toLocaleLowerCase()===t.toLocaleLowerCase()))out.push(t);}
+  if(!out.length)throw Error('أضف الكلمة ومعناها أولًا');
+  if(out.length>MAX_MEANINGS||out.some(m=>m.length>MEANING_LIMIT))throw Error('أحد النصوص أطول من اللازم');
+  return out;
+}
 const DEFAULT_FOLDER_NAME='غير مصنفة',DEFAULT_DECK_NAME='بطاقاتي';
-/** Legacy-safe view of a stored card: id, dates, FSRS state and revision are passed through untouched. */
-export function normalizeWord(w:StoredWord):Word{return {...w,deckId:typeof w.deckId==='string'&&w.deckId?w.deckId:DEFAULT_DECK_ID,contentType:isContentType(w.contentType)?w.contentType:'vocabulary',note:typeof w.note==='string'?w.note:''};}
+/**
+ * Legacy-safe view of a stored card: id, dates, FSRS state and revision are passed through untouched.
+ * #26: `meanings` is authoritative when well-formed; a pre-#26 card's single `meaning` becomes `meanings[0]` exactly.
+ * `meaning` always mirrors `meanings[0]`, so older builds (which read only `meaning`) keep working after a rollback.
+ */
+export function normalizeWord(w:StoredWord):Word{
+  const meanings=storedMeanings(w.meanings)??[w.meaning];
+  return {...w,meaning:meanings[0],meanings,deckId:typeof w.deckId==='string'&&w.deckId?w.deckId:DEFAULT_DECK_ID,contentType:isContentType(w.contentType)?w.contentType:'vocabulary',note:typeof w.note==='string'?w.note:''};
+}
 /** Canonical BCP-47 tag (e.g. `en-us` → `en-US`), or null when the tag is not a valid language tag. */
 export function canonicalLanguage(tag:unknown):string|null{
   if(typeof tag!=='string'||!tag||tag.length>35||!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/.test(tag))return null;
@@ -223,13 +244,15 @@ export function libraryCounts(words:readonly Word[],decks:readonly Deck[],now=Da
 export async function listWords():Promise<Word[]>{return (await getAll<StoredWord>('words')).map(normalizeWord).sort((a,b)=>a.dueAt.localeCompare(b.dueAt));}
 export async function listReviews(){return getAll<Review>('reviews');}
 export async function getWord(id:string):Promise<Word|undefined>{const w=await request<StoredWord|undefined>((await transaction('words','readonly')).objectStore('words').get(id));return w&&normalizeWord(w);}
-export type NewCard={contentType?:ContentType;deckId?:string;term:string;meaning:string;example:string;translation:string;note?:string;tag:string};
+/** `meanings` (#26) or the single legacy `meaning`; at least one non-empty meaning is required. */
+export type NewCard={contentType?:ContentType;deckId?:string;term:string;meaning?:string;meanings?:string[];example:string;translation:string;note?:string;tag:string};
 export async function addWord(data:NewCard):Promise<Word>{
   const contentType=data.contentType??'vocabulary';
   if(!isContentType(contentType))throw Error('نوع البطاقة غير معروف');
-  const term=data.term.trim().replace(/\s+/g,' '),meaning=data.meaning.trim(),note=(data.note??'').trim();
-  if(!term||!meaning)throw Error('أضف الكلمة ومعناها أولًا');
-  if(term.length>TERM_LIMIT[contentType]||meaning.length>240||data.example.length>500||data.translation.length>400||note.length>NOTE_LIMIT||data.tag.length>40)throw Error('أحد النصوص أطول من اللازم');
+  const term=data.term.trim().replace(/\s+/g,' '),note=(data.note??'').trim();
+  if(!term)throw Error('أضف الكلمة ومعناها أولًا');
+  const meanings=cleanMeanings(data.meanings??[data.meaning??'']);
+  if(term.length>TERM_LIMIT[contentType]||data.example.length>500||data.translation.length>400||note.length>NOTE_LIMIT||data.tag.length>40)throw Error('أحد النصوص أطول من اللازم');
   // Duplicates are checked within the same kind only: "break the ice" may be both a phrase and an idiom.
   const words=await listWords();const key=normalizeTerm(term);if(words.some(w=>!w.archived&&w.contentType===contentType&&normalizeTerm(w.term)===key))throw Error('هذه الكلمة موجودة عندك بالفعل');
   const deckId=data.deckId??DEFAULT_DECK_ID;
@@ -237,9 +260,35 @@ export async function addWord(data:NewCard):Promise<Word>{
   const now=new Date(),id=crypto.randomUUID();
   const scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
   const fsrs=scheduler.newCard({cardId:id,now});
-  const word:Word={id,deckId,contentType,term,meaning,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0};
+  const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0};
   const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(word);await end;
   announceChange();return word;
+}
+export type CardEdit={term?:string;meanings?:string[];example?:string;translation?:string;note?:string;tag?:string};
+/**
+ * #26: edit a card's content (term, meanings, example, translation, note, tag). The card keeps its id, deck, kind,
+ * createdAt, dueAt, fsrsState, revision, archive state and review history: editing never regrades or reschedules.
+ */
+export async function editWord(id:string,patch:CardEdit):Promise<Word>{
+  const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');
+  let next:Word;
+  try{
+    const stored=await request<StoredWord|undefined>(store.get(id));if(!stored)throw Error('لم نجد الكلمة');
+    const old=normalizeWord(stored);
+    const term=patch.term===undefined?old.term:patch.term.trim().replace(/\s+/g,' ');
+    const meanings=patch.meanings===undefined?old.meanings:cleanMeanings(patch.meanings);
+    const pick=(v:string|undefined,was:string)=>v===undefined?was:v.trim();
+    const example=pick(patch.example,old.example),translation=pick(patch.translation,old.translation),note=pick(patch.note,old.note),tag=patch.tag===undefined?old.tag:(patch.tag.trim()||'عام');
+    if(!term)throw Error('أضف الكلمة ومعناها أولًا');
+    if(term.length>TERM_LIMIT[old.contentType]||example.length>500||translation.length>400||note.length>NOTE_LIMIT||tag.length>40)throw Error('أحد النصوص أطول من اللازم');
+    if(normalizeTerm(term)!==normalizeTerm(old.term)){
+      const all=(await request(store.getAll()) as StoredWord[]).map(normalizeWord);
+      if(all.some(w=>w.id!==id&&!w.archived&&w.contentType===old.contentType&&normalizeTerm(w.term)===normalizeTerm(term)))throw Error('هذه الكلمة موجودة عندك بالفعل');
+    }
+    next={...old,term,meaning:meanings[0],meanings,example,translation,note,tag,updatedAt:new Date().toISOString()};
+    store.put(next);
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
+  await end;announceChange();return next;
 }
 export async function archiveWord(id:string):Promise<void>{const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');const w=await request<StoredWord|undefined>(store.get(id));if(!w){tx.abort();throw Error('لم نجد الكلمة');}store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});await end;announceChange();}
 export async function reviewWord(id:string,grade:Grade):Promise<string>{
@@ -267,6 +316,8 @@ function validWord(w:unknown,version:1|2|3):w is StoredWord{
   const x=w as Partial<StoredWord>;
   if(version>=2?!isContentType(x.contentType):x.contentType!==undefined&&!isContentType(x.contentType))return false;
   if(version===3&&!(text(x.deckId,80)&&x.deckId.length>0))return false;
+  // #26: an optional meanings list must be well-formed; the legacy single meaning stays required in every version.
+  if(x.meanings!==undefined&&!storedMeanings(x.meanings))return false;
   if(x.contentLanguage!==undefined&&!canonicalLanguage(x.contentLanguage))return false;
   if(x.meaningLanguage!==undefined&&!canonicalLanguage(x.meaningLanguage))return false;
   if(x.note!==undefined&&!text(x.note,NOTE_LIMIT))return false;

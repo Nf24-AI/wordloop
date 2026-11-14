@@ -73,7 +73,7 @@ test('archiving a legacy card keeps everything and normalises its kind',async()=
   await raw('words','readwrite',s=>{s.put(old);});
   await archiveWord(old.id);
   const [after]=await getAllRaw('words');
-  assert.deepEqual({...after,updatedAt:old.updatedAt},{...old,archived:true,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID});
+  assert.deepEqual({...after,updatedAt:old.updatedAt},{...old,archived:true,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[old.meaning]});
 });
 
 test('DATA-04: a 50-card legacy library is unchanged by the upgrade (count, IDs, due dates, revision, history)',async()=>{
@@ -93,7 +93,7 @@ test('DATA-01: a v1 backup imports as vocabulary with ids, due dates, FSRS state
   const v1={app:'wordloop',version:1,exportedAt:at,words:[w],reviews:[r]};
   const safe=validateBackup(JSON.parse(JSON.stringify(v1)));
   assert.equal(safe.version,3); // #15: always returned in the current format
-  assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID});
+  assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]});
   await restoreBackup(safe);
   const [got]=await listWords();
   assert.equal(got.id,w.id);assert.equal(got.dueAt,w.dueAt);assert.deepEqual(got.fsrsState,w.fsrsState);assert.equal(got.revision,w.revision);

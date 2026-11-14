@@ -7,7 +7,7 @@ IndexedDB database `wordloop-local-v1`, **schema version 1 (unchanged)**:
 
 | Store | Key | Contents |
 |---|---|---|
-| `words` | `id` | Cards. Canonical write shape adds `deckId`, plus optional `contentLanguage` / `meaningLanguage` (per-card override). |
+| `words` | `id` | Cards. Canonical write shape adds `deckId` and `meanings[]` (with `meaning` = `meanings[0]`), plus optional `contentLanguage` / `meaningLanguage` (per-card override). |
 | `reviews` | `id` | Review events (`wordId`, grade, times). Unchanged. |
 | `meta` | `key` | `lastBackup`, and **library records**: `folder:<id>` → `{type:'folder', id, name, createdAt, updatedAt}` and `deck:<id>` → `{type:'deck', id, folderId, name, contentLanguage, meaningLanguage, createdAt, updatedAt}`. |
 
@@ -17,6 +17,13 @@ Why `meta` and not new object stores: adding stores needs an IndexedDB version b
 - Fixed ids: folder `00000000-0000-4000-8000-00000000f001` («غير مصنفة»), deck `00000000-0000-4000-8000-00000000d001` («بطاقاتي», `en-US` content, `ar-SA` meaning). The UI may localise these names by id.
 - Created on first use (idempotent, inside one transaction). They cannot be deleted.
 - A card with no `deckId` (saved before #15) **or** with a `deckId` that no longer exists is treated as belonging to the default deck. Reading never rewrites a card; a card gets `deckId` stored only when it is next written (review, archive, move).
+
+## Meanings (#26, data part)
+- A card has `meanings: string[]` (1–10, each 1–240 characters): **one card, one FSRS schedule**, however many meanings.
+- `meaning` is still stored and always equals `meanings[0]`, so older builds (which read only `meaning`) keep working after a rollback, and v1/v2-era validation still holds.
+- A card saved before #26 has only `meaning`; it is read as `meanings: [meaning]`, byte-for-byte (surrounding spaces included). Reading never rewrites it.
+- New and edited meanings are trimmed, empty boxes dropped and exact repeats (case-insensitive) removed; at least one must remain.
+- `editWord()` changes content only (term, meanings, example, translation, note, tag). It never touches `id`, `deckId`, `contentType`, `createdAt`, `dueAt`, `fsrsState`, `revision`, archive state or reviews.
 
 ## Languages
 - BCP-47 tags, canonicalised with `Intl.getCanonicalLocales` (`en-us` → `en-US`). Invalid tags are refused.

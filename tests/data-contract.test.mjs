@@ -21,7 +21,7 @@ test('accepts a well-formed v1 backup and returns it as v3: vocabulary (#5) in t
   assert.deepEqual(validateBackup(payload),{...payload,version:3,
     folders:[{id:DEFAULT_FOLDER_ID,name:'غير مصنفة',createdAt:now,updatedAt:now}],
     decks:[{id:DEFAULT_DECK_ID,folderId:DEFAULT_FOLDER_ID,name:'بطاقاتي',contentLanguage:'en-US',meaningLanguage:'ar-SA',createdAt:now,updatedAt:now}],
-    words:payload.words.map(w=>({...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID}))});
+    words:payload.words.map(w=>({...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]}))});
 });
 
 test('rejects corrupted FSRS scheduling dates before replacing stored data',()=>{
