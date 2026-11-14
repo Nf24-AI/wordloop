@@ -52,7 +52,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.title(),'Settings · WordLoop');
       assert.equal(await page.getAttribute('.lang-switch [data-locale=en]','aria-checked'),'true');
       assert.match(await page.locator('.toast').textContent(),/English/);
-      assert.deepEqual(await page.locator('.tabbar .tab').allTextContents(),['Home','Review','My cards','Progress']);
+      assert.deepEqual(await page.locator('.tabbar .tab').allTextContents(),['Home','Review','Library','Progress']);
       // LTR: the first tab (Home) is on the left edge.
       const home=await page.locator('.tabbar .tab').first().boundingBox(),last=await page.locator('.tabbar .tab').last().boundingBox();
       assert.ok(home.x<last.x,'Home tab is left of Progress in LTR');
@@ -78,7 +78,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await switchTo(page,base(),'en');
       await page.reload();await page.waitForSelector('main h1');
       assert.deepEqual(await dump(page),before,'nothing stored changed in English');
-      await page.goto(base()+'/#/words');await page.waitForSelector('.word-list');
+      await page.goto(base()+'/#/words/all');await page.waitForSelector('.word-list');
       const terms=await page.locator('.word-text b').allTextContents(),meanings=await page.locator('.word-text > span').allTextContents();
       assert.deepEqual(terms.sort(),['Break a leg','serendipity']);
       assert.ok(meanings.includes('صدفة سعيدة')&&meanings.includes('بالتوفيق'),'Arabic meanings shown as written');
@@ -93,9 +93,10 @@ for(const [name,engine] of Object.entries(ENGINES)){
       // Latin-only user content, so any Arabic left on screen would be untranslated UI.
       await addCard(page,base(),'resilient','able to recover quickly');await page.waitForSelector('.toast');
       await switchTo(page,base(),'en');
-      for(const route of ['','add','review','words','stats','settings']){
+      // #16: every Library level — folders grid, All cards, a folder's decks, a deck's cards (default folder/deck names are translated).
+      for(const route of ['','add','review','words','words/all','words/due','words/f/00000000-0000-4000-8000-00000000f001','words/d/00000000-0000-4000-8000-00000000d001','stats','settings']){
         await page.goto(base()+'/#/'+route);await page.waitForSelector('main h1');
-        if(route==='words')await page.click('.word-main');
+        if(route==='words/all'||route.startsWith('words/d/'))await page.click('.word-main');
         if(route==='add'){for(const k of ['phrase','sentence','idiom','vocabulary']){await page.click(`[data-kind=${k}]`);const txt=await uiText(page);assert.ok(!ARABIC.test(txt),`add/${k}: ${txt.match(/.{0,30}[؀-ۿ]+.{0,30}/)?.[0]}`);}}
         const txt=await uiText(page);
         assert.ok(!ARABIC.test(txt),`#/${route}: ${txt.match(/.{0,30}[؀-ۿ]+.{0,30}/)?.[0]}`);

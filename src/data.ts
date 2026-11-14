@@ -46,7 +46,7 @@ export function cleanMeanings(input:readonly unknown[]):string[]{
   if(out.length>MAX_MEANINGS||out.some(m=>m.length>MEANING_LIMIT))throw Error('أحد النصوص أطول من اللازم');
   return out;
 }
-const DEFAULT_FOLDER_NAME='غير مصنفة',DEFAULT_DECK_NAME='بطاقاتي';
+export const DEFAULT_FOLDER_NAME='غير مصنفة',DEFAULT_DECK_NAME='بطاقاتي';
 /**
  * Legacy-safe view of a stored card: id, dates, FSRS state and revision are passed through untouched.
  * #26: `meanings` is authoritative when well-formed; a pre-#26 card's single `meaning` becomes `meanings[0]` exactly.

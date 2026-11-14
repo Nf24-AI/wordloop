@@ -25,7 +25,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const words=[0,1,2].map(i=>{const id=`old-${i}`,dueAt=iso(now+(i-1)*86_400_000);const w={id,term:`legacy ${i}`,meaning:`قديم ${i}`,example:'',translation:'',tag:'عام',createdAt:iso(now-9e8),updatedAt:iso(now-9e8),dueAt,fsrsState:{cardId:id,dueAt,stability:2+i,reps:2},archived:false,revision:i};if(i)Object.assign(w,{contentType:'idiom',note:'n'});return w;});
       const reviews=[{id:'r-0',wordId:'old-0',grade:'good',reviewedAt:iso(now-8e8),nextDueAt:words[0].dueAt}];
       await page.evaluate(([words,reviews])=>new Promise(res=>{const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const tx=r.result.transaction(['words','reviews'],'readwrite');for(const w of words)tx.objectStore('words').put(w);for(const x of reviews)tx.objectStore('reviews').put(x);tx.oncomplete=()=>{r.result.close();res();};};}),[words,reviews]);
-      await page.goto(base()+'/#/words');await page.reload();
+      await page.goto(base()+'/#/words/all');await page.reload();
       await page.locator('.word-list .word-text b').nth(2).waitFor();
       const lib=await data(page,async m=>m.listLibrary());
       assert.deepEqual(lib.folders.map(f=>f.id),[DEFAULT_FOLDER]);
@@ -76,7 +76,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
     await t.test('UX-08 (data): both meanings visible in Library and Review; one card; search by second meaning',async()=>{
       const {context,page,errors}=await freshPage(browser,server.base);
       await data(page,async m=>m.addWord({term:'show',meanings:['يُظهر','عرض (فيلم، منتج)'],example:'',translation:'',tag:''}));
-      await page.goto(server.base+'/#/words');await page.reload();
+      await page.goto(server.base+'/#/words/all');await page.reload();
       const row=page.locator('.word-list .word-text');await row.first().waitFor();
       assert.equal(await row.count(),1);
       assert.match(await row.first().innerText(),/يُظهر؛ عرض \(فيلم، منتج\)/);

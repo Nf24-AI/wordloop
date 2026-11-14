@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,CONTENT_TYPES,isContentType,lastBackupDate,listReviews,listWords,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,restoreBackup,reviewWord,summary,TERM_LIMIT,validateBackup,type ContentType,type Grade,type Review,type Word} from './data';
+import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,deleteDeck,deleteFolder,isContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -15,7 +15,10 @@ const PAGES:Page[]=['home','review','words','add','stats','settings'];
 const navItems:{id:Page;icon:typeof Home}[]=[
   {id:'home',icon:Home},{id:'review',icon:Layers3},{id:'words',icon:BookOpen},{id:'stats',icon:LineChart},{id:'settings',icon:Settings},
 ];
-function readHash():Page{const h=window.location.hash.replace(/^#\/?/,'') as Page;return PAGES.includes(h)?h:'home';}
+/** Route = page + optional sub-path, e.g. `#/words/d/<deck>` → page `words`, sub `d/<deck>`; `#/add/<deck>` → add to that deck. */
+function hashParts(){const [h,...rest]=window.location.hash.replace(/^#\/?/,'').split('/');return {page:(PAGES.includes(h as Page)?h:'home') as Page,sub:PAGES.includes(h as Page)?rest.join('/'):''};}
+function readHash():Page{return hashParts().page;}
+function readSub():string{return hashParts().sub;}
 /** "Forward" arrow: points left in Arabic (RTL), right in English (LTR). */
 function Fwd({size=20}:{size?:number}){return T.dir==='rtl'?<ArrowLeft size={size} aria-hidden="true"/>:<ArrowRight size={size} aria-hidden="true"/>;}
 
@@ -184,8 +187,18 @@ function KindPicker({value,onChange}:{value:ContentType;onChange:(k:ContentType)
 
 /* ───────────── Add card ───────────── */
 type FieldText={label:string;ph:string;hint?:string};
-function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Promise<Word[]|null>;notify:Notify;onNavigate:(p:Page)=>void}){
+const LAST_DECK='wordloop-last-deck';
+/** #16/#9: the deck a new card goes to — the deck it was opened from, else the last deck used on this device, else the default deck. */
+function initialDeck(lib:Library,fromRoute:string){
+  const ok=(id:string|null|undefined):id is string=>!!id&&lib.decks.some(d=>d.id===id);
+  if(ok(fromRoute))return fromRoute;
+  let last:string|null=null;try{last=localStorage.getItem(LAST_DECK);}catch{/* private mode */}
+  return ok(last)?last:DEFAULT_DECK_ID;
+}
+function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
   const A=T.add;
+  const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
+  const [lastDeck,setLastDeck]=useState<string|null>(null);
   const [kind,setKindState]=useState<ContentType>(initialKind);
   const [term,setTerm]=useState(''),[meaning,setMeaning]=useState(''),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState(''),[tag,setTag]=useState('');
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
@@ -202,7 +215,8 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
     setLoading(true);setUnsynced(null);
     let word:Word;
     // Only the fields this kind shows are saved; text typed under another kind stays in the form, unsaved.
-    try{word=await addWord({contentType:kind,term,meaning,example:f.example?example:'',translation:f.translation?translation:'',note:f.note?note:'',tag});}
+    const target=lib.decks.some(d=>d.id===deckId)?deckId:DEFAULT_DECK_ID;
+    try{word=await addWord({contentType:kind,deckId:target,term,meaning,example:f.example?example:'',translation:f.translation?translation:'',note:f.note?note:'',tag});try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);}
     catch(err){setError(getError(err));setLoading(false);return;}
     setTerm('');setMeaning('');setExample('');setTranslation('');setNote('');setTag('');setTried(false);
     await confirmVisible(word);setLoading(false);termRef.current?.focus();
@@ -248,11 +262,12 @@ function AddPage({words,onSaved,notify,onNavigate}:{words:Word[];onSaved:()=>Pro
           <datalist id="tag-list">{tags.map(t=><option key={t} value={t}/>)}</datalist>
           {tags.length>0&&<div className="chips" role="group" aria-label={A.pastTags}>{tags.slice(0,6).map(t=><button type="button" key={t} dir="auto" className={'chip'+(tag===t?' on':'')} aria-pressed={tag===t} onClick={()=>setTag(tag===t?'':t)}>{tagText(t)}</button>)}</div>}
         </div>
+        <DeckPicker lib={lib} value={deckId} onChange={setDeckId}/>
         {error&&<p className="inline-error" role="alert">{error}</p>}
         {unsynced&&<div className="inline-error soft" role="alert"><p>{A.unsynced[0]}<span dir="ltr">{unsynced.term}</span>{A.unsynced[1]}</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>{A.refreshList}</button></div>}
         <div className="form-foot">
           <button disabled={loading} type="submit" className="btn btn-ink btn-lg">{loading?A.saving(f.noun):A.save(f.noun)}{!loading&&<Check size={20}/>}</button>
-          {saved&&<button type="button" className="btn btn-quiet" onClick={()=>onNavigate('words')}>{A.seeLibrary}</button>}
+          {saved&&<button type="button" className="btn btn-quiet" onClick={()=>go(lastDeck?deckPath(lastDeck):'words')}>{A.seeLibrary}</button>}
         </div>
       </form>
       <aside className="add-aside" aria-hidden="true"><Wash tone="warm"/><div className="aside-card"><i className="kind-badge">{kindLabel(kind)}</i><span dir="ltr" className={kind==='sentence'?'is-long':undefined}>{term.trim()||f.term.ph}</span><p dir="auto">{meaning.trim()||f.meaning.ph}</p>{f.note&&(note.trim()||!term.trim())&&<small className="aside-note-text" dir="auto">{note.trim()||f.note.ph}</small>}{f.example&&(example.trim()||!term.trim())&&<em dir="ltr">{example.trim()||f.example.ph}</em>}</div><p className="aside-note">{A.asideNote}</p></aside>
@@ -326,36 +341,191 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
   </section>;
 }
 
-/* ───────────── Library ───────────── */
-function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];reviews:Review[];onArchived:()=>Promise<unknown>;onNavigate:(p:Page)=>void;notify:Notify}){
-  const Lb=T.library;
-  const [q,setQ]=useState(''),[filter,setFilter]=useState<string>('all'),[kind,setKind]=useState<ContentType|'all'>('all'),[open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null);
+/* ───────────── Library (#16): «مكتبتي» — folders → decks → cards ───────────── */
+type Library={folders:Folder[];decks:Deck[]};
+type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string};
+/** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
+function parseLibrary(sub:string):LibView{
+  const [k,id]=sub.split('/');
+  if(k==='f'&&id)return {kind:'folder',id:decodeURIComponent(id)};
+  if(k==='d'&&id)return {kind:'deck',id:decodeURIComponent(id)};
+  return {kind:'root',tab:k==='all'?'all':k==='due'?'due':'folders'};
+}
+const folderPath=(id:string)=>'words/f/'+encodeURIComponent(id),deckPath=(id:string)=>'words/d/'+encodeURIComponent(id);
+/** The default folder/deck are stored with Arabic names; show them in the UI language until the learner renames them. */
+const folderName=(f:Folder)=>f.id===DEFAULT_FOLDER_ID&&f.name===DEFAULT_FOLDER_NAME?T.lib.defaultFolder:f.name;
+const deckName=(d:Deck)=>d.id===DEFAULT_DECK_ID&&d.name===DEFAULT_DECK_NAME?T.lib.defaultDeck:d.name;
+/** Learning languages offered for a deck (BCP-47 → native name). Independent of the AR/EN interface (#19). */
+const LEARN_LANGUAGES:[string,string][]=[['en-US','English (US)'],['en-GB','English (UK)'],['es-ES','Español'],['fr-FR','Français'],['de-DE','Deutsch'],['it-IT','Italiano'],['pt-BR','Português'],['tr-TR','Türkçe'],['ru-RU','Русский'],['zh-CN','中文'],['ja-JP','日本語'],['ko-KR','한국어'],['ar-SA','العربية']];
+const langCode=(tag:string)=>tag.split('-')[0].toUpperCase();
+/** A card's deck, falling back to the default deck when its deck is missing (never dropped). */
+const deckIdOf=(w:Word,lib:Library)=>lib.decks.some(d=>d.id===w.deckId)?w.deckId:DEFAULT_DECK_ID;
+const ZERO={decks:0,cards:0,due:0};
+
+function LibraryPage({words,reviews,lib,sub,onChanged,notify,go}:{words:Word[];reviews:Review[];lib:Library;sub:string;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const view=parseLibrary(sub);
+  // The default folder always exists once loaded, so no folders = IndexedDB not read yet: render nothing rather than a false «not found» or an empty grid.
+  const counts=useMemo(()=>libraryCounts(words,lib.decks),[words,lib.decks]);
+  if(!lib.folders.length)return <div className="page library" aria-busy="true"><PageHead title={T.lib.title}/></div>;
+  const shared={words,reviews,lib,counts,onChanged,notify,go};
+  if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
+  if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
+  return <LibraryRoot tab={view.tab} {...shared}/>;
+}
+type LibShared={words:Word[];reviews:Review[];lib:Library;counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
+
+function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:string)=>void;placeholder:string;label:string}){
+  return <label className="search"><Search size={19}/><span className="visually-hidden">{label}</span><input type="search" dir="auto" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} enterKeyHint="search"/>{value&&<button type="button" className="icon-btn ghost" aria-label={T.library.clearSearch} onClick={()=>onChange('')}><X size={17}/></button>}</label>;
+}
+function Crumbs({items,go}:{items:{label:string;path:string}[];go:(path:string)=>void}){
+  return <nav className="crumbs" aria-label={T.lib.crumbs}><ol>{items.map(i=><li key={i.path}><button type="button" dir="auto" onClick={()=>go(i.path)}>{i.label}</button></li>)}</ol></nav>;
+}
+
+function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{tab:'folders'|'all'|'due'}){
+  const L=T.lib;
+  const [q,setQ]=useState(''),[kind,setKind]=useState<ContentType|'all'>('all'),[newFolder,setNewFolder]=useState(false);
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
-  const tags=useMemo(()=>{const m=new Map<string,number>();for(const w of active)m.set(w.tag,(m.get(w.tag)||0)+1);return [...m].sort((a,b)=>b[1]-a[1]).slice(0,6).map(x=>x[0]);},[active]);
-  const reviewCount=useMemo(()=>{const m=new Map<string,number>();for(const r of reviews)m.set(r.wordId,(m.get(r.wordId)||0)+1);return m;},[reviews]);
+  const now=Date.now(),dueN=active.filter(w=>isDue(w,now)).length;
+  const s=q.trim().toLocaleLowerCase(),has=(x:string)=>x.toLocaleLowerCase().includes(s);
+  const placeOf=useMemo(()=>{const folders=new Map(lib.folders.map(f=>[f.id,f]));return (w:Word)=>{const d=lib.decks.find(x=>x.id===deckIdOf(w,lib));const f=d&&folders.get(d.folderId);return [d?deckName(d):'',f?folderName(f):''];};},[lib]);
+  const cardMatch=(w:Word)=>!s||[w.term,...w.meanings,w.example,w.translation,w.note,...placeOf(w)].some(has);
+  const byNewest=(a:Word,b:Word)=>b.createdAt.localeCompare(a.createdAt);
   const kindCounts=useMemo(()=>{const m=new Map<ContentType,number>();for(const w of active)m.set(w.contentType,(m.get(w.contentType)||0)+1);return m;},[active]);
-  const now=Date.now(),dueCount=active.filter(w=>isDue(w,now)).length;
-  const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(kind==='all'||w.contentType===kind)&&(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,...w.meanings,w.tag,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter,kind]);
-  async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onArchived();notify(Lb.removed(w.term));}catch(e){notify(getError(e),'error');}}
-  return <div className="page">
-    <PageHead title={Lb.title} lead={active.length?Lb.lead(active.length):Lb.leadEmpty}/>
-    {active.length>0&&<div className="library-tools">
-      <label className="search"><Search size={19}/><span className="visually-hidden">{Lb.search}</span><input type="search" dir="auto" value={q} onChange={e=>setQ(e.target.value)} placeholder={Lb.searchPh} enterKeyHint="search"/>{q&&<button type="button" className="icon-btn ghost" aria-label={Lb.clearSearch} onClick={()=>setQ('')}><X size={17}/></button>}</label>
-      <div className="chips" role="group" aria-label={Lb.show}>
-        <button type="button" className={'chip'+(filter==='all'?' on':'')} aria-pressed={filter==='all'} onClick={()=>setFilter('all')}>{Lb.all}</button>
-        <button type="button" className={'chip'+(filter==='due'?' on':'')} aria-pressed={filter==='due'} onClick={()=>setFilter('due')}>{Lb.due} {dueCount>0&&<span className="chip-n">{dueCount}</span>}</button>
-        {tags.length>1&&tags.map(t=><button type="button" key={t} dir="auto" className={'chip'+(filter===t?' on':'')} aria-pressed={filter===t} onClick={()=>setFilter(filter===t?'all':t)}>{tagText(t)}</button>)}
-      </div>
-      {kindCounts.size>1&&<div className="chips kind-chips" role="group" aria-label={T.kindsLabel}>
-        <button type="button" className={'chip'+(kind==='all'?' on':'')} aria-pressed={kind==='all'} onClick={()=>setKind('all')}>{Lb.allKinds}</button>
+  const folders=[...lib.folders].sort((a,b)=>a.id===DEFAULT_FOLDER_ID?-1:b.id===DEFAULT_FOLDER_ID?1:0);
+  const tabs:[typeof tab,string,string][]=[['folders',L.folders,'words'],['all',L.allCards,'words/all'],['due',L.due,'words/due']];
+  async function create(name:string){const f=await createFolder(name);await onChanged();notify(L.created(f.name));setNewFolder(false);go(folderPath(f.id));}
+  let body:ReactNode;
+  if(tab==='folders'&&!s){
+    body=<ul className="folder-grid" aria-label={L.folders}>
+      {folders.map(f=>{const c=counts.folder.get(f.id)??ZERO;return <li key={f.id}><button type="button" className="folder-card" onClick={()=>go(folderPath(f.id))}>
+        <span className="folder-icon" aria-hidden="true"><FolderIcon size={22} strokeWidth={1.8}/></span><b dir="auto">{folderName(f)}</b><small>{L.decksCount(c.decks)} · {L.cardsCount(c.cards)}</small></button></li>;})}
+      <li><button type="button" className="folder-card new" onClick={()=>setNewFolder(true)}><span className="folder-icon" aria-hidden="true"><FolderPlus size={22} strokeWidth={1.8}/></span><b>{L.newFolder}</b></button></li>
+    </ul>;
+  }else if(tab==='folders'){
+    const fs=folders.filter(f=>has(folderName(f))),ds=lib.decks.filter(d=>has(deckName(d))),cs=active.filter(cardMatch).sort(byNewest);
+    body=!fs.length&&!ds.length&&!cs.length?<NoMatch onClear={()=>setQ('')}/>:<div className="results">
+      {fs.length>0&&<section><h2 className="results-title">{L.resultsFolders}</h2><DeckRows items={fs.map(f=>({id:f.id,name:folderName(f),line:`${L.decksCount((counts.folder.get(f.id)??ZERO).decks)} · ${L.cardsCount((counts.folder.get(f.id)??ZERO).cards)}`,icon:'folder',path:folderPath(f.id)}))} go={go}/></section>}
+      {ds.length>0&&<section><h2 className="results-title">{L.resultsDecks}</h2><DeckRows items={ds.map(d=>deckRow(d,counts))} go={go}/></section>}
+      {cs.length>0&&<section><h2 className="results-title">{L.resultsCards}</h2><CardList list={cs} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} showPlace/></section>}
+    </div>;
+  }else{
+    const pool=active.filter(w=>(tab==='all'||isDue(w,now))&&(kind==='all'||w.contentType===kind)&&cardMatch(w)).sort(byNewest);
+    body=<>
+      {tab==='all'&&kindCounts.size>1&&<div className="chips kind-chips" role="group" aria-label={T.kindsLabel}>
+        <button type="button" className={'chip'+(kind==='all'?' on':'')} aria-pressed={kind==='all'} onClick={()=>setKind('all')}>{T.library.allKinds}</button>
         {CONTENT_TYPES.filter(k=>kindCounts.has(k)).map(k=><button type="button" key={k} className={'chip'+(kind===k?' on':'')} aria-pressed={kind===k} onClick={()=>setKind(kind===k?'all':k)}>{kindLabel(k)} <span className="chip-n">{kindCounts.get(k)}</span></button>)}
       </div>}
-    </div>}
-    {!active.length?<div className="empty"><Wash tone="soft"/><BookOpen size={30} strokeWidth={1.6}/><h2>{Lb.emptyTitle}</h2><p>{Lb.emptyBody}</p><button type="button" className="btn btn-ink" onClick={()=>onNavigate('add')}>{T.addCard}<Fwd size={18}/></button></div>
-    :!list.length?<div className="empty small"><Search size={26} strokeWidth={1.6}/><h2>{Lb.noMatchTitle}</h2><p>{Lb.noMatchBody}</p><button type="button" className="btn btn-quiet" onClick={()=>{setQ('');setFilter('all');setKind('all');}}>{Lb.showAll}</button></div>
-    :<ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,n=reviewCount.get(w.id)||0;return <li key={w.id} className={'word'+(isOpen?' open':'')}>
+      {!active.length?<div className="empty"><Wash tone="soft"/><BookOpen size={30} strokeWidth={1.6}/><h2>{T.library.emptyTitle}</h2><p>{T.library.emptyBody}</p><button type="button" className="btn btn-ink" onClick={()=>go('add')}>{T.addCard}<Fwd size={18}/></button></div>
+        :tab==='due'&&!dueN?<div className="empty small"><CalendarClock size={26} strokeWidth={1.6}/><h2>{L.noDueTitle}</h2><p>{L.noDueBody}</p></div>
+        :!pool.length?<NoMatch onClear={()=>{setQ('');setKind('all');}}/>
+        :<CardList list={pool} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} showPlace/>}
+    </>;
+  }
+  return <div className="page library head-inline">
+    <PageHead title={L.title} lead={L.lead}><button type="button" className="icon-btn add-circle" aria-label={L.newFolder} title={L.newFolder} onClick={()=>setNewFolder(true)}><Plus size={22}/></button></PageHead>
+    <div className="library-tools">
+      <SearchBox value={q} onChange={setQ} placeholder={L.searchPh} label={L.search}/>
+      <div className="chips lib-tabs" role="group" aria-label={L.views}>
+        {tabs.map(([id,label,path])=><button type="button" key={id} className={'chip'+(tab===id?' on':'')} aria-pressed={tab===id} onClick={()=>go(path)}>{label}{id==='due'&&dueN>0&&<span className="chip-n">{dueN}</span>}</button>)}
+      </div>
+    </div>
+    {body}
+    <NameSheet open={newFolder} title={L.newFolder} label={L.nameLabel} placeholder={L.folderNamePh} submit={L.create} onSubmit={create} onClose={()=>setNewFolder(false)}/>
+  </div>;
+}
+function NoMatch({onClear}:{onClear:()=>void}){
+  const Lb=T.library;
+  return <div className="empty small"><Search size={26} strokeWidth={1.6}/><h2>{Lb.noMatchTitle}</h2><p>{Lb.noMatchBody}</p><button type="button" className="btn btn-quiet" onClick={onClear}>{Lb.showAll}</button></div>;
+}
+type Row={id:string;name:string;line:ReactNode;icon:'folder'|'deck';path:string;lang?:string};
+function deckRow(d:Deck,counts:ReturnType<typeof libraryCounts>):Row{
+  const c=counts.deck.get(d.id)??{cards:0,due:0};
+  return {id:d.id,name:deckName(d),icon:'deck',path:deckPath(d.id),lang:`${langCode(d.contentLanguage)} → ${langCode(d.meaningLanguage)}`,
+    line:<>{T.lib.cardsCount(c.cards)}{c.due>0&&<> · <em className="due-mini">{T.lib.dueCount(c.due)}</em></>}</>};
+}
+function DeckRows({items,go}:{items:Row[];go:(path:string)=>void}){
+  return <ul className="deck-list">{items.map(r=><li key={r.id}><button type="button" className="deck-row" onClick={()=>go(r.path)}>
+    <span className="folder-icon sm" aria-hidden="true">{r.icon==='folder'?<FolderIcon size={19} strokeWidth={1.8}/>:<Layers3 size={19} strokeWidth={1.8}/>}</span>
+    <span className="deck-text"><b dir="auto">{r.name}</b><small>{r.line}</small></span>
+    {r.lang&&<span className="lang-chip" dir="ltr">{r.lang}</span>}<Fwd size={18}/>
+  </button></li>)}</ul>;
+}
+function NotFound({go}:{go:(path:string)=>void}){
+  return <div className="page"><div className="empty"><Wash tone="soft"/><FolderIcon size={30} strokeWidth={1.6}/><h1 tabIndex={-1} className="empty-h1">{T.lib.notFoundTitle}</h1><p>{T.lib.notFoundBody}</p><button type="button" className="btn btn-ink" onClick={()=>go('words')}>{T.lib.title}<Fwd size={18}/></button></div></div>;
+}
+
+function FolderView({id,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
+  const L=T.lib;
+  const [sheet,setSheet]=useState<null|'deck'|'settings'>(null),[confirmDelete,setConfirmDelete]=useState(false);
+  const folder=lib.folders.find(f=>f.id===id);
+  if(!folder)return <NotFound go={go}/>;
+  const decks=lib.decks.filter(d=>d.folderId===id),c=counts.folder.get(id)??ZERO;
+  const blocked=id===DEFAULT_FOLDER_ID?L.defaultLocked:decks.length?L.folderNotEmpty:'';
+  async function addDeck(v:DeckForm){const d=await createDeck({folderId:id,name:v.name,contentLanguage:v.contentLanguage,meaningLanguage:v.meaningLanguage});await onChanged();notify(L.created(d.name));setSheet(null);go(deckPath(d.id));}
+  async function rename(name:string){await renameFolder(id,name);await onChanged();notify(L.saved);setSheet(null);}
+  async function remove(){setConfirmDelete(false);try{await deleteFolder(id);await onChanged();notify(L.deleted(folderName(folder!)));go('words');}catch(e){notify(getError(e),'error');}}
+  return <div className="page library head-inline">
+    <Crumbs items={[{label:L.title,path:'words'}]} go={go}/>
+    <PageHead title={folderName(folder)} lead={`${L.decksCount(c.decks)} · ${L.cardsCount(c.cards)}`}>
+      <div className="head-actions">
+        <button type="button" className="icon-btn" aria-label={L.folderSettings} title={L.folderSettings} onClick={()=>setSheet('settings')}><MoreHorizontal size={20}/></button>
+        <button type="button" className="icon-btn add-circle" aria-label={L.newDeck} title={L.newDeck} onClick={()=>setSheet('deck')}><Plus size={22}/></button>
+      </div>
+    </PageHead>
+    {decks.length?<DeckRows items={decks.map(d=>deckRow(d,counts))} go={go}/>
+      :<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.folderEmptyTitle}</h2><p>{L.folderEmptyBody}</p></div>}
+    <button type="button" className="deck-row new" onClick={()=>setSheet('deck')}><span className="folder-icon sm" aria-hidden="true"><Plus size={19}/></span><span className="deck-text"><b>{L.newDeck}</b></span></button>
+    <DeckSheet open={sheet==='deck'} title={L.newDeck} lib={lib} submit={L.create} onSubmit={addDeck} onClose={()=>setSheet(null)}/>
+    <NameSheet open={sheet==='settings'} title={L.folderSettings} label={L.nameLabel} placeholder={L.folderNamePh} initial={folderName(folder)} submit={L.save} onSubmit={rename} onClose={()=>setSheet(null)}
+      extra={<DangerZone label={L.deleteFolder} blocked={blocked} onDelete={()=>{setSheet(null);setConfirmDelete(true);}}/>}/>
+    <ConfirmDialog open={confirmDelete} title={L.deleteFolderTitle(folderName(folder))} body={L.deleteEmptyBody} confirm={L.deleteYes} cancel={L.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirmDelete(false)}/>
+  </div>;
+}
+
+function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
+  const L=T.lib;
+  const [q,setQ]=useState(''),[settings,setSettings]=useState(false),[confirmDelete,setConfirmDelete]=useState(false);
+  const deck=lib.decks.find(d=>d.id===id);
+  const cards=useMemo(()=>words.filter(w=>!w.archived&&deckIdOf(w,lib)===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[words,lib,id]);
+  if(!deck)return <NotFound go={go}/>;
+  const folder=lib.folders.find(f=>f.id===deck.folderId);
+  const s=q.trim().toLocaleLowerCase(),list=cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)));
+  const hasAny=words.some(w=>deckIdOf(w,lib)===id); // archived cards still belong to the deck
+  const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:'';
+  async function save(v:DeckForm){await updateDeck(id,v);await onChanged();notify(L.saved);setSettings(false);}
+  async function remove(){setConfirmDelete(false);try{await deleteDeck(id);await onChanged();notify(L.deleted(deckName(deck!)));go(folderPath(deck!.folderId));}catch(e){notify(getError(e),'error');}}
+  return <div className="page library">
+    <Crumbs items={[{label:L.title,path:'words'},...(folder?[{label:folderName(folder),path:folderPath(folder.id)}]:[])]} go={go}/>
+    <PageHead title={deckName(deck)} lead={(c=>c?`${L.cardsCount(cards.length)} · ${L.dueCount(c)}`:L.cardsCount(cards.length))(counts.deck.get(id)?.due??0)}>
+      <div className="head-actions">
+        <span className="lang-chip" dir="ltr" title={`${deck.contentLanguage} → ${deck.meaningLanguage}`}>{langCode(deck.contentLanguage)} → {langCode(deck.meaningLanguage)}</span>
+        <button type="button" className="icon-btn" aria-label={L.deckSettings} title={L.deckSettings} onClick={()=>setSettings(true)}><MoreHorizontal size={20}/></button>
+      </div>
+    </PageHead>
+    <div className="deck-actions"><button type="button" className="btn btn-ink" onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
+    {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
+    {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
+      :!list.length?<NoMatch onClear={()=>setQ('')}/>
+      :<CardList list={list} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify}/>}
+    <DeckSheet open={settings} title={L.deckSettings} lib={lib} deck={deck} submit={L.save} onSubmit={save} onClose={()=>setSettings(false)}
+      extra={<DangerZone label={L.deleteDeck} blocked={blocked} onDelete={()=>{setSettings(false);setConfirmDelete(true);}}/>}/>
+    <ConfirmDialog open={confirmDelete} title={L.deleteDeckTitle(deckName(deck))} body={L.deleteEmptyBody} confirm={L.deleteYes} cancel={L.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirmDelete(false)}/>
+  </div>;
+}
+
+/** Cards list with the existing details (simplified in #25). Moving a card keeps its schedule and history. */
+function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word[];reviews:Review[];lib:Library;onChanged:()=>Promise<unknown>;notify:Notify;showPlace?:boolean}){
+  const Lb=T.library,L=T.lib;
+  const [open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null),[moving,setMoving]=useState<Word|null>(null);
+  const reviewCount=useMemo(()=>{const m=new Map<string,number>();for(const r of reviews)m.set(r.wordId,(m.get(r.wordId)||0)+1);return m;},[reviews]);
+  const now=Date.now();
+  const place=(w:Word)=>{const d=lib.decks.find(x=>x.id===deckIdOf(w,lib));const f=d&&lib.folders.find(x=>x.id===d.folderId);return d?(f?`${folderName(f)} · ${deckName(d)}`:deckName(d)):'';};
+  async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onChanged();notify(Lb.removed(w.term));}catch(e){notify(getError(e),'error');}}
+  async function move(deckId:string){const w=moving;if(!w)return;await moveWord(w.id,deckId);await onChanged();const d=lib.decks.find(x=>x.id===deckId);notify(L.moved(w.term,d?deckName(d):''));setMoving(null);}
+  return <>
+    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,n=reviewCount.get(w.id)||0;return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span></span>
+        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
@@ -364,11 +534,78 @@ function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];re
         {w.translation&&<p className="translation" dir="auto">{w.translation}</p>}
         {w.note&&<p className="note"><b>{T.kindForm[w.contentType].note?.label||Lb.noteFallback}</b> <span dir="auto">{w.note}</span></p>}
         <dl className="word-meta"><div><dt>{Lb.kind}</dt><dd>{kindLabel(w.contentType)}</dd></div><div><dt>{Lb.tag}</dt><dd dir="auto">{tagText(w.tag)}</dd></div><div><dt>{Lb.stage}</dt><dd>{T.stages[stageOf(w)]}</dd></div><div><dt>{Lb.reviewed}</dt><dd>{n?T.times(n):Lb.notYet}</dd></div><div><dt>{Lb.next}</dt><dd>{due?T.now:localDate(w.dueAt)}</dd></div></dl>
-        <div className="word-actions"><SpeakButton text={w.term} label={T.listen(w.term)} className="btn btn-quiet sm"/><button type="button" className="btn btn-quiet sm danger" onClick={()=>setPending(w)}><Trash2 size={16}/>{Lb.remove}</button></div>
+        <div className="word-actions"><SpeakButton text={w.term} label={T.listen(w.term)} className="btn btn-quiet sm"/><button type="button" className="btn btn-quiet sm" onClick={()=>setMoving(w)}><FolderInput size={16}/>{L.move}</button><button type="button" className="btn btn-quiet sm danger" onClick={()=>setPending(w)}><Trash2 size={16}/>{Lb.remove}</button></div>
       </div>}
-    </li>;})}</ul>}
+    </li>;})}</ul>
     <ConfirmDialog open={!!pending} title={Lb.removeTitle(pending?.term||'')} body={Lb.removeBody} confirm={Lb.removeYes} cancel={Lb.removeNo} onConfirm={()=>void confirmArchive()} onCancel={()=>setPending(null)}/>
-  </div>;
+    <MoveSheet word={moving} lib={lib} onMove={move} onClose={()=>setMoving(null)}/>
+  </>;
+}
+
+/* ── Sheets (native <dialog>: focus trap, Esc, backdrop) ── */
+function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode}){
+  const ref=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{const d=ref.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
+  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby={ref.current?undefined:'fs-title'}>
+    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} noValidate>
+      <h2 id="fs-title">{title}</h2>
+      <div className="sheet-fields">{children}</div>
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
+      {extra}
+    </form>}
+  </dialog>;
+}
+function useSheetAction(open:boolean){
+  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{if(open){setError('');setBusy(false);}},[open]);
+  const run=async(fn:()=>Promise<void>)=>{setBusy(true);setError('');try{await fn();}catch(e){setError(getError(e));}finally{setBusy(false);}};
+  return {busy,error,run};
+}
+function NameSheet({open,title,label,placeholder,initial='',submit,onSubmit,onClose,extra}:{open:boolean;title:string;label:string;placeholder:string;initial?:string;submit:string;onSubmit:(name:string)=>Promise<void>;onClose:()=>void;extra?:ReactNode}){
+  const [name,setName]=useState(initial),{busy,error,run}=useSheetAction(open);
+  useEffect(()=>{if(open)setName(initial);},[open,initial]);
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra}>
+    <div className="field"><label htmlFor="sheet-name">{label}</label><input id="sheet-name" dir="auto" autoFocus maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
+  </FormSheet>;
+}
+type DeckForm={name:string;folderId:string;contentLanguage:string;meaningLanguage:string};
+function LanguageSelect({id,value,onChange}:{id:string;value:string;onChange:(v:string)=>void}){
+  const options=LEARN_LANGUAGES.some(([t])=>t===value)?LEARN_LANGUAGES:[...LEARN_LANGUAGES,[value,value] as [string,string]];
+  return <select id={id} className="select" value={value} onChange={e=>onChange(e.target.value)}>{options.map(([t,n])=><option key={t} value={t} lang={t}>{n}</option>)}</select>;
+}
+function DeckSheet({open,title,lib,deck,submit,onSubmit,onClose,extra}:{open:boolean;title:string;lib:Library;deck?:Deck;submit:string;onSubmit:(v:DeckForm)=>Promise<void>;onClose:()=>void;extra?:ReactNode}){
+  const L=T.lib;
+  const blank=():DeckForm=>({name:deck?deckName(deck):'',folderId:deck?.folderId??DEFAULT_FOLDER_ID,contentLanguage:deck?.contentLanguage??'en-US',meaningLanguage:deck?.meaningLanguage??'ar-SA'});
+  const [v,setV]=useState<DeckForm>(blank),{busy,error,run}=useSheetAction(open);
+  useEffect(()=>{if(open)setV(blank());},[open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set=(k:keyof DeckForm)=>(x:string)=>setV(o=>({...o,[k]:x}));
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra}>
+    <div className="field"><label htmlFor="deck-name">{L.nameLabel}</label><input id="deck-name" dir="auto" autoFocus maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
+    {deck&&<div className="field"><label htmlFor="deck-folder">{L.folderLabel}</label><select id="deck-folder" className="select" value={v.folderId} onChange={e=>set('folderId')(e.target.value)}>{lib.folders.map(f=><option key={f.id} value={f.id}>{folderName(f)}</option>)}</select></div>}
+    <div className="field"><label htmlFor="deck-content-lang">{L.contentLang}</label><LanguageSelect id="deck-content-lang" value={v.contentLanguage} onChange={set('contentLanguage')}/><p className="hint">{L.langHint}</p></div>
+    <div className="field"><label htmlFor="deck-meaning-lang">{L.meaningLang}</label><LanguageSelect id="deck-meaning-lang" value={v.meaningLanguage} onChange={set('meaningLanguage')}/></div>
+  </FormSheet>;
+}
+/** Delete is offered only when it cannot lose anything; otherwise the reason is shown instead (no cascade, #15). */
+function DangerZone({label,blocked,onDelete}:{label:string;blocked:string;onDelete:()=>void}){
+  return <div className="danger-zone">{blocked?<p className="hint">{blocked}</p>:<button type="button" className="btn btn-quiet sm danger" onClick={onDelete}><Trash2 size={16}/>{label}</button>}</div>;
+}
+function DeckOptions({lib}:{lib:Library}){
+  return <>{lib.folders.map(f=>{const ds=lib.decks.filter(d=>d.folderId===f.id);return ds.length?<optgroup key={f.id} label={folderName(f)}>{ds.map(d=><option key={d.id} value={d.id}>{deckName(d)}</option>)}</optgroup>:null;})}</>;
+}
+function MoveSheet({word,lib,onMove,onClose}:{word:Word|null;lib:Library;onMove:(deckId:string)=>Promise<void>;onClose:()=>void}){
+  const L=T.lib,open=!!word;
+  const [target,setTarget]=useState(''),{busy,error,run}=useSheetAction(open);
+  useEffect(()=>{if(word)setTarget(deckIdOf(word,lib));},[word]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <FormSheet open={open} title={L.moveTitle(word?.term||'')} onClose={onClose} onSubmit={()=>void run(()=>onMove(target))} submit={L.move} busy={busy||!word||target===deckIdOf(word,lib)} error={error}>
+    <div className="field"><label htmlFor="move-deck">{L.moveTo}</label><select id="move-deck" className="select" value={target} onChange={e=>setTarget(e.target.value)}><DeckOptions lib={lib}/></select><p className="hint">{L.moveNote}</p></div>
+  </FormSheet>;
+}
+/** #16: where a new card is saved, visible before saving. */
+function DeckPicker({lib,value,onChange}:{lib:Library;value:string;onChange:(id:string)=>void}){
+  if(!lib.decks.length)return null;
+  return <div className="field deck-picker"><label htmlFor="add-deck">{T.lib.destination}</label><select id="add-deck" className="select" value={value} onChange={e=>onChange(e.target.value)}><DeckOptions lib={lib}/></select></div>;
 }
 
 /* ───────────── Progress / stats ───────────── */
@@ -589,21 +826,21 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
 export default function App(){
   const [locale,setLocaleState]=useState<Locale>(storedLocale);
   T=dictionaries[locale];
-  const [page,setPage]=useState<Page>(readHash),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [online,setOnline]=useState(()=>navigator.onLine),[toast,setToast]=useState<{id:number;text:string;tone:'ok'|'error'}|null>(null),[lastBackup,setLastBackup]=useState<string|null>(null),[installPrompt,setInstallPrompt]=useState<InstallPrompt|null>(null);
   const first=useRef(true);
   const latest=useRef(0),[loadedOnce,setLoadedOnce]=useState(false);
   const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
     // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.
     const ticket=++latest.current;
-    try{const [w,r]=await Promise.all([listWords(),listReviews()]);if(ticket===latest.current){setWords(w);setReviews(r);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
+    try{const [w,r,l]=await Promise.all([listWords(),listReviews(),listLibrary()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
     catch(e){if(ticket===latest.current)setError(getError(e));return null;}
     finally{if(ticket===latest.current)setLoading(false);}
   },[]);
   useEffect(()=>{
     void fetchLocal();void lastBackupDate().then(setLastBackup).catch(()=>null);
     // #4: iOS PWAs often resume without a window "focus" event, so also refresh on visibility/pageshow and on writes from other tabs.
-    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>setPage(readHash()),on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
+    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>{setPage(readHash());setSub(readSub());},on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
     const stopListening=onOtherTabChange(()=>{void fetchLocal();});
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
     window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
@@ -619,11 +856,15 @@ export default function App(){
     const main=document.querySelector('main'),active=document.activeElement;
     if(main&&active&&active!==document.body&&main.contains(active)&&!active.matches('h1'))return;
     main?.querySelector<HTMLElement>('h1')?.focus({preventScroll:true});
-  });},[page,locale]);
+  });},[page,sub,locale]);
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});},[locale]);
-  const navigate=(to:Page)=>{if(to===page){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
+  const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
+  const go=useCallback((path:string)=>{window.location.hash='/'+path;},[]);
+  // #9 (contextual +): inside a deck, + adds a card to that deck directly, with no intermediate menu.
+  const ctxView=page==='words'?parseLibrary(sub):null,ctxDeck=ctxView?.kind==='deck'&&lib.decks.some(d=>d.id===ctxView.id)?ctxView.id:null;
+  const onAdd=(e:{currentTarget:HTMLElement})=>{if(ctxDeck)go('add/'+encodeURIComponent(ctxDeck));else openQuick(e);};
   const due=summary(words,reviews).dueNow;
   const nextDue=useMemo(()=>{const t=Date.now();return words.filter(w=>!w.archived&&Date.parse(w.dueAt)>t).map(w=>w.dueAt).sort()[0]??null;},[words]);
   const [quickOpen,setQuickOpen]=useState(false);
@@ -636,9 +877,9 @@ export default function App(){
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label={T.loading}><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
   else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>{T.fatalTitle}</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>{T.tryAgain}</button></div>;
   else content=page==='home'?<HomePage words={words} reviews={reviews} lastBackup={lastBackup} onNavigate={navigate}/>
-    :page==='add'?<AddPage words={words} onSaved={fetchLocal} notify={notify} onNavigate={navigate}/>
+    :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage words={words} onReviewed={fetchLocal} onNavigate={navigate}/>
-    :page==='words'?<WordsPage words={words} reviews={reviews} onArchived={fetchLocal} onNavigate={navigate} notify={notify}/>
+    :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
     :page==='stats'?<StatsPage words={words} reviews={reviews} onNavigate={navigate}/>
     :<SettingsPage words={words} online={online} lastBackup={lastBackup} setLastBackup={setLastBackup} installPrompt={installPrompt} onInstalled={()=>setInstallPrompt(null)} onRestored={fetchLocal} notify={notify} locale={locale} onLocale={changeLocale}/>;
 
@@ -648,7 +889,7 @@ export default function App(){
     <aside className="rail">
       <a href="#/" className="rail-brand" aria-label={T.homeLink}><Logo/></a>
       <p className="rail-tagline">{T.tagline}</p>
-      <button type="button" className="btn btn-ink rail-add" aria-haspopup="dialog" aria-expanded={quickOpen} onClick={openQuick}><Plus size={18}/>{T.addOrReview}</button>
+      <button type="button" className="btn btn-ink rail-add" aria-haspopup={ctxDeck?undefined:'dialog'} aria-expanded={ctxDeck?undefined:quickOpen} onClick={onAdd}><Plus size={18}/>{ctxDeck?T.lib.addCard:T.addOrReview}</button>
       <nav aria-label={T.navMain}><ul>{navItems.map(item=><li key={item.id}><button type="button" onClick={()=>navigate(item.id)} className={'rail-link'+(page===item.id?' on':'')} aria-current={page===item.id?'page':undefined}><item.icon size={20} strokeWidth={1.8}/><span>{T.nav[item.id]}</span>{item.id==='review'&&due>0&&<b className="count" aria-label={T.dueBadge(due)}>{due}</b>}</button></li>)}</ul></nav>
       <div className="rail-foot"><span className={'net'+(online?'':' off')}>{online?<Wifi size={14}/>:<WifiOff size={14}/>}{online?T.online:T.offline}</span><button type="button" className="rail-privacy" onClick={()=>navigate('settings')}><ShieldCheck size={14} aria-hidden="true"/>{T.settings.privacyTitle}</button></div>
     </aside>
@@ -669,7 +910,7 @@ export default function App(){
     </div>
     <nav className="tabbar" aria-label={T.navTabs}>
       {(['home','review','add','words','stats'] as Page[]).map(id=>{
-        if(id==='add')return <button key={id} type="button" className="tab-add" aria-haspopup="dialog" aria-expanded={quickOpen} onClick={openQuick} aria-label={T.quickLabel} aria-current={page==='add'?'page':undefined}><Plus size={26}/></button>;
+        if(id==='add')return <button key={id} type="button" className="tab-add" aria-haspopup={ctxDeck?undefined:'dialog'} aria-expanded={ctxDeck?undefined:quickOpen} onClick={onAdd} aria-label={ctxDeck?T.lib.addCard:T.quickLabel} aria-current={page==='add'?'page':undefined}><Plus size={26}/></button>;
         const item=navItems.find(n=>n.id===id)!;
         return <button key={id} type="button" className={'tab'+(page===id?' on':'')} aria-current={page===id?'page':undefined} onClick={()=>navigate(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{T.nav[id]}</span></button>;
       })}
