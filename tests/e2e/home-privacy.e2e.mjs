@@ -7,7 +7,13 @@ let server;
 before(async()=>{server=await startServer();});
 after(async()=>{await server?.stop();});
 
-const H=3_600_000,D=86_400_000;
+const H=3_600_000,D=86_400_000,RIYADH=3*H; // Asia/Riyadh is UTC+3 all year (no DST)
+/** Labels such as «بكرة» and «أضفتها اليوم» follow Riyadh calendar days, so offsets must not depend on the hour the suite runs. */
+const sinceRiyadhMidnight=()=>(Date.now()+RIYADH)%D;
+/** ≥24h ahead (the app shows hours below that) yet still tomorrow in Riyadh — always «بكرة», whatever the current hour. */
+const tomorrowAfter24h=()=>D+Math.min(H,(D-sinceRiyadhMidnight())/2);
+/** An age that is always earlier today in Riyadh (never yesterday), even just after midnight. */
+const earlierToday=()=>Math.min(2*H,sinceRiyadhMidnight()/2);
 /** Seed cards: [term, contentType, dueInMs, ageMs]. */
 const seed=(page,cards)=>page.evaluate(cards=>new Promise(res=>{
   const now=Date.now(),iso=ms=>new Date(ms).toISOString();
@@ -38,7 +44,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
 
     await t.test('HOME-01 one card, nothing due: last added shown; next review lives in the hero only',async()=>{
       const {context,page}=await freshPage(browser,base());
-      await seed(page,[['serendipity','vocabulary',D+H,2*H]]);await page.reload();await page.waitForSelector('.facts');
+      await seed(page,[['serendipity','vocabulary',tomorrowAfter24h(),earlierToday()]]);await page.reload();await page.waitForSelector('.facts');
       const last=page.locator('[data-home=last-added]');
       assert.match(await last.innerText(),/serendipity/);
       assert.match(await last.innerText(),/أضفتها اليوم/);
