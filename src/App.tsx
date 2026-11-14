@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,deleteDeck,deleteFolder,editWord,isContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
@@ -544,7 +544,7 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
           <button type="button" className="btn btn-quiet sm" onClick={()=>setEditing(w)}><Pencil size={16}/>{C.edit}</button>
           <button type="button" className="icon-btn more-btn" aria-haspopup="dialog" aria-label={C.more(w.term)} title={C.more(w.term)} onClick={()=>setMenu(w)}><MoreHorizontal size={20}/></button>
         </div>
-        <details className="learn-details">
+        <details className="learn-details" onToggle={e=>{const d=e.currentTarget;if(d.open)requestAnimationFrame(()=>d.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}}>
           <summary>{C.learn}</summary>
           <dl className="word-meta">
             <div><dt>{C.stage}</dt><dd>{T.stages[stageOf(w)]}</dd></div>
@@ -570,7 +570,7 @@ function ActionSheet({word,onClose,onMove,onRemove}:{word:Word|null;onClose:()=>
       <h2 id="as-title">{C.moreTitle(word.term)}</h2>
       <div className="action-list">
         <button type="button" className="action-row" onClick={()=>onMove(word)}><FolderInput size={20} aria-hidden="true"/>{C.move}</button>
-        <button type="button" className="action-row danger" onClick={()=>onRemove(word)}><Trash2 size={20} aria-hidden="true"/>{C.remove}</button>
+        <button type="button" className="action-row archive" onClick={()=>onRemove(word)}><Archive size={20} aria-hidden="true"/>{C.remove}</button>
       </div>
       <div className="sheet-actions"><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
     </>}

@@ -68,22 +68,36 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.deepEqual(errors,[]);await context.close();
     });
 
-    await t.test('CARD-03: Remove is in the ••• sheet, needs confirmation, and archives (never deletes)',async()=>{
+    await t.test('CARD-03: Archive is in the ••• sheet, says it is not a deletion, needs confirmation, and only archives',async()=>{
       const {context,page,errors}=await freshPage(browser,base());
       await addCard(page,base(),'resilient','مرن');await page.getByRole('status').filter({hasText:'«resilient»'}).waitFor();
       await open(page,'resilient');
       await page.getByRole('button',{name:'خيارات أكثر لـ«resilient»'}).click();
       const sheet=page.getByRole('dialog',{name:'وش تبي تسوي بـ«resilient»؟'});await sheet.waitFor();
-      await sheet.getByRole('button',{name:'شيلها من مكتبتي'}).click();
-      const confirm=page.getByRole('dialog',{name:'تبي تشيل «resilient»؟'});await confirm.waitFor();
+      await sheet.getByRole('button',{name:'أرشفها (بدون حذف)'}).click();
+      const confirm=page.getByRole('dialog',{name:'تأرشف «resilient»؟'});await confirm.waitFor();
+      assert.match(await confirm.innerText(),/الأرشفة مو حذف/);assert.ok(!/(احذف|حذفنا|شيل)/.test(await confirm.innerText()),'no deletion wording');
       await confirm.getByRole('button',{name:'لا، خلها'}).click();
       assert.equal((await raw(page)).words[0].archived,false,'cancel keeps the card');
-      await page.getByRole('button',{name:'خيارات أكثر لـ«resilient»'}).click();await sheet.getByRole('button',{name:'شيلها من مكتبتي'}).click();
-      await confirm.getByRole('button',{name:'إيه، شيلها'}).click();
-      await page.getByRole('status').filter({hasText:'«resilient»'}).waitFor();
+      await page.getByRole('button',{name:'خيارات أكثر لـ«resilient»'}).click();await sheet.getByRole('button',{name:'أرشفها (بدون حذف)'}).click();
+      await confirm.getByRole('button',{name:'إيه، أرشفها'}).click();
+      await page.getByRole('status').filter({hasText:'أرشفنا «resilient»'}).waitFor();
       const w=(await raw(page)).words;
       assert.equal(w.length,1,'still stored');assert.equal(w[0].archived,true);
       await page.locator('main .empty').waitFor();
+      assert.deepEqual(errors,[]);await context.close();
+    });
+
+    await t.test('CARD-04: opening «تفاصيل التعلم» on the last card scrolls it fully above the bottom tab bar',async()=>{
+      const {context,page,errors}=await freshPage(browser,base());
+      await data(page,async m=>{for(let i=0;i<12;i++)await m.addWord({contentType:'vocabulary',term:'term'+String(i).padStart(2,'0'),meaning:'معنى '+i,example:'',translation:'',note:'',tag:''});});
+      await page.goto(base()+'/#/words/all');await page.reload();await page.locator('.word-list .word').nth(11).waitFor();
+      const last=page.locator('.word-list .word').last();
+      await last.locator('.word-main').click();
+      await page.evaluate(()=>{const s=document.querySelector('.word-list .word:last-child summary');window.scrollTo(0,s.getBoundingClientRect().top+scrollY-innerHeight+150);});
+      await last.locator('summary').click();await page.waitForTimeout(700);
+      const r=await page.evaluate(()=>{const bar=document.querySelector('.tabbar').getBoundingClientRect(),d=document.querySelector('.word-list .word:last-child details').getBoundingClientRect();return {bar:bar.top,end:d.bottom,top:d.top};});
+      assert.ok(r.end<=r.bar+0.5,`details end at ${r.end}, tab bar at ${r.bar}`);assert.ok(r.top>=0);
       assert.deepEqual(errors,[]);await context.close();
     });
   });
