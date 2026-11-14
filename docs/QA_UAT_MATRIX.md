@@ -1,3 +1,5 @@
+> **HISTORICAL V1 REFERENCE — superseded where conflicting by [QA_UAT_MATRIX_V2.md](QA_UAT_MATRIX_V2.md), prepared 14 Nov 2026.** This earlier file reflects staging work #4–#12 and does not authorize reverting the owner-approved unified Add UX #26, changing FSRS/data, implementing Future issues or promoting Production. Follow root [CLAUDE.md](../CLAUDE.md) and the V2 documents first.
+
 # WordLoop — QA / UAT Acceptance Matrix
 
 **Purpose:** objective test gate for Claude's implementation against Issues [#4–#13](https://github.com/Nf24-AI/wordloop/issues). Companion contract: [CLAUDE_IMPLEMENTATION_BRIEF.md](CLAUDE_IMPLEMENTATION_BRIEF.md).

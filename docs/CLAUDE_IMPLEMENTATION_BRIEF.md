@@ -1,3 +1,5 @@
+> **HISTORICAL V1 REFERENCE — superseded where conflicting by [CLAUDE_IMPLEMENTATION_BRIEF_V2.md](CLAUDE_IMPLEMENTATION_BRIEF_V2.md), prepared 14 Nov 2026.** This earlier file reflects staging work #4–#12 and does not authorize reverting the owner-approved unified Add UX #26, changing FSRS/data, implementing Future issues or promoting Production. Follow root [CLAUDE.md](../CLAUDE.md) and the V2 documents first.
+
 # WordLoop — Claude Implementation Handoff
 **Owner:** WordLoop Product Owner  
 **Prepared by:** ChatGPT — product analysis, technical review, acceptance criteria  
