@@ -110,7 +110,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const sent=[];
       page.on('request',r=>{const u=new URL(r.url());if(r.method()!=='GET'||u.pathname.startsWith('/api/'))sent.push(`${r.method()} ${u.pathname} ${r.postData()||''}`);});
       await addCard(page,base(),'clandestine','سري');await page.waitForSelector('.toast');
-      await page.goto(base()+'/#/words');await page.waitForSelector('.word-list');
+      await page.goto(base()+'/#/words/all');await page.waitForSelector('.word-list');
       await page.goto(base()+'/#/');await page.waitForSelector('[data-home=last-added]');
       await page.goto(base()+'/#/stats');await page.waitForSelector('main h1');
       assert.deepEqual(sent,[],'no POST and no /api calls without push enabled');

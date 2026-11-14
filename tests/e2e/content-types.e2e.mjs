@@ -32,7 +32,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const rows=await stored(page);
       assert.deepEqual(Object.fromEntries(rows.map(w=>[w.term,w.contentType])),{'overlook':'vocabulary','in charge of':'phrase','I forgot my keys at home, so I had to go back.':'sentence','break the ice':'idiom'});
       assert.equal(rows.find(w=>w.contentType==='idiom').note,'ما له علاقة بالثلج');
-      await page.goto(base()+'/#/words');await page.waitForSelector('.word-list');
+      await page.goto(base()+'/#/words/all');await page.waitForSelector('.word-list');
       const badges=await page.locator('.word-list .kind-badge').allTextContents();
       assert.deepEqual(badges.sort(),['تعبير اصطلاحي','جملة','عبارة','مفردة'].sort());
       await page.locator('.word-main',{hasText:'break the ice'}).click();
@@ -93,7 +93,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const {context,page}=await freshPage(browser,base());
       await addTyped(page,base(),'vocabulary',{term:'overlook',meaning:'يغفل عن'});
       await addTyped(page,base(),'idiom',{term:'break the ice',meaning:'يكسر الحاجز'});
-      await page.goto(base()+'/#/words');await page.waitForSelector('.word-list');
+      await page.goto(base()+'/#/words/all');await page.waitForSelector('.word-list');
       await page.getByRole('group',{name:'نوع البطاقة'}).getByRole('button',{name:/تعبير اصطلاحي/}).click();
       await page.locator('.word-list .word').nth(1).waitFor({state:'detached'});
       assert.deepEqual(await libraryTerms(page,base(),{navigate:false}),['break the ice']);
@@ -130,7 +130,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const now=new Date().toISOString();
       const legacy={id:'legacy-1',term:'legacy',meaning:'قديم',example:'',translation:'',tag:'عام',createdAt:now,updatedAt:now,dueAt:now,fsrsState:{cardId:'legacy-1',dueAt:now},archived:false,revision:0};
       await page.evaluate(w=>new Promise(res=>{const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const tx=r.result.transaction('words','readwrite');tx.objectStore('words').put(w);tx.oncomplete=()=>{r.result.close();res();};};}),legacy);
-      await page.goto(base()+'/#/words');await page.reload();
+      await page.goto(base()+'/#/words/all');await page.reload();
       await page.locator('.word-list .kind-badge',{hasText:'مفردة'}).waitFor();
       const v1={app:'wordloop',version:1,exportedAt:now,words:[{...legacy,id:'from-file',term:'restored',fsrsState:{cardId:'from-file',dueAt:now}}],reviews:[{id:'r1',wordId:'from-file',grade:'good',reviewedAt:now,nextDueAt:now}]};
       await page.goto(base()+'/#/settings');await page.waitForSelector('input[type=file]',{state:'attached'});

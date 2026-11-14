@@ -47,7 +47,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
 
     await t.test('Library header has no add button; Add stays reachable through +',async()=>{
       const {context,page}=await freshPage(browser,base());
-      await seed(page,{due:true});await page.goto(base()+'/#/words');await page.reload();await page.waitForSelector('.word-list');
+      await seed(page,{due:true});await page.goto(base()+'/#/words/all');await page.reload();await page.waitForSelector('.word-list');
       assert.equal(await mainAddButtons(page),0);
       await page.click('.tab-add');
       await page.locator('[data-action=add]').click();
@@ -57,14 +57,14 @@ for(const [name,engine] of Object.entries(ENGINES)){
 
     await t.test('NAV-03: + opens the sheet; Add and Review route correctly; Back returns to the previous page',async()=>{
       const {context,page}=await freshPage(browser,base());
-      await seed(page,{due:true});await page.goto(base()+'/#/words');await page.reload();await page.waitForSelector('.word-list');
+      await seed(page,{due:true});await page.goto(base()+'/#/words/all');await page.reload();await page.waitForSelector('.word-list');
       const sheet=page.getByRole('dialog',{name:'وش تبي تسوي؟'});
       await page.click('.tab-add');await sheet.waitFor();
       assert.equal(await page.getAttribute('.tab-add','aria-expanded'),'true');
       await page.locator('[data-action=review]').click();
       await sheet.waitFor({state:'hidden'});
       assert.equal(await hashOf(page),'#/review');
-      await page.goBack();await page.waitForFunction(()=>location.hash==='#/words');
+      await page.goBack();await page.waitForFunction(()=>location.hash==='#/words/all');
       await page.click('.tab-add');await sheet.waitFor();
       await page.locator('[data-action=add]').click();
       assert.equal(await hashOf(page),'#/add');

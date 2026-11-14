@@ -28,7 +28,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       // Wait for the reloaded app's IndexedDB hydration and route transition, not a fixed 150ms.
       // WebKit CI can display the previous route's heading before the Library data is rendered.
       // A genuinely missing card still fails when the third Library row never appears.
-      await page.goto(base()+'/#/words');
+      await page.goto(base()+'/#/words/all');
       try{await page.locator('.word-list .word-text b').nth(2).waitFor({timeout:10000});}
       catch(e){
         // Diagnose CI-only failures: is the card missing from storage (data loss) or only from the UI?
@@ -86,7 +86,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
     await t.test('SAVE-06: new card is findable by search and the due filter; clearing filters shows all',async()=>{
       const {context,page}=await freshPage(browser,base());
       for(const [term,m] of [['overlook','يغفل عن'],['reliable','موثوق']]){await addCard(page,base(),term,m);await page.getByRole('status').filter({hasText:`«${term}»`}).waitFor();}
-      await page.goto(base()+'/#/words');await page.locator('.word-list .word').nth(1).waitFor(); // both cards listed before typing
+      await page.goto(base()+'/#/words/all');await page.locator('.word-list .word').nth(1).waitFor(); // both cards listed before typing
       await page.fill('input[type=search]','relia');
       await page.locator('.word-list .word').nth(1).waitFor({state:'detached'});
       assert.deepEqual(await libraryTerms(page,base(),{navigate:false}),['reliable']);
@@ -99,7 +99,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
 
     await t.test('another open window refreshes after a save there (no focus event needed)',async()=>{
       const {context,page}=await freshPage(browser,base());
-      const other=await context.newPage();await other.goto(base()+'/#/words');await other.waitForSelector('main h1');
+      const other=await context.newPage();await other.goto(base()+'/#/words/all');await other.waitForSelector('main h1');
       await addCard(page,base(),'meanwhile','في الأثناء');
       await page.getByRole('status').filter({hasText:'«meanwhile»'}).waitFor();
       await other.locator('.word-list .word-text b',{hasText:'meanwhile'}).waitFor({timeout:3000});
@@ -109,7 +109,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
     await t.test('returning to a backgrounded app (visibilitychange only) reloads from IndexedDB',async()=>{
       const {context,page}=await freshPage(browser,base());
       await addCard(page,base(),'overlook','يغفل عن');await page.getByRole('status').filter({hasText:'حفظنا'}).waitFor();
-      await page.goto(base()+'/#/words');await page.waitForSelector('.word-list');
+      await page.goto(base()+'/#/words/all');await page.waitForSelector('.word-list');
       // Write directly to IndexedDB (as another context would), with no broadcast, then simulate resume.
       await page.evaluate(()=>new Promise((res,rej)=>{const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const db=r.result;const tx=db.transaction('words','readwrite');const s=tx.objectStore('words');
         s.getAll().onsuccess=e=>{const w={...e.target.result[0],id:'external-1',term:'external',createdAt:new Date().toISOString()};w.fsrsState={...w.fsrsState,cardId:'external-1'};s.put(w);};tx.oncomplete=()=>{db.close();res();};tx.onerror=()=>rej(tx.error);};}));
