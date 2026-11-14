@@ -422,7 +422,7 @@ function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShare
     </>;
   }
   return <div className="page library head-inline">
-    <PageHead title={L.title} lead={L.lead}><button type="button" className="icon-btn add-circle" aria-label={L.newFolder} title={L.newFolder} onClick={()=>setNewFolder(true)}><Plus size={22}/></button></PageHead>
+    <PageHead title={L.title} lead={L.lead}><button type="button" className="btn btn-ink head-add" onClick={()=>setNewFolder(true)}><FolderPlus size={18} aria-hidden="true"/>{L.newFolder}</button></PageHead>
     <div className="library-tools">
       <SearchBox value={q} onChange={setQ} placeholder={L.searchPh} label={L.search}/>
       <div className="chips lib-tabs" role="group" aria-label={L.views}>
@@ -469,7 +469,7 @@ function FolderView({id,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
     <PageHead title={folderName(folder)} lead={`${L.decksCount(c.decks)} · ${L.cardsCount(c.cards)}`}>
       <div className="head-actions">
         <button type="button" className="icon-btn" aria-label={L.folderSettings} title={L.folderSettings} onClick={()=>setSheet('settings')}><MoreHorizontal size={20}/></button>
-        <button type="button" className="icon-btn add-circle" aria-label={L.newDeck} title={L.newDeck} onClick={()=>setSheet('deck')}><Plus size={22}/></button>
+        <button type="button" className="btn btn-ink head-add" onClick={()=>setSheet('deck')}><Plus size={18} aria-hidden="true"/>{L.newDeck}</button>
       </div>
     </PageHead>
     {decks.length?<DeckRows items={decks.map(d=>deckRow(d,counts))} go={go}/>

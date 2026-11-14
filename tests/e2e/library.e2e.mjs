@@ -32,6 +32,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(cards.length,2,'only the real default folder + the new-folder tile');
       assert.match(cards[0],/غير مصنفة/);assert.match(cards[0],/حزمة وحدة · ولا بطاقة/);
       assert.match(cards[1],/مجلد جديد/);
+      assert.equal(await page.locator('.page-head').getByRole('button',{name:'مجلد جديد'}).count(),1,'the top button says what it does');
       const [a,b]=await rects(page,'.folder-grid .folder-card');
       assert.ok(Math.abs(a.y-b.y)<1,'two columns on one row at 390px');
       assert.ok(a.width>=140&&b.width>=140);
@@ -49,6 +50,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
         assert.match(await hashOf(page),/^#\/words\/f\//);
       }
       // Inside «إدارة المشاريع» (last created): two decks, the second with Spanish content.
+      assert.equal(await page.locator('.page-head').getByRole('button',{name:'حزمة جديدة'}).count(),1,'folder header button is labelled');
       await page.locator('.deck-row.new').click();await page.fill('#deck-name','Business English');await sheetSubmit(page);
       await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='Business English');
       const deckHash=await hashOf(page);
@@ -164,8 +166,21 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.ok(Math.abs(a.y-b.y)<1);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.folder-card b')].every(b=>b.scrollWidth<=b.clientWidth+1)),true,'names wrap, not clip');
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.lib-tabs .chip')].every(c=>{const r=c.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})),true,'all three views fully visible');
-      const [h1,add]=await rects(page,'main h1, .page-head .add-circle'); // document order: title, then +
-      assert.ok(add.y<h1.y+h1.height,'header + stays on the title row');
+      const [h1,add]=await rects(page,'main h1, .page-head .head-add'); // document order: title, then +
+      assert.ok(add.y<h1.y+h1.height,'labelled «مجلد جديد» stays on the title row');
+      assert.deepEqual(errors,[]);await context.close();
+    });
+
+    await t.test('LIB-07: nothing ends under the bottom tab bar — the last card and its actions are reachable after scrolling',async()=>{
+      const {context,page,errors}=await freshPage(browser,base());
+      await data(page,async m=>{for(let i=0;i<14;i++)await m.addWord({contentType:'vocabulary',term:'word'+String(i).padStart(2,'0'),meaning:'معنى '+i,example:'',translation:'',note:'',tag:''});});
+      await page.goto(base()+'/#/words/all');await page.reload();await page.locator('.word-list .word').nth(13).waitFor();
+      const last=page.locator('.word-list .word').last();
+      await last.locator('.word-main').click();await last.locator('.word-detail').waitFor();
+      await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));await page.waitForTimeout(400);
+      const [bar]=await rects(page,'.tabbar');
+      const boxes=await rects(page,'.word-list .word:last-child .word-detail button, .word-list .word:last-child');
+      for(const b of boxes)assert.ok(b.y+b.height<=bar.y+0.5,`ends at ${b.y+b.height}, tab bar starts at ${bar.y}`);
       assert.deepEqual(errors,[]);await context.close();
     });
   });

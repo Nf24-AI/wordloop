@@ -476,8 +476,9 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 @media(hover:hover){.rail-privacy:hover{color:var(--teal-deep);text-decoration:underline;text-underline-offset:3px}}
 
 /* ── #16 Library: folders → decks → cards (existing tokens only) ── */
-.page-head .icon-btn.add-circle{background:var(--ink-btn);color:#fff;border-color:var(--ink-btn);inline-size:48px;block-size:48px}
-@media(hover:hover){.page-head .icon-btn.add-circle:hover{background:#283229}}
+.page-head .btn.head-add{display:inline-flex;min-block-size:44px;padding-inline:16px 18px;gap:8px;font-size:15px;white-space:nowrap;flex:none}
+/* Content and focus targets never sit under the fixed tab bar (mobile); scrollIntoView/focus respect this padding. */
+@media(max-width:1023px){html{scroll-padding-block-end:calc(104px + env(safe-area-inset-bottom))}}
 .head-actions{display:flex;align-items:center;gap:10px}
 .crumbs ol{display:flex;flex-wrap:wrap;gap:4px;list-style:none;margin:0 0 10px;padding:0;font-size:14px}
 .crumbs li{display:flex;align-items:center;gap:4px;color:var(--muted)}
