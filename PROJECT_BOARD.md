@@ -2,6 +2,12 @@
 
 لوحة متابعة ملاحظات المنتج والتحسينات. **كل ملاحظة قابلة للتنفيذ تُسجل GitHub Issue مستقلًا**، وليست تعليقًا ضائعًا في محادثة.
 
+## Claude Master Handoff V2 — جاهز للمراجعة (14 نوفمبر 2026)
+
+**[Pull Request #31 — حزمة تسليم Claude المحدثة](https://github.com/Nf24-AI/wordloop/pull/31)** مفتوح على فرع **staging**، ويشمل دليل البدء `CLAUDE.md`، [مواصفات التنفيذ V2](https://github.com/Nf24-AI/wordloop/blob/docs/claude-master-handoff-v2-20261114/docs/CLAUDE_IMPLEMENTATION_BRIEF_V2.md)، [مصفوفة QA/UAT V2](https://github.com/Nf24-AI/wordloop/blob/docs/claude-master-handoff-v2-20261114/docs/QA_UAT_MATRIX_V2.md)، و[مرجع الهوية اللفظية والبصرية من Brand Book v1](https://github.com/Nf24-AI/wordloop/blob/docs/claude-master-handoff-v2-20261114/docs/WORDLOOP_BRAND_GUIDELINES_V1.md). احتُفِظ بالمستندات القديمة مع تحذير عدم أسبقيتها عند التعارض.
+
+**الحالة:** تم إعداد وثائق التسليم في فرع مستقل؛ **لم تُدمج PR #31 بعد** ولم يبدأ تنفيذ الميزات الجديدة أو أي نشر للإنتاج. عند مراجعة PR، يرجع Claude إلى V2 أولًا؛ يراجع واقع Staging ويبدأ بمهام مرحلية، وليس جميع الـTo do دفعة واحدة. الميزات **Future (#18، #24، #27–#29)** مؤجلة؛ مضمون Brand Book الاستراتيجي غير المعتمد يبقى مسودة. **الـPDF الأصلي محفوظ كتسليم منفصل في محادثة المالك، ولا يتضمن هذا الـPR ملفًا ثنائيًا منه**؛ المرجع البرمجي للهوية متاح بصيغة Markdown داخل PR.
+
 ## ملفات التسليم للمطوّر (Claude)
 
 - **[مواصفات التنفيذ الكاملة — Claude Implementation Brief](https://github.com/Nf24-AI/wordloop/blob/staging/docs/CLAUDE_IMPLEMENTATION_BRIEF.md)**: تحليل الكود، قرارات UX/المحتوى، مراحل العمل، قيود البيانات والإنتاج، ومخرجات كل PR.
