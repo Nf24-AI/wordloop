@@ -11,6 +11,8 @@ const DEFAULT_DECK='00000000-0000-4000-8000-00000000d001';
 /** Calls the app's own data module inside the page (Vite serves the TS source in dev). */
 const data=(page,fn,arg)=>page.evaluate(async([src,arg])=>{const m=await import('/src/data.ts');return new Function('m','arg',`return (${src})(m,arg)`)(m,arg);},[fn.toString(),arg]);
 const hashOf=page=>page.evaluate(()=>location.hash);
+/** Element rectangles measured in one frame (the page-in animation moves content between separate boundingBox calls). */
+const rects=(page,sel)=>page.evaluate(sel=>[...document.querySelectorAll(sel)].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}),sel);
 const sheetSubmit=page=>page.locator('dialog.form-sheet[open] button[type=submit]').click();
 
 for(const [name,engine] of Object.entries(ENGINES)){
@@ -30,7 +32,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(cards.length,2,'only the real default folder + the new-folder tile');
       assert.match(cards[0],/غير مصنفة/);assert.match(cards[0],/حزمة وحدة · ولا بطاقة/);
       assert.match(cards[1],/مجلد جديد/);
-      const [a,b]=await Promise.all([0,1].map(i=>page.locator('.folder-grid .folder-card').nth(i).boundingBox()));
+      const [a,b]=await rects(page,'.folder-grid .folder-card');
       assert.ok(Math.abs(a.y-b.y)<1,'two columns on one row at 390px');
       assert.ok(a.width>=140&&b.width>=140);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'no horizontal scroll');
@@ -146,7 +148,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.match(await page.locator('.folder-card').first().innerText(),/Unsorted/);
       assert.match(await page.locator('.folder-card').first().innerText(),/1 deck · no cards/);
       assert.equal(await page.evaluate(()=>document.documentElement.dir),'ltr');
-      const [a,b]=await Promise.all([0,1].map(i=>page.locator('.folder-grid .folder-card').nth(i).boundingBox()));
+      const [a,b]=await rects(page,'.folder-grid .folder-card');
       assert.ok(a.x<b.x,'first folder on the left in LTR');
       const lib=await data(page,async m=>m.listLibrary());
       assert.equal(lib.decks[0].contentLanguage,'en-US');assert.equal(lib.decks[0].meaningLanguage,'ar-SA');
@@ -158,11 +160,11 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await data(page,async m=>{await m.createFolder('مجلد باسم طويل جدًا للتجربة على الشاشات الضيقة');});
       await page.goto(base()+'/#/words');await page.reload();await page.locator('.folder-card').nth(2).waitFor();
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-      const [a,b]=await Promise.all([0,1].map(i=>page.locator('.folder-grid .folder-card').nth(i).boundingBox()));
+      const [a,b]=await rects(page,'.folder-grid .folder-card');
       assert.ok(Math.abs(a.y-b.y)<1);
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.folder-card b')].every(b=>b.scrollWidth<=b.clientWidth+1)),true,'names wrap, not clip');
       assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.lib-tabs .chip')].every(c=>{const r=c.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})),true,'all three views fully visible');
-      const [h1,add]=await Promise.all(['main h1','.page-head .add-circle'].map(s=>page.locator(s).boundingBox()));
+      const [h1,add]=await rects(page,'main h1, .page-head .add-circle'); // document order: title, then +
       assert.ok(add.y<h1.y+h1.height,'header + stays on the title row');
       assert.deepEqual(errors,[]);await context.close();
     });
