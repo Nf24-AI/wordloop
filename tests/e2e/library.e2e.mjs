@@ -91,7 +91,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const before=await data(page,async m=>(await m.listWords())[0]);
       assert.equal(before.deckId,DEFAULT_DECK);
       await page.goto(base()+'/#/words/d/'+DEFAULT_DECK);await page.reload();
-      await page.locator('.word-main').click();await page.getByRole('button',{name:'انقلها'}).click();
+      await page.locator('.word-main').click();await page.getByRole('button',{name:'خيارات أكثر لـ«leverage»'}).click();await page.getByRole('button',{name:'انقلها لحزمة ثانية'}).click();
       await page.selectOption('#move-deck',deckId);await sheetSubmit(page);
       await page.getByRole('status').filter({hasText:'نقلنا «leverage»'}).waitFor();
       const after=await data(page,async m=>(await m.listWords())[0]);

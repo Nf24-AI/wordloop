@@ -141,6 +141,14 @@ const ar={
     removeBody:'ما بتطلع لك في المراجعة ولا في مكتبتك. سجل مراجعاتها يبقى محفوظ في النسخ اللي تحمّلها.',
     removeYes:'إيه، شيلها',removeNo:'لا، خلها',removed:(t:string)=>`شلنا «${t}» من كلماتك.`,
   },
+  /* #25: simplified card details */
+  card:{
+    deck:'الحزمة:',edit:'عدّلها',more:(t:string)=>`خيارات أكثر لـ«${t}»`,moreTitle:(t:string)=>`وش تبي تسوي بـ«${t}»؟`,
+    move:'انقلها لحزمة ثانية',remove:'شيلها من مكتبتي',
+    learn:'تفاصيل التعلم',stage:'مرحلة التعلم',last:'آخر مراجعة',count:'راجعتها',never:'ما راجعتها للحين',next:'المراجعة الجاية',
+    editTitle:(t:string)=>`تعديل «${t}»`,meaningN:(n:number)=>`المعنى ${n}`,example:'جملة المثال',translation:'معنى الجملة',
+    editNote:'التعديل ما يغيّر موعد مراجعتها ولا سجلها.',saved:(t:string)=>`حفظنا تعديلك على «${t}».`,
+  },
   /* #16: Library — folders → decks → cards */
   lib:{
     title:'مكتبتي',lead:'نظّم ما تتعلمه في مكان واحد',
@@ -363,6 +371,13 @@ const en:Dict={
     removeTitle:t=>`Remove “${t}”?`,
     removeBody:'It won’t appear in your reviews or library. Its review history stays in backups you download.',
     removeYes:'Yes, remove it',removeNo:'No, keep it',removed:t=>`Removed “${t}” from your cards.`,
+  },
+  card:{
+    deck:'Deck:',edit:'Edit',more:t=>`More options for “${t}”`,moreTitle:t=>`What would you like to do with “${t}”?`,
+    move:'Move to another deck',remove:'Remove from my library',
+    learn:'Learning details',stage:'Learning stage',last:'Last review',count:'Reviewed',never:'Not reviewed yet',next:'Next review',
+    editTitle:t=>`Edit “${t}”`,meaningN:n=>`Meaning ${n}`,example:'Example sentence',translation:'Sentence meaning',
+    editNote:'Editing doesn’t change its review date or history.',saved:t=>`Saved your changes to “${t}”.`,
   },
   lib:{
     title:'Library',lead:'Organise what you learn in one place',
