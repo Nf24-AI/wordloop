@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {summary,validateBackup} from '../src/data.ts';
+import {summary,validateBackup,DEFAULT_DECK_ID,DEFAULT_FOLDER_ID} from '../src/data.ts';
 
 const now='2026-11-12T17:00:00.000Z';
 function word(id='w-1',overrides={}){
@@ -16,9 +16,12 @@ function backup(words=[word()],reviews=[]){
   return {app:'wordloop',version:1,exportedAt:now,words,reviews};
 }
 
-test('accepts a well-formed v1 backup and returns it as v2 with legacy cards typed as vocabulary (#5)',()=>{
+test('accepts a well-formed v1 backup and returns it as v3: vocabulary (#5) in the default folder/deck (#15)',()=>{
   const payload=backup();
-  assert.deepEqual(validateBackup(payload),{...payload,version:2,words:payload.words.map(w=>({...w,contentType:'vocabulary',note:''}))});
+  assert.deepEqual(validateBackup(payload),{...payload,version:3,
+    folders:[{id:DEFAULT_FOLDER_ID,name:'غير مصنفة',createdAt:now,updatedAt:now}],
+    decks:[{id:DEFAULT_DECK_ID,folderId:DEFAULT_FOLDER_ID,name:'بطاقاتي',contentLanguage:'en-US',meaningLanguage:'ar-SA',createdAt:now,updatedAt:now}],
+    words:payload.words.map(w=>({...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID}))});
 });
 
 test('rejects corrupted FSRS scheduling dates before replacing stored data',()=>{
