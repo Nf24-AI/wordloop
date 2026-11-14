@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import {IDBFactory,IDBObjectStore} from 'fake-indexeddb';
 import {test,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
-import {addWord,archiveWord,buildBackup,listReviews,listWords,resetConnectionForTests,restoreBackup,reviewWord,validateBackup,TERM_LIMIT} from '../src/data.ts';
+import {addWord,archiveWord,buildBackup,listReviews,listWords,resetConnectionForTests,restoreBackup,reviewWord,validateBackup,TERM_LIMIT,DEFAULT_DECK_ID} from '../src/data.ts';
 
 const card=(contentType,term,extra={})=>({contentType,term,meaning:'معنى',example:'',translation:'',note:'',tag:'',...extra});
 beforeEach(()=>{globalThis.indexedDB=new IDBFactory();resetConnectionForTests();});
@@ -73,7 +73,7 @@ test('archiving a legacy card keeps everything and normalises its kind',async()=
   await raw('words','readwrite',s=>{s.put(old);});
   await archiveWord(old.id);
   const [after]=await getAllRaw('words');
-  assert.deepEqual({...after,updatedAt:old.updatedAt},{...old,archived:true,contentType:'vocabulary',note:''});
+  assert.deepEqual({...after,updatedAt:old.updatedAt},{...old,archived:true,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID});
 });
 
 test('DATA-04: a 50-card legacy library is unchanged by the upgrade (count, IDs, due dates, revision, history)',async()=>{
@@ -92,21 +92,21 @@ test('DATA-01: a v1 backup imports as vocabulary with ids, due dates, FSRS state
   const w=legacyWord(3),r=legacyReview(1,w.id);
   const v1={app:'wordloop',version:1,exportedAt:at,words:[w],reviews:[r]};
   const safe=validateBackup(JSON.parse(JSON.stringify(v1)));
-  assert.equal(safe.version,2);
-  assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:''});
+  assert.equal(safe.version,3); // #15: always returned in the current format
+  assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID});
   await restoreBackup(safe);
   const [got]=await listWords();
   assert.equal(got.id,w.id);assert.equal(got.dueAt,w.dueAt);assert.deepEqual(got.fsrsState,w.fsrsState);assert.equal(got.revision,w.revision);
   assert.deepEqual(await listReviews(),[r]);
 });
 
-test('DATA-02: a v2 export round-trips into a fresh database with every kind, field and review',async()=>{
+test('DATA-02: an export (now v3, #15) round-trips into a fresh database with every kind, field and review',async()=>{
   for(const [type,term] of [['vocabulary','overlook'],['phrase','in charge of'],['sentence','I forgot my keys.'],['idiom','break the ice']])
     await addWord(card(type,term,{note:type==='idiom'?'شرح':'',example:'Example.',translation:'مثال.',tag:'سفر'}));
   const [first]=await listWords();await reviewWord(first.id,'again');
   const file=JSON.stringify(await buildBackup());
   const before={words:await listWords(),reviews:await listReviews()};
-  assert.equal(JSON.parse(file).version,2);
+  assert.equal(JSON.parse(file).version,3);
   globalThis.indexedDB=new IDBFactory();resetConnectionForTests(); // "another device"
   await restoreBackup(validateBackup(JSON.parse(file)));
   assert.deepEqual(await listWords(),before.words);
@@ -117,7 +117,7 @@ test('DATA-03: invalid backups are rejected before anything local is replaced',a
   await addWord(card('vocabulary','keepme'));
   const good=await buildBackup();
   const bad=[
-    ['unknown version',{...good,version:3}],
+    ['unknown version',{...good,version:4}],
     ['v2 card without kind',{...good,words:good.words.map(({contentType,...w})=>w)}],
     ['unknown kind',{...good,words:good.words.map(w=>({...w,contentType:'proverb'}))}],
     ['v1 with a bad kind',{...good,version:1,words:good.words.map(w=>({...w,contentType:'proverb'}))}],
