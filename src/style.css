@@ -524,3 +524,19 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .head-inline .page-head h1{overflow-wrap:anywhere}
 /* The three Library views always stay visible (wrap, never a hidden horizontal scroll). */
 .library-tools .chips.lib-tabs{flex-wrap:wrap;overflow:visible;margin-inline:0;padding-inline:0}
+
+/* ── #25 simplified card details ── */
+.word-deck{display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:14px;color:var(--muted);margin:0}
+.word-deck svg{color:var(--teal-deep);flex:none}
+.word-deck b{color:var(--ink-2);font-weight:600;overflow-wrap:anywhere}
+.word-actions .more-btn{inline-size:44px;block-size:44px}
+.learn-details{border-block-start:1px solid var(--line);padding-block-start:10px}
+.learn-details summary{cursor:pointer;min-block-size:44px;display:flex;align-items:center;font-size:14px;font-weight:600;color:var(--teal-deep);list-style:none}
+.learn-details summary::-webkit-details-marker{display:none}
+.learn-details summary::after{content:'';inline-size:8px;block-size:8px;margin-inline-start:10px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-2px);transition:transform .2s}
+.learn-details[open] summary::after{transform:rotate(-135deg) translateY(-2px)}
+.learn-details .word-meta{margin-block-start:6px}
+.action-list{display:grid;gap:8px;margin-block-start:14px}
+.action-row{display:flex;align-items:center;gap:12px;inline-size:100%;min-block-size:52px;padding:10px 16px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;text-align:start}
+.action-row.archive{color:var(--ink-2)}
+@media(hover:hover){.action-row:hover{border-color:var(--line-2)}.action-row.archive:hover{background:var(--cream)}}

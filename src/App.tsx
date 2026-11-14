@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,deleteDeck,deleteFolder,isContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,deleteDeck,deleteFolder,editWord,isContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -513,19 +513,24 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
   </div>;
 }
 
-/** Cards list with the existing details (simplified in #25). Moving a card keeps its schedule and history. */
+/**
+ * #25: a card shows what helps learning — term, meanings, one due pill; expanded: example, translation, note and its deck.
+ * Listen and Edit are visible; Move and Remove live in the ••• sheet (remove = archive, after confirmation).
+ * «تفاصيل التعلم» is optional and human-worded (no raw FSRS). Editing and moving never change dueAt, FSRS or history.
+ */
 function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word[];reviews:Review[];lib:Library;onChanged:()=>Promise<unknown>;notify:Notify;showPlace?:boolean}){
-  const Lb=T.library,L=T.lib;
-  const [open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null),[moving,setMoving]=useState<Word|null>(null);
-  const reviewCount=useMemo(()=>{const m=new Map<string,number>();for(const r of reviews)m.set(r.wordId,(m.get(r.wordId)||0)+1);return m;},[reviews]);
+  const Lb=T.library,L=T.lib,C=T.card;
+  const [open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null),[moving,setMoving]=useState<Word|null>(null),[menu,setMenu]=useState<Word|null>(null),[editing,setEditing]=useState<Word|null>(null);
+  const history=useMemo(()=>{const m=new Map<string,{n:number;last:string}>();for(const r of reviews){const h=m.get(r.wordId);if(!h)m.set(r.wordId,{n:1,last:r.reviewedAt});else{h.n++;if(r.reviewedAt>h.last)h.last=r.reviewedAt;}}return m;},[reviews]);
   const now=Date.now();
   const place=(w:Word)=>{const d=lib.decks.find(x=>x.id===deckIdOf(w,lib));const f=d&&lib.folders.find(x=>x.id===d.folderId);return d?(f?`${folderName(f)} · ${deckName(d)}`:deckName(d)):'';};
   async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onChanged();notify(Lb.removed(w.term));}catch(e){notify(getError(e),'error');}}
   async function move(deckId:string){const w=moving;if(!w)return;await moveWord(w.id,deckId);await onChanged();const d=lib.decks.find(x=>x.id===deckId);notify(L.moved(w.term,d?deckName(d):''));setMoving(null);}
+  async function save(v:CardEdit){const w=editing;if(!w)return;const next=await editWord(w.id,v);await onChanged();notify(C.saved(next.term));setEditing(null);}
   return <>
-    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,n=reviewCount.get(w.id)||0;return <li key={w.id} className={'word'+(isOpen?' open':'')}>
+    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id);return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
+        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
@@ -533,13 +538,61 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
         {w.example&&<p className="example" dir="ltr" lang="en">{w.example}</p>}
         {w.translation&&<p className="translation" dir="auto">{w.translation}</p>}
         {w.note&&<p className="note"><b>{T.kindForm[w.contentType].note?.label||Lb.noteFallback}</b> <span dir="auto">{w.note}</span></p>}
-        <dl className="word-meta"><div><dt>{Lb.kind}</dt><dd>{kindLabel(w.contentType)}</dd></div><div><dt>{Lb.tag}</dt><dd dir="auto">{tagText(w.tag)}</dd></div><div><dt>{Lb.stage}</dt><dd>{T.stages[stageOf(w)]}</dd></div><div><dt>{Lb.reviewed}</dt><dd>{n?T.times(n):Lb.notYet}</dd></div><div><dt>{Lb.next}</dt><dd>{due?T.now:localDate(w.dueAt)}</dd></div></dl>
-        <div className="word-actions"><SpeakButton text={w.term} label={T.listen(w.term)} className="btn btn-quiet sm"/><button type="button" className="btn btn-quiet sm" onClick={()=>setMoving(w)}><FolderInput size={16}/>{L.move}</button><button type="button" className="btn btn-quiet sm danger" onClick={()=>setPending(w)}><Trash2 size={16}/>{Lb.remove}</button></div>
+        <p className="word-deck"><Layers3 size={16} aria-hidden="true"/><span>{C.deck}</span> <b dir="auto">{place(w)}</b></p>
+        <div className="word-actions">
+          <SpeakButton text={w.term} label={T.listen(w.term)} className="btn btn-quiet sm"/>
+          <button type="button" className="btn btn-quiet sm" onClick={()=>setEditing(w)}><Pencil size={16}/>{C.edit}</button>
+          <button type="button" className="icon-btn more-btn" aria-haspopup="dialog" aria-label={C.more(w.term)} title={C.more(w.term)} onClick={()=>setMenu(w)}><MoreHorizontal size={20}/></button>
+        </div>
+        <details className="learn-details" onToggle={e=>{const d=e.currentTarget;if(d.open)requestAnimationFrame(()=>d.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}));}}>
+          <summary>{C.learn}</summary>
+          <dl className="word-meta">
+            <div><dt>{C.stage}</dt><dd>{T.stages[stageOf(w)]}</dd></div>
+            <div><dt>{C.last}</dt><dd>{h?localDate(h.last):C.never}</dd></div>
+            <div><dt>{C.count}</dt><dd>{h?T.times(h.n):C.never}</dd></div>
+            <div><dt>{C.next}</dt><dd>{due?T.now:localDate(w.dueAt)}</dd></div>
+          </dl>
+        </details>
       </div>}
     </li>;})}</ul>
+    <ActionSheet word={menu} onClose={()=>setMenu(null)} onMove={w=>{setMenu(null);setMoving(w);}} onRemove={w=>{setMenu(null);setPending(w);}}/>
     <ConfirmDialog open={!!pending} title={Lb.removeTitle(pending?.term||'')} body={Lb.removeBody} confirm={Lb.removeYes} cancel={Lb.removeNo} onConfirm={()=>void confirmArchive()} onCancel={()=>setPending(null)}/>
     <MoveSheet word={moving} lib={lib} onMove={move} onClose={()=>setMoving(null)}/>
+    <EditSheet word={editing} onSave={save} onClose={()=>setEditing(null)}/>
   </>;
+}
+/** The ••• menu: secondary and destructive actions, out of the way of everyday use (#25). */
+function ActionSheet({word,onClose,onMove,onRemove}:{word:Word|null;onClose:()=>void;onMove:(w:Word)=>void;onRemove:(w:Word)=>void}){
+  const C=T.card,ref=useRef<HTMLDialogElement>(null),open=!!word;
+  useEffect(()=>{const d=ref.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
+  return <dialog ref={ref} className="sheet action-sheet" aria-labelledby="as-title" onCancel={e=>{e.preventDefault();onClose();}}>
+    {word&&<>
+      <h2 id="as-title">{C.moreTitle(word.term)}</h2>
+      <div className="action-list">
+        <button type="button" className="action-row" onClick={()=>onMove(word)}><FolderInput size={20} aria-hidden="true"/>{C.move}</button>
+        <button type="button" className="action-row archive" onClick={()=>onRemove(word)}><Archive size={20} aria-hidden="true"/>{C.remove}</button>
+      </div>
+      <div className="sheet-actions"><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
+    </>}
+  </dialog>;
+}
+/** Edit content only (#25 + #26 data): term, existing meanings, example/translation/note where the kind has them or the card already does. */
+function EditSheet({word,onSave,onClose}:{word:Word|null;onSave:(v:CardEdit)=>Promise<void>;onClose:()=>void}){
+  const C=T.card,open=!!word;
+  const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>([]),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState('');
+  const {busy,error,run}=useSheetAction(open);
+  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}},[word]);
+  if(!word)return <FormSheet open={false} title="" onClose={onClose} onSubmit={()=>undefined} submit="" busy error=""><span/></FormSheet>;
+  const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
+  const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
+  return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}>
+    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" dir="ltr" lang="en" autoFocus maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
+    {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} dir="auto" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
+    {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir="ltr" lang="en" maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
+    {has.translation&&<div className="field"><label htmlFor="edit-translation">{f.translation?.label||C.translation}</label><textarea id="edit-translation" dir="auto" maxLength={400} value={translation} onChange={e=>setTranslation(e.target.value)}/></div>}
+    {has.note&&<div className="field"><label htmlFor="edit-note">{f.note?.label||T.library.noteFallback}</label><textarea id="edit-note" dir="auto" maxLength={NOTE_LIMIT} value={note} onChange={e=>setNote(e.target.value)}/></div>}
+    <p className="hint">{C.editNote}</p>
+  </FormSheet>;
 }
 
 /* ── Sheets (native <dialog>: focus trap, Esc, backdrop) ── */
