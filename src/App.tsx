@@ -139,7 +139,7 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     <div className="home-row">
       {lastAdded&&<button type="button" className="nudge home-card" data-home="last-added" onClick={()=>onNavigate('words')}>
         <span className="nudge-icon mint"><BookOpen size={20}/></span>
-        <span><small className="eyebrow">{H.lastAddedTitle}</small><b dir="ltr" lang="en" className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meaning}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
+        <span><small className="eyebrow">{H.lastAddedTitle}</small><b dir="ltr" lang="en" className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meanings.join('؛ ')}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
         <Fwd size={18}/>
       </button>}
       {/* When nothing is due the hero already names the next review; show it here only when it would otherwise be hidden. */}
@@ -314,7 +314,7 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
       <div className="card-top"><span className="card-labels"><span className="kind-badge">{kindLabel(active.contentType)}</span><span className="tag" dir="auto">{tagText(active.tag)}</span></span><SpeakButton text={active.term} label={T.listen(active.term)}/></div>
       <h2 dir="ltr" lang="en" className={'term'+(active.term.length>40?' term-long':'')}>{active.term}</h2>
       {active.example&&<p className="example" dir="ltr" lang="en">{active.example}</p>}
-      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}<strong dir="auto">{active.meaning}</strong>{active.note&&<p className="note" dir="auto">{active.note}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
+      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}<strong dir="auto">{active.meanings.join('؛ ')}</strong>{active.note&&<p className="note" dir="auto">{active.note}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
         :<button ref={revealRef} type="button" className="btn btn-ink btn-lg reveal" onClick={()=>setRevealed(true)}>{R.reveal}</button>}
     </article>
     {msg&&<p className="inline-error" role="alert">{msg}</p>}
@@ -335,7 +335,7 @@ function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];re
   const reviewCount=useMemo(()=>{const m=new Map<string,number>();for(const r of reviews)m.set(r.wordId,(m.get(r.wordId)||0)+1);return m;},[reviews]);
   const kindCounts=useMemo(()=>{const m=new Map<ContentType,number>();for(const w of active)m.set(w.contentType,(m.get(w.contentType)||0)+1);return m;},[active]);
   const now=Date.now(),dueCount=active.filter(w=>isDue(w,now)).length;
-  const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(kind==='all'||w.contentType===kind)&&(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,w.meaning,w.tag,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter,kind]);
+  const list=useMemo(()=>{const s=q.trim().toLocaleLowerCase();return active.filter(w=>(kind==='all'||w.contentType===kind)&&(filter==='all'||(filter==='due'?isDue(w):w.tag===filter))&&(!s||[w.term,...w.meanings,w.tag,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));},[active,q,filter,kind]);
   async function confirmArchive(){const w=pending;setPending(null);if(!w)return;try{await archiveWord(w.id);await onArchived();notify(Lb.removed(w.term));}catch(e){notify(getError(e),'error');}}
   return <div className="page">
     <PageHead title={Lb.title} lead={active.length?Lb.lead(active.length):Lb.leadEmpty}/>
@@ -355,7 +355,7 @@ function WordsPage({words,reviews,onArchived,onNavigate,notify}:{words:Word[];re
     :!list.length?<div className="empty small"><Search size={26} strokeWidth={1.6}/><h2>{Lb.noMatchTitle}</h2><p>{Lb.noMatchBody}</p><button type="button" className="btn btn-quiet" onClick={()=>{setQ('');setFilter('all');setKind('all');}}>{Lb.showAll}</button></div>
     :<ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,n=reviewCount.get(w.id)||0;return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meaning}</span></span>
+        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span></span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
