@@ -609,3 +609,13 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
   .kb-open .form-sheet .sheet-actions:last-child{margin-block-end:-16px;padding-block-end:16px}
   .form-sheet .danger-zone{margin-block-start:20px}
 }
+
+/* ───────── #42: one clear Back on every branched screen ───────── */
+.backbar{margin-block:-6px 6px}
+.back-btn{display:inline-flex;align-items:center;gap:6px;min-block-size:44px;min-inline-size:44px;max-inline-size:100%;margin-inline-start:-10px;padding-inline:10px 14px;border:0;border-radius:14px;background:none;color:var(--teal);font:inherit;font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.back-btn:hover{background:#2f7d6812}
+.back-btn:active{background:#2f7d681f}
+.back-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.back-btn svg{flex:none}
+.back-dest{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:600}
+.back-dest::before{content:"·";margin-inline-end:6px;color:var(--line-2)}

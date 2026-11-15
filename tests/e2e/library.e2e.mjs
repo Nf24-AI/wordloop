@@ -54,7 +54,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.locator('.deck-row.new').click();await page.fill('#deck-title','Business English');await sheetSubmit(page);
       await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='Business English');
       const deckHash=await hashOf(page);
-      await page.locator('.crumbs button').nth(1).click();await page.locator('.deck-row.new').click();
+      await page.locator('.back-btn').click();await page.locator('.deck-row.new').click();
       await page.fill('#deck-title','Vocabulario');await page.selectOption('#deck-content-lang','es-ES');await sheetSubmit(page);
       await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='Vocabulario');
       assert.equal(await page.locator('.head-actions .lang-chip').innerText(),'ES → AR');
