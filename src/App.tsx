@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
+import {pickVoice,RATE} from './voice';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -61,17 +62,32 @@ function relative(iso:string,now=Date.now()){
 }
 const daysBetween=(iso:string,now=Date.now())=>Math.round((new Date(dayKey(new Date(now))).getTime()-new Date(dayKey(new Date(iso))).getTime())/DAY);
 const isDue=(w:Word,now=Date.now())=>new Date(w.dueAt).getTime()<=now;
-const canSpeak=typeof window!=='undefined'&&'speechSynthesis' in window;
-/** A voice for the tag (exact, then same base language). undefined = voices not listed yet (let the browser choose); null = none for this language. */
-function voiceFor(tag:string):SpeechSynthesisVoice|null|undefined{
-  const vs=canSpeak?window.speechSynthesis.getVoices():[];if(!vs.length)return undefined;
-  const t=tag.toLowerCase(),b=t.split('-')[0];
-  return vs.find(v=>v.lang.toLowerCase().replace('_','-')===t)??vs.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===b)??null;
+const canSpeak=typeof window!=='undefined'&&'speechSynthesis' in window&&'SpeechSynthesisUtterance' in window;
+/* #19/#20 speech engine (ranking lives in voice.ts). The device voice list arrives late on Chrome/Safari and changes when
+   a voice is installed, so it is refreshed on `voiceschanged`. Leaving the app stops speech. */
+let deviceVoices:SpeechSynthesisVoice[]=[];
+if(canSpeak){
+  const load=()=>{deviceVoices=window.speechSynthesis.getVoices();};load();
+  window.speechSynthesis.addEventListener?.('voiceschanged',load);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)window.speechSynthesis.cancel();});
 }
-/** Speaks in the given language. Returns false (and says nothing) when the device has no voice for it (#26/#19: never the wrong language silently). */
-function speak(text:string,lang='en-US'):boolean{
-  if(!canSpeak||!text.trim())return true;const v=voiceFor(lang);if(v===null)return false;
-  window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=lang;if(v)u.voice=v;u.rate=.87;window.speechSynthesis.speak(u);return true;
+/** Where speech problems are reported (the app toast); set by the shell. */
+let speechNotice:(text:string)=>void=()=>{};
+/**
+ * Speaks `text` in the card's language with the best local voice. If the device has no voice for that language it says
+ * so and stays silent — never the wrong language. Before the voice list is known the browser picks by `lang`.
+ */
+function speak(text:string,lang:string,{slow=false,onEnd}:{slow?:boolean;onEnd?:()=>void}={}):boolean{
+  const synth=window.speechSynthesis;
+  if(!deviceVoices.length)deviceVoices=synth.getVoices();
+  const v=deviceVoices.length?pickVoice(deviceVoices,lang):undefined;
+  if(v===null){speechNotice(T.speech.noVoice(langName(lang)));return false;}
+  synth.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang=v?.lang||lang;if(v)u.voice=v;u.rate=slow?RATE.slow:RATE.normal;
+  u.onend=()=>onEnd?.();
+  u.onerror=e=>{if(e.error!=='interrupted'&&e.error!=='canceled')speechNotice(T.speech.failed);onEnd?.();};
+  if(synth.paused)synth.resume(); // iOS can stay paused after an interruption (call, other audio)
+  synth.speak(u);return true;
 }
 type Stage='new'|'learning'|'growing'|'strong';
 const STAGES:Stage[]=['new','learning','growing','strong'];
@@ -82,9 +98,27 @@ type Notify=(text:string,tone?:'ok'|'error')=>void;
 function Mark(){return <span className="mark" aria-hidden="true"/>;}
 function Logo(){return <span className="brand" dir="ltr"><Mark/><span>WordLoop</span></span>;}
 function Wash({tone='full'}:{tone?:'full'|'soft'|'cool'|'warm'}){return <div className={'wash wash-'+tone} aria-hidden="true"><i/><i/><i/><i/></div>;}
-function SpeakButton({text,label,className='icon-btn',lang='en-US',onNoVoice}:{text:string;label:string;className?:string;lang?:string;onNoVoice?:()=>void}){
+/**
+ * One listen button (#20: اسمع → افهم → كرّر). Tap = natural speed; tap again while it plays = stop. After the first
+ * listen a light «أبطأ» replay appears next to it (`slower={false}` where space is tight). No voice/speed settings.
+ */
+function SpeakButton({text,label,lang,className='icon-btn',slower=true}:{text:string;label:string;lang:string;className?:string;slower?:boolean}){
+  const [playing,setPlaying]=useState<null|'normal'|'slow'>(null),[heard,setHeard]=useState(false);
+  const run=useRef(0);
+  useEffect(()=>{setHeard(false);},[text,lang]);
+  useEffect(()=>()=>{if(run.current<0)window.speechSynthesis.cancel();},[]);
   if(!canSpeak)return null;
-  return <button type="button" className={className} aria-label={label} title={label} onClick={()=>{if(!speak(text,lang))onNoVoice?.();}} disabled={!text.trim()}><Volume2 size={19} strokeWidth={1.8}/></button>;
+  function play(mode:'normal'|'slow'){
+    if(playing){window.speechSynthesis.cancel();run.current=Math.abs(run.current)+1;setPlaying(null);if(playing===mode)return;}
+    const id=Math.abs(run.current)+1;run.current=-id; // negative = this button is speaking
+    const ok=speak(text,lang,{slow:mode==='slow',onEnd:()=>{if(run.current===-id){run.current=id;setPlaying(null);}}});
+    if(ok){setPlaying(mode);setHeard(true);}else run.current=id;
+  }
+  const main=<button type="button" className={className+(playing==='normal'?' is-playing':'')} aria-label={playing==='normal'?T.speech.stop:label} title={playing==='normal'?T.speech.stop:label} onClick={()=>play('normal')} disabled={!text.trim()}>
+    {playing==='normal'?<Square size={16} strokeWidth={2.2}/>:<Volume2 size={19} strokeWidth={1.8}/>}</button>;
+  if(!slower)return main;
+  return <span className="speak-group">{main}{heard&&<button type="button" className={'slow-btn'+(playing==='slow'?' is-playing':'')} aria-label={playing==='slow'?T.speech.stop:T.speech.slowerLabel(text)} onClick={()=>play('slow')}>
+    {playing==='slow'?<Square size={13} strokeWidth={2.4}/>:<Snail size={15} strokeWidth={1.9}/>}<span>{T.speech.slower}</span></button>}</span>;
 }
 function PageHead({title,lead,children}:{title:string;lead?:string;children?:ReactNode}){
   return <header className="page-head"><div><h1 tabIndex={-1}>{title}</h1>{lead&&<p className="lead">{lead}</p>}</div>{children}</header>;
@@ -99,7 +133,8 @@ function ConfirmDialog({open,title,body,confirm,cancel,onConfirm,onCancel}:{open
 }
 
 /* ───────────── Home ───────────── */
-function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Review[];lastBackup:string|null;onNavigate:(p:Page)=>void}){
+function HomePage({words,reviews,decks,lastBackup,onNavigate}:{words:Word[];reviews:Review[];decks:readonly Deck[];lastBackup:string|null;onNavigate:(p:Page)=>void}){
+  const termProps=(w:Word)=>{const l=contentLang(w,decks);return {dir:dirOf(l),lang:l};};
   const H=T.home;
   const stats=summary(words,reviews),now=Date.now();
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
@@ -140,7 +175,7 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
           {hasDue&&<p className="hero-count"><b>{stats.dueNow}</b><span>{T.cardUnit(stats.dueNow)} {H.waitingNow}</span></p>}
         </div>
       </div>
-      <div className="paper-stack" aria-hidden="true">{preview.map((w,i)=><div key={w.id} className={'paper p'+(i+1)}><span>{hasDue?H.readyPaper:relative(w.dueAt,now)}</span><b dir="ltr">{w.term}</b></div>)}</div>
+      <div className="paper-stack" aria-hidden="true">{preview.map((w,i)=><div key={w.id} className={'paper p'+(i+1)}><span>{hasDue?H.readyPaper:relative(w.dueAt,now)}</span><b {...termProps(w)}>{w.term}</b></div>)}</div>
     </section>
 
     <dl className="facts">
@@ -152,13 +187,13 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
     <div className="home-row">
       {lastAdded&&<button type="button" className="nudge home-card" data-home="last-added" onClick={()=>onNavigate('words')}>
         <span className="nudge-icon mint"><BookOpen size={20}/></span>
-        <span><small className="eyebrow">{H.lastAddedTitle}</small><b dir="ltr" lang="en" className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meanings.join('؛ ')}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
+        <span><small className="eyebrow">{H.lastAddedTitle}</small><b {...termProps(lastAdded)} className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meanings.join('؛ ')}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
         <Fwd size={18}/>
       </button>}
       {/* When nothing is due the hero already names the next review; show it here only when it would otherwise be hidden. */}
       {hasDue&&<div className="nudge static home-card" data-home="next">
         <span className="nudge-icon warm"><CalendarClock size={20}/></span>
-        <span><small className="eyebrow">{H.nextTitle}</small>{next?<><b dir="ltr" lang="en" className="home-term">{next.term}</b><small>{H.nextIn(relative(next.dueAt,now))} · {localDate(next.dueAt)}</small></>:<small>{H.allDueNow}</small>}</span>
+        <span><small className="eyebrow">{H.nextTitle}</small>{next?<><b {...termProps(next)} className="home-term">{next.term}</b><small>{H.nextIn(relative(next.dueAt,now))} · {localDate(next.dueAt)}</small></>:<small>{H.allDueNow}</small>}</span>
       </div>}
       {backupStale&&<button type="button" className="nudge home-wide" onClick={()=>onNavigate('settings')}><span className="nudge-icon warm"><Download size={20}/></span><span><b>{H.backupStaleTitle}</b><small>{lastBackup?H.backupLast(localDate(lastBackup)):H.backupNever} {H.backupWhy}</small></span><Fwd size={18}/></button>}
     </div>
@@ -182,6 +217,13 @@ function initialDeck(lib:Library,fromRoute:string){
 }
 const RTL_LANGS=new Set(['ar','fa','he','ur','ps','yi']);
 const isRtl=(tag:string)=>RTL_LANGS.has(tag.split('-')[0].toLowerCase());
+const dirOf=(tag:string)=>isRtl(tag)?'rtl':'ltr';
+/** #19: the language a card is read and spoken in — card override → its deck → defaults. Never the interface locale. */
+const contentLang=(w:Word,decks:readonly Deck[])=>cardLanguages(w,decks).content;
+/** A sentence/example with its own listen button, in the card's language. */
+function ExampleLine({text,lang,className='example'}:{text:string;lang:string;className?:string}){
+  return <p className={className+' example-line'}><span dir={dirOf(lang)} lang={lang}>{text}</span><SpeakButton text={text} lang={lang} label={T.speech.listenExample} className="icon-btn ghost example-speak"/></p>;
+}
 /** Native-language name of a BCP-47 tag in the interface language (falls back to the tag). */
 function langName(tag:string){try{return new Intl.DisplayNames([T.locale],{type:'language'}).of(tag)||tag;}catch{return tag;}}
 /** Short examples shown as placeholders only for common languages; otherwise the box stays empty. */
@@ -194,7 +236,7 @@ const phFor=(map:Record<string,string>,tag:string)=>map[tag.split('-')[0].toLowe
  * One box style for content, every meaning and the optional sentence (#26 points 4–5): the language badge and the
  * listen button sit inside the box; the text direction follows the box language. Enter saves, Shift+Enter adds a line.
  */
-function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,describedBy,boxRef,onRemove,removeLabel,onNoVoice}:{id:string;lang:string;label:string;value:string;onChange:(v:string)=>void;placeholder?:string;maxLength:number;invalid?:boolean;describedBy?:string;boxRef?:(el:HTMLTextAreaElement|null)=>void;onRemove?:()=>void;removeLabel?:string;onNoVoice?:()=>void}){
+function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,describedBy,boxRef,onRemove,removeLabel}:{id:string;lang:string;label:string;value:string;onChange:(v:string)=>void;placeholder?:string;maxLength:number;invalid?:boolean;describedBy?:string;boxRef?:(el:HTMLTextAreaElement|null)=>void;onRemove?:()=>void;removeLabel?:string}){
   const ref=useRef<HTMLTextAreaElement|null>(null);
   useLayoutEffect(()=>{const el=ref.current;if(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}},[value]);
   return <div className={'lang-box'+(invalid?' invalid':'')}>
@@ -203,7 +245,7 @@ function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,des
     <textarea ref={el=>{ref.current=el;boxRef?.(el);}} id={id} rows={1} dir={isRtl(lang)?'rtl':'ltr'} lang={lang} autoComplete="off" autoCapitalize="none" spellCheck={false}
       maxLength={maxLength} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)} aria-invalid={invalid||undefined} aria-describedby={describedBy}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();e.currentTarget.form?.requestSubmit();}}}/>
-    <SpeakButton text={value} lang={lang} label={T.listen(value.trim()||label)} className="icon-btn box-icon" onNoVoice={onNoVoice}/>
+    <SpeakButton text={value} lang={lang} label={T.listen(value.trim()||label)} className="icon-btn box-icon" slower={false}/>
     {onRemove&&<button type="button" className="icon-btn box-icon" aria-label={removeLabel} title={removeLabel} onClick={onRemove}><X size={18}/></button>}
   </div>;
 }
@@ -222,7 +264,6 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   const kind=inferContentType(term),limit=TERM_LIMIT[kind];
   const duplicate=term.trim()?words.find(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(term)):undefined;
   const tooLong=term.trim().length>limit,hasMeaning=meanings.some(m=>m.trim());
-  const noVoice=(tag:string)=>()=>notify(F.noVoice(langName(tag)),'error');
   useEffect(()=>{if(focusMeaning.current!==null){meaningRefs.current[focusMeaning.current]?.focus();focusMeaning.current=null;}},[meanings.length]);
   useEffect(()=>{if(showExample&&!example)exampleRef.current?.focus();},[showExample]); // eslint-disable-line react-hooks/exhaustive-deps
   const touched=()=>{setSaved(null);setError('');};
@@ -266,18 +307,18 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
         <p className="hint">{override?<>{F.overrideNote} <button type="button" className="link-btn" onClick={()=>setOverride(null)}>{F.useDeckLang}</button></>:F.deckLangNote}</p>
       </div>}
       <LangBox id="term" lang={content} label={F.termLabel} value={term} onChange={v=>{setTerm(v);touched();}} placeholder={phFor(TERM_PH,content)} maxLength={TERM_LIMIT.sentence}
-        invalid={!!termHint} describedBy={termHint?'term-hint':undefined} boxRef={el=>{termRef.current=el;}} onNoVoice={noVoice(content)}/>
+        invalid={!!termHint} describedBy={termHint?'term-hint':undefined} boxRef={el=>{termRef.current=el;}}/>
       {termHint&&<p id="term-hint" className="hint box-hint" role="alert">{termHint}</p>}
       {meanings.map((m,i)=><LangBox key={i} id={i?'meaning-'+i:'meaning'} lang={meaningLang} label={F.meaningLabel(i+1,meanings.length)} value={m} placeholder={i?'':phFor(MEANING_PH,meaningLang)} maxLength={240}
         onChange={v=>{setMeanings(ms=>ms.map((x,j)=>j===i?v:x));touched();}} invalid={tried&&!hasMeaning&&i===0} describedBy={tried&&!hasMeaning&&i===0?'meaning-hint':undefined}
-        boxRef={el=>{meaningRefs.current[i]=el;}} onRemove={meanings.length>1?()=>removeMeaning(i):undefined} removeLabel={F.removeMeaning(i+1)} onNoVoice={noVoice(meaningLang)}/>)}
+        boxRef={el=>{meaningRefs.current[i]=el;}} onRemove={meanings.length>1?()=>removeMeaning(i):undefined} removeLabel={F.removeMeaning(i+1)}/>)}
       {tried&&!hasMeaning&&<p id="meaning-hint" className="hint box-hint" role="alert">{F.missingMeaning}</p>}
       <div className="add-more-row">
         {meanings.length<MAX_MEANINGS&&<button type="button" className="add-more" onClick={addMeaning}><Plus size={18} aria-hidden="true"/>{F.addMeaning}</button>}
         {!showExample&&<button type="button" className="add-more" onClick={()=>setShowExample(true)}><Plus size={18} aria-hidden="true"/>{F.addExample}</button>}
       </div>
       {showExample&&<LangBox id="example" lang={content} label={F.exampleLabel} value={example} onChange={setExample} placeholder={phFor(EXAMPLE_PH,content)} maxLength={500}
-        boxRef={el=>{exampleRef.current=el;}} onRemove={()=>{setExample('');setShowExample(false);}} removeLabel={F.removeExample} onNoVoice={noVoice(content)}/>}
+        boxRef={el=>{exampleRef.current=el;}} onRemove={()=>{setExample('');setShowExample(false);}} removeLabel={F.removeExample}/>}
       {error&&<p className="inline-error" role="alert">{error}</p>}
       {unsynced&&<div className="inline-error soft" role="alert"><p>{A.unsynced[0]}<span dir="auto">{unsynced.term}</span>{A.unsynced[1]}</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>{A.refreshList}</button></div>}
       <div className="form-foot">
@@ -332,7 +373,7 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
     if(revealed){const g=gradesRef.current;g?.scrollIntoView({block:'nearest',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});g?.focus({preventScroll:true});}
     else revealRef.current?.focus({preventScroll:true});
   },[revealed,active?.id]);
-  const comesBack=(l:{term:string;next:string})=><>«<span dir="ltr">{l.term}</span>» {R.comesBack} {relative(l.next)}.</>;
+  const comesBack=(l:{term:string;next:string})=><>«<bdi>{l.term}</bdi>» {R.comesBack} {relative(l.next)}.</>;
 
   if(!active){
     const moreDue=dueIds().length;
@@ -367,7 +408,7 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
       </div>
     </section>;
   }
-  const total=done+queue.length;
+  const total=done+queue.length,cl=contentLang(active,lib.decks),meaningLang=cardLanguages(active,lib.decks).meaning;
   return <section className="review" aria-labelledby="review-title">
     <ScopeBar scope={scope} lib={lib} go={go}/>
     <div className="review-top">
@@ -378,10 +419,10 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
     <div className="last-line" aria-live="polite">{last?comesBack(last):R.think}</div>
     <article key={active.id} className={'card'+(revealed?' is-open':'')} aria-live="polite">
       <Wash tone="soft"/>
-      <div className="card-top"><span className="card-labels"><span className="kind-badge">{kindLabel(active.contentType)}</span><span className="tag" dir="auto">{tagText(active.tag)}</span></span><SpeakButton text={active.term} label={T.listen(active.term)}/></div>
-      <h2 dir="ltr" lang="en" className={'term'+(active.term.length>40?' term-long':'')}>{active.term}</h2>
-      {active.example&&<p className="example" dir="ltr" lang="en">{active.example}</p>}
-      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}<strong dir="auto">{active.meanings.join('؛ ')}</strong>{active.note&&<p className="note" dir="auto">{active.note}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
+      <div className="card-top"><span className="card-labels"><span className="kind-badge">{kindLabel(active.contentType)}</span><span className="tag" dir="auto">{tagText(active.tag)}</span></span><SpeakButton text={active.term} lang={cl} label={T.listen(active.term)}/></div>
+      <h2 dir={dirOf(cl)} lang={cl} className={'term'+(active.term.length>40?' term-long':'')}>{active.term}</h2>
+      {active.example&&<ExampleLine text={active.example} lang={cl}/>}
+      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}<strong dir={dirOf(meaningLang)} lang={meaningLang}>{active.meanings.join('؛ ')}</strong>{active.note&&<p className="note" dir="auto">{active.note}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
         :<button ref={revealRef} type="button" className="btn btn-ink btn-lg reveal" onClick={()=>setRevealed(true)}>{R.reveal}</button>}
     </article>
     {msg&&<p className="inline-error" role="alert">{msg}</p>}
@@ -603,19 +644,19 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
   async function move(deckId:string){const w=moving;if(!w)return;await moveWord(w.id,deckId);await onChanged();const d=lib.decks.find(x=>x.id===deckId);notify(L.moved(w.term,d?deckName(d):''));setMoving(null);}
   async function save(v:CardEdit){const w=editing;if(!w)return;const next=await editWord(w.id,v);await onChanged();notify(C.saved(next.term));setEditing(null);}
   return <>
-    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id);return <li key={w.id} className={'word'+(isOpen?' open':'')}>
+    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id),cl=contentLang(w,lib.decks);return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir="ltr" lang="en">{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
+        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir={dirOf(cl)} lang={cl}>{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
       {isOpen&&<div className="word-detail" id={'wd-'+w.id}>
-        {w.example&&<p className="example" dir="ltr" lang="en">{w.example}</p>}
+        {w.example&&<ExampleLine text={w.example} lang={cl}/>}
         {w.translation&&<p className="translation" dir="auto">{w.translation}</p>}
         {w.note&&<p className="note"><b>{T.kindForm[w.contentType].note?.label||Lb.noteFallback}</b> <span dir="auto">{w.note}</span></p>}
         <p className="word-deck"><Layers3 size={16} aria-hidden="true"/><span>{C.deck}</span> <b dir="auto">{place(w)}</b></p>
         <div className="word-actions">
-          <SpeakButton text={w.term} label={T.listen(w.term)} className="btn btn-quiet sm"/>
+          <SpeakButton text={w.term} lang={cl} label={T.listen(w.term)} className="btn btn-quiet sm"/>
           <button type="button" className="btn btn-quiet sm" onClick={()=>setEditing(w)}><Pencil size={16}/>{C.edit}</button>
           <button type="button" className="icon-btn more-btn" aria-haspopup="dialog" aria-label={C.more(w.term)} title={C.more(w.term)} onClick={()=>setMenu(w)}><MoreHorizontal size={20}/></button>
         </div>
@@ -633,7 +674,7 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
     <ActionSheet word={menu} onClose={()=>setMenu(null)} onMove={w=>{setMenu(null);setMoving(w);}} onRemove={w=>{setMenu(null);setPending(w);}}/>
     <ConfirmDialog open={!!pending} title={Lb.removeTitle(pending?.term||'')} body={Lb.removeBody} confirm={Lb.removeYes} cancel={Lb.removeNo} onConfirm={()=>void confirmArchive()} onCancel={()=>setPending(null)}/>
     <MoveSheet word={moving} lib={lib} onMove={move} onClose={()=>setMoving(null)}/>
-    <EditSheet word={editing} onSave={save} onClose={()=>setEditing(null)}/>
+    <EditSheet word={editing} lang={editing?contentLang(editing,lib.decks):DEFAULT_CONTENT_LANGUAGE} onSave={save} onClose={()=>setEditing(null)}/>
   </>;
 }
 /** The ••• menu: secondary and destructive actions, out of the way of everyday use (#25). */
@@ -652,7 +693,7 @@ function ActionSheet({word,onClose,onMove,onRemove}:{word:Word|null;onClose:()=>
   </dialog>;
 }
 /** Edit content only (#25 + #26 data): term, existing meanings, example/translation/note where the kind has them or the card already does. */
-function EditSheet({word,onSave,onClose}:{word:Word|null;onSave:(v:CardEdit)=>Promise<void>;onClose:()=>void}){
+function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave:(v:CardEdit)=>Promise<void>;onClose:()=>void}){
   const C=T.card,open=!!word;
   const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>([]),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState('');
   const {busy,error,run}=useSheetAction(open);
@@ -661,9 +702,9 @@ function EditSheet({word,onSave,onClose}:{word:Word|null;onSave:(v:CardEdit)=>Pr
   const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
   return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}>
-    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" dir="ltr" lang="en" autoFocus maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
+    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" dir={dirOf(lang)} lang={lang} autoFocus maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
     {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} dir="auto" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
-    {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir="ltr" lang="en" maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
+    {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
     {has.translation&&<div className="field"><label htmlFor="edit-translation">{f.translation?.label||C.translation}</label><textarea id="edit-translation" dir="auto" maxLength={400} value={translation} onChange={e=>setTranslation(e.target.value)}/></div>}
     {has.note&&<div className="field"><label htmlFor="edit-note">{f.note?.label||T.library.noteFallback}</label><textarea id="edit-note" dir="auto" maxLength={NOTE_LIMIT} value={note} onChange={e=>setNote(e.target.value)}/></div>}
     <p className="hint">{C.editNote}</p>
@@ -987,6 +1028,7 @@ export default function App(){
   });},[page,sub,locale]);
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
+  useEffect(()=>{speechNotice=text=>notify(text,'error');},[notify]);
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});void syncPush(words).catch(console.warn); /* #30: notification language follows the interface */},[locale,words]);
   const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
   const go=useCallback((path:string)=>{window.location.hash='/'+path;},[]);
@@ -1004,7 +1046,7 @@ export default function App(){
   let content:ReactNode;
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label={T.loading}><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
   else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>{T.fatalTitle}</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>{T.tryAgain}</button></div>;
-  else content=page==='home'?<HomePage words={words} reviews={reviews} lastBackup={lastBackup} onNavigate={navigate}/>
+  else content=page==='home'?<HomePage words={words} reviews={reviews} decks={lib.decks} lastBackup={lastBackup} onNavigate={navigate}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
     :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
