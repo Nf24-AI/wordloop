@@ -46,7 +46,8 @@ export function startUpdates(){
     set('elsewhere');
   });
   const register=async()=>{
-    try{registration=await navigator.serviceWorker.register('/sw.js');}catch(e){console.warn(e);return;}
+    try{registration=await navigator.serviceWorker.register('/sw.js')??null;}catch(e){console.warn(e);return;}
+    if(!registration)return; // service workers blocked (privacy settings, some test browsers): the app simply runs without updates
     watch(registration);
     document.addEventListener('visibilitychange',checkForUpdate);
     window.addEventListener('online',checkForUpdate);
