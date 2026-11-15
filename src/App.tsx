@@ -987,7 +987,7 @@ export default function App(){
   });},[page,sub,locale]);
   useEffect(()=>{if(!toast)return;const t=setTimeout(()=>setToast(null),toast.tone==='error'?7000:4200);return()=>clearTimeout(t);},[toast]);
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
-  const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});},[locale]);
+  const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});void syncPush(words).catch(console.warn); /* #30: notification language follows the interface */},[locale,words]);
   const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
   const go=useCallback((path:string)=>{window.location.hash='/'+path;},[]);
   // #9 (contextual +): inside a deck, + adds a card to that deck directly, with no intermediate menu.

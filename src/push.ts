@@ -1,4 +1,7 @@
 import type {Word} from './data';
+import {storedLocale} from './i18n';
+/** #30: the only extra metadata synced with the subscription — the device time zone (quiet hours, daily limit) and the notification language. Never words. */
+function deviceMeta(){let timeZone='Asia/Riyadh';try{timeZone=Intl.DateTimeFormat().resolvedOptions().timeZone||timeZone;}catch{/* default */}return {timeZone,locale:storedLocale()};}
 const TOKEN_KEY='wordloop-notification-device-token';
 function getToken(){let token=localStorage.getItem(TOKEN_KEY);if(!token){token=crypto.randomUUID()+crypto.randomUUID();localStorage.setItem(TOKEN_KEY,token);}return token;}
 function keyBytes(base64:string){const data=atob(base64.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-base64.length%4)%4));return Uint8Array.from(data,c=>c.charCodeAt(0));}
@@ -12,7 +15,7 @@ export async function enablePush(words:Word[]){
   const registration=await navigator.serviceWorker.ready;
   const subscription=(await registration.pushManager.getSubscription())||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey) as BufferSource});
   const nextDueAt=words.filter(w=>!w.archived).sort((a,b)=>a.dueAt.localeCompare(b.dueAt))[0]?.dueAt||null;
-  const res=await fetch('/api/push/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:getToken(),subscription:subscription.toJSON(),nextDueAt})});
+  const res=await fetch('/api/push/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:getToken(),subscription:subscription.toJSON(),nextDueAt,...deviceMeta()})});
   if(!res.ok)throw Error('تعذر ربط إشعارات هذا الجهاز. أعد المحاولة');
 }
 export async function syncPush(words:Word[]){
@@ -20,7 +23,7 @@ export async function syncPush(words:Word[]){
   const token=localStorage.getItem(TOKEN_KEY);if(!token)return;
   const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();if(!sub)return;
   const nextDueAt=words.filter(w=>!w.archived).sort((a,b)=>a.dueAt.localeCompare(b.dueAt))[0]?.dueAt||null;
-  await fetch('/api/push/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,subscription:sub.toJSON(),nextDueAt})});
+  await fetch('/api/push/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,subscription:sub.toJSON(),nextDueAt,...deviceMeta()})});
 }
 export async function disablePush(){
   if(!pushSupported())return;
