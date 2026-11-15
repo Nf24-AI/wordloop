@@ -742,12 +742,14 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
   const C=T.card,open=!!word;
   const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>([]),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState('');
   const {busy,error,run}=useSheetAction(open);
-  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}},[word]);
+  // #42: «changed» is judged only once the fields hold this card's text — never in the first render, before they are filled.
+  const [loadedId,setLoadedId]=useState<string|null>(null);
+  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}setLoadedId(word?.id??null);},[word]);
   if(!word)return <FormSheet open={false} title="" onClose={onClose} onSubmit={()=>undefined} submit="" busy error=""><span/></FormSheet>;
   const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
   return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}
-    dirty={term!==word.term||meanings.join('\n')!==word.meanings.join('\n')||example!==word.example||translation!==word.translation||note!==word.note}>
+    dirty={loadedId===word.id&&(term!==word.term||meanings.join('\n')!==word.meanings.join('\n')||example!==word.example||translation!==word.translation||note!==word.note)}>
     <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={dirOf(lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
     {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} name={'edit-meaning-'+i} dir="auto" autoComplete="off" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
     {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
