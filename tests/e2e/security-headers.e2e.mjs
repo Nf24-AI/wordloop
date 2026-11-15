@@ -76,8 +76,11 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.locator('dialog[open] button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='CSP');
       await page.goto(base+'/#/words/all');await page.locator('.word-main',{hasText:'resilient'}).click();await page.locator('.word-detail').waitFor();
       await page.goto(base+'/#/review');await page.locator('.reveal').click();await page.locator('.grades button').nth(2).click();
-      await page.goto(base+'/#/stats');await page.waitForSelector('main h1');
-      await page.goto(base+'/#/settings');await page.waitForSelector('.lang-switch');
+      // Each screen as a full load (a fresh document under the CSP); hash-only jumps were unreliable in Linux WebKit.
+      let n=0;const open=async(route,selector)=>{await page.goto(`${base}/?s=${++n}#/${route}`);
+        await page.waitForSelector(selector,{timeout:15000}).catch(async e=>{throw new Error(`${route}: ${e.message} — at ${await page.evaluate(()=>location.hash+' | '+(document.querySelector('main h1')?.textContent??'no h1'))}`);});};
+      await open('stats','main h1');
+      await open('settings','.lang-switch');
       // Backup export (blob URL + <a download>) under the CSP. Headless WebKit on Linux may not surface a download event,
       // so the app's own success message is the signal; any CSP violation would still be recorded below.
       await page.locator('main button.tile:has(.lucide-arrow-down-to-line)').click();
