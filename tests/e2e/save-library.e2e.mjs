@@ -48,6 +48,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.locator('#term-hint[role=alert]').waitFor(); // #26: refused in place, under the content box
       assert.equal(await page.inputValue('#term'),'  In   Charge OF ');
       assert.equal(await page.inputValue('#meaning'),'معنى ثاني');
+      // #42: leaving a form with typed text asks first — clear it, as the learner would, before going to the Library.
+      await page.fill('#term','');await page.fill('#meaning','');
       assert.deepEqual(await libraryTerms(page,base()),['in charge of']);
       await context.close();
     });
