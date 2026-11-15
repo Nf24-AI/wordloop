@@ -654,3 +654,40 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .update-actions .btn{flex:1;min-block-size:44px}
 @media(min-width:1024px){.update-card{inset-inline:auto 24px;inset-block-end:24px}}
 @media(prefers-reduced-motion:reduce){.update-card{animation:none}}
+
+/* ───────── #22 Reading Practice: one calm question at a time ───────── */
+.practice{max-inline-size:680px}
+.practice-setup{display:grid;gap:18px}
+.practice-field{border:0;padding:0;margin:0;display:grid;gap:10px}
+.practice-field legend{font-weight:600;font-size:15px;margin-block-end:10px}
+.practice-why{display:grid;gap:4px;font-size:14px;color:var(--muted);line-height:1.6;padding:0;list-style:none}
+.practice-note{font-size:14px;color:var(--teal-deep)}
+.practice-start{justify-self:start}
+.practice-empty{display:grid;gap:10px;padding:clamp(18px,4vw,28px);border-radius:var(--r-lg);background:#fbfaf6;border:1px solid var(--line)}
+.practice-empty h2{font-size:19px;font-weight:700}
+.practice-empty p{color:var(--ink-2);line-height:1.7}
+.practice-text{margin-block:14px}
+.practice-q{display:grid;gap:14px;padding:clamp(18px,4vw,30px);border-radius:var(--r-xl);border:1px solid var(--line);background:var(--surface);margin-block-start:14px;animation:rise .3s var(--ease) both}
+.practice-q .kind-badge{justify-self:start}
+.practice-prompt{font:400 clamp(20px,1rem + 1.4vw,26px)/1.6 var(--en);color:var(--ink);overflow-wrap:anywhere}
+.practice-prompt.question{font-family:inherit;font-weight:600;font-size:clamp(18px,1rem + .8vw,22px)}
+.practice-prompt.term-prompt{font-size:clamp(32px,7vw,52px);line-height:1.15;text-align:center}
+.blank{display:inline-block;min-inline-size:4.5em;border-block-end:2px solid var(--teal);margin-inline:2px;text-align:center}
+.blank.filled{color:var(--teal-deep);font-weight:600}
+.practice-hint,.practice-source{font-size:15px;color:var(--ink-2);line-height:1.6;overflow-wrap:anywhere}
+.practice-hint small,.practice-source small{color:var(--muted)}
+.practice-answer{display:grid;gap:10px}
+.practice-answer input{inline-size:100%;min-block-size:48px;font-size:17px}
+.practice-options{display:grid;gap:10px}
+.practice-option{min-block-size:52px;padding:10px 16px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:var(--surface);font-size:17px;text-align:start;color:var(--ink);transition:background-color .15s,border-color .15s}
+@media(hover:hover){.practice-option:not(:disabled):hover{border-color:var(--teal)}}
+.practice-option.right{background:#e6f2ee;border-color:var(--teal);color:var(--teal-deep);font-weight:600}
+.practice-option.wrong{background:#f8e9e3;border-color:#c2603f;color:#8f3f24}
+.practice-option:disabled{cursor:default}
+.practice-feedback{font-size:16px;line-height:1.6;overflow-wrap:anywhere}
+.practice-feedback.good b{color:var(--teal-deep)}
+.practice-feedback.close b{color:#9a6a12}
+.practice-feedback.bad b{color:#8f3f24}
+.practice-next{justify-self:start}
+.practice-missed{text-align:start;inline-size:100%;max-inline-size:560px}
+@media(prefers-reduced-motion:reduce){.practice-q{animation:none}}
