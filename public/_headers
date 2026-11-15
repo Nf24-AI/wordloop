@@ -1,0 +1,15 @@
+# #3 — HTTP security headers for the WordLoop app (Cloudflare Workers static assets).
+# Everything the app loads is same-origin: hashed /assets bundles, self-hosted fonts, the manifest, icons and /sw.js.
+# There are no inline scripts; inline SVG in CSS needs data: images. Speech (#19/#20) runs on the device, no network.
+# style-src-attr 'unsafe-inline': WebKit's native <select> sets an inline style attribute itself (seen in the e2e test);
+# blocking it risks broken pickers in Safari. Style *elements* and all scripts stay same-origin only.
+# /api/* is answered by the Worker (worker/index.ts), which sets its own JSON headers.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+/sw.js
+  Cache-Control: no-cache
