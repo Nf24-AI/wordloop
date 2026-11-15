@@ -593,3 +593,27 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .example-line>span{flex:1;min-inline-size:0}
 .example-line .speak-group{flex:none}
 .example-speak{inline-size:40px;block-size:40px}
+
+/* #21: Learning Passages — one compact row in the deck, a calm reading page, a simple editor */
+.texts-row{margin-block:4px 14px}
+.passage-snippet{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-inline-size:100%}
+.passage-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block:4px 18px}
+.passage-body{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:clamp(18px,4vw,30px);font-size:clamp(18px,2.2vw,21px);line-height:1.8;color:var(--ink);max-inline-size:720px}
+.passage-body p{margin:0}.passage-body p+p{margin-block-start:.9em}
+.passage-extra{margin-block:14px}
+.passage-translation{margin:10px 0 0;padding:14px 18px;border-inline-start:3px solid var(--sea);background:var(--cream);border-radius:var(--r-sm);line-height:1.8;max-inline-size:720px}
+.passage-facts{margin-block:14px;max-inline-size:720px}
+.fact-list{margin:10px 0 0;padding-inline-start:22px;display:grid;gap:12px}
+.fact-list li{display:grid;gap:3px}
+.fact-list q{font-size:14px;color:var(--muted)}
+.passage-note{font-size:13.5px;color:var(--muted);margin-block:18px 0}
+.danger-text{color:#a3402a}
+.field-hint{display:block;font-size:13px;color:var(--muted);margin-block-start:6px}
+.passage-input{min-block-size:160px;font-size:18px;line-height:1.75;resize:vertical}
+.with-remove{display:flex;align-items:flex-start;gap:6px}.with-remove textarea{flex:1;min-inline-size:0}
+.facts-fields{border:0;padding:0;margin:6px 0 0;display:grid;gap:12px;min-inline-size:0}
+.facts-fields legend{font-weight:700;font-size:16px;padding:0;margin-block-end:2px}
+.facts-fields>.field-hint{margin:0}
+.fact-card{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+.fact-head{display:flex;align-items:center;justify-content:space-between}
+.passage-extra .link-btn{white-space:nowrap}

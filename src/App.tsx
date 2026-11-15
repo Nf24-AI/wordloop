@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,FileText,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
+import {addWord,archiveWord,buildBackup,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
 import {pickVoice,RATE} from './voice';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
@@ -102,7 +102,7 @@ function Wash({tone='full'}:{tone?:'full'|'soft'|'cool'|'warm'}){return <div cla
  * One listen button (#20: اسمع → افهم → كرّر). Tap = natural speed; tap again while it plays = stop. After the first
  * listen a light «أبطأ» replay appears next to it (`slower={false}` where space is tight). No voice/speed settings.
  */
-function SpeakButton({text,label,lang,className='icon-btn',slower=true}:{text:string;label:string;lang:string;className?:string;slower?:boolean}){
+function SpeakButton({text,label,lang,className='icon-btn',slower=true,showLabel=false}:{text:string;label:string;lang:string;className?:string;slower?:boolean;showLabel?:boolean}){
   const [playing,setPlaying]=useState<null|'normal'|'slow'>(null),[heard,setHeard]=useState(false);
   const run=useRef(0);
   useEffect(()=>{setHeard(false);},[text,lang]);
@@ -115,7 +115,7 @@ function SpeakButton({text,label,lang,className='icon-btn',slower=true}:{text:st
     if(ok){setPlaying(mode);setHeard(true);}else run.current=id;
   }
   const main=<button type="button" className={className+(playing==='normal'?' is-playing':'')} aria-label={playing==='normal'?T.speech.stop:label} title={playing==='normal'?T.speech.stop:label} onClick={()=>play('normal')} disabled={!text.trim()}>
-    {playing==='normal'?<Square size={16} strokeWidth={2.2}/>:<Volume2 size={19} strokeWidth={1.8}/>}</button>;
+    {playing==='normal'?<Square size={16} strokeWidth={2.2}/>:<Volume2 size={19} strokeWidth={1.8}/>}{showLabel&&<span>{playing==='normal'?T.speech.stop:label}</span>}</button>;
   if(!slower)return main;
   return <span className="speak-group">{main}{heard&&<button type="button" className={'slow-btn'+(playing==='slow'?' is-playing':'')} aria-label={playing==='slow'?T.speech.stop:T.speech.slowerLabel(text)} onClick={()=>play('slow')}>
     {playing==='slow'?<Square size={13} strokeWidth={2.4}/>:<Snail size={15} strokeWidth={1.9}/>}<span>{T.speech.slower}</span></button>}</span>;
@@ -436,10 +436,15 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 
 /* ───────────── Library (#16): «مكتبتي» — folders → decks → cards ───────────── */
 type Library={folders:Folder[];decks:Deck[]};
-type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string};
+type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
+  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
-  const [k,id]=sub.split('/');
+  const [k,id,t,pid,e]=sub.split('/');
+  // #21: `d/<deck>/texts` · `d/<deck>/texts/new` · `d/<deck>/texts/<id>` · `d/<deck>/texts/<id>/edit`
+  if(k==='d'&&id&&t==='texts'){const deckId=decodeURIComponent(id);
+    if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
+    return e==='edit'?{kind:'passageEdit',deckId,id:decodeURIComponent(pid)}:{kind:'passage',deckId,id:decodeURIComponent(pid)};}
   if(k==='f'&&id)return {kind:'folder',id:decodeURIComponent(id)};
   if(k==='d'&&id)return {kind:'deck',id:decodeURIComponent(id)};
   return {kind:'root',tab:k==='all'?'all':k==='due'?'due':'folders'};
@@ -455,17 +460,20 @@ const langCode=(tag:string)=>tag.split('-')[0].toUpperCase();
 const deckIdOf=(w:Word,lib:Library)=>lib.decks.some(d=>d.id===w.deckId)?w.deckId:DEFAULT_DECK_ID;
 const ZERO={decks:0,cards:0,due:0};
 
-function LibraryPage({words,reviews,lib,sub,onChanged,notify,go}:{words:Word[];reviews:Review[];lib:Library;sub:string;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words:Word[];reviews:Review[];lib:Library;passages:Passage[];sub:string;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
   const view=parseLibrary(sub);
   // The default folder always exists once loaded, so no folders = IndexedDB not read yet: render nothing rather than a false «not found» or an empty grid.
   const counts=useMemo(()=>libraryCounts(words,lib.decks),[words,lib.decks]);
   if(!lib.folders.length)return <div className="page library" aria-busy="true"><PageHead title={T.lib.title}/></div>;
-  const shared={words,reviews,lib,counts,onChanged,notify,go};
+  const shared={words,reviews,lib,passages,counts,onChanged,notify,go};
+  if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
+  if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
+  if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
   if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
   return <LibraryRoot tab={view.tab} {...shared}/>;
 }
-type LibShared={words:Word[];reviews:Review[];lib:Library;counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
+type LibShared={words:Word[];reviews:Review[];lib:Library;passages:Passage[];counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
 
 function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:string)=>void;placeholder:string;label:string}){
   return <label className="search"><Search size={19}/><span className="visually-hidden">{label}</span><input type="search" dir="auto" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} enterKeyHint="search"/>{value&&<button type="button" className="icon-btn ghost" aria-label={T.library.clearSearch} onClick={()=>onChange('')}><X size={17}/></button>}</label>;
@@ -597,7 +605,7 @@ function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&
   </div>;
 }
 
-function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
+function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:LibShared&{id:string}){
   const L=T.lib;
   const [q,setQ]=useState(''),[settings,setSettings]=useState(false),[confirmDelete,setConfirmDelete]=useState(false);
   const deck=lib.decks.find(d=>d.id===id);
@@ -606,7 +614,8 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
   const folder=lib.folders.find(f=>f.id===deck.folderId);
   const s=q.trim().toLocaleLowerCase(),list=cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)));
   const hasAny=words.some(w=>deckIdOf(w,lib)===id); // archived cards still belong to the deck
-  const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:'';
+  const textCount=passages.filter(p=>p.deckId===id).length;
+  const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:textCount?T.texts.deckHasTexts:'';
   async function save(v:DeckForm){await updateDeck(id,v);await onChanged();notify(L.saved);setSettings(false);}
   async function remove(){setConfirmDelete(false);try{await deleteDeck(id);await onChanged();notify(L.deleted(deckName(deck!)));go(folderPath(deck!.folderId));}catch(e){notify(getError(e),'error');}}
   return <div className="page library">
@@ -619,6 +628,7 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
     </PageHead>
     <ScopePanel scope={{kind:'deck',id}} words={words} reviews={reviews} lib={lib} go={go}/>
     <div className="deck-actions"><button type="button" className={'btn '+(counts.deck.get(id)?.due?'btn-quiet':'btn-ink')} onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
+    <TextsRow deckId={id} count={textCount} go={go}/>
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
@@ -626,6 +636,120 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
     <DeckSheet open={settings} title={L.deckSettings} lib={lib} deck={deck} submit={L.save} onSubmit={save} onClose={()=>setSettings(false)}
       extra={<DangerZone label={L.deleteDeck} blocked={blocked} onDelete={()=>{setSettings(false);setConfirmDelete(true);}}/>}/>
     <ConfirmDialog open={confirmDelete} title={L.deleteDeckTitle(deckName(deck))} body={L.deleteEmptyBody} confirm={L.deleteYes} cancel={L.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirmDelete(false)}/>
+  </div>;
+}
+
+/* ───────────── Passages (#21): texts inside a deck, read and listened to (Practice #22/#23 builds on them) ───────────── */
+const textsPath=(deckId:string)=>deckPath(deckId)+'/texts',passagePath=(deckId:string,id:string)=>textsPath(deckId)+'/'+encodeURIComponent(id);
+/** The compact entry in a deck page: one row, so the #16 deck layout stays about cards. */
+function TextsRow({deckId,count,go}:{deckId:string;count:number;go:(path:string)=>void}){
+  const Tx=T.texts;
+  return <button type="button" className="deck-row texts-row" onClick={()=>go(textsPath(deckId))}>
+    <span className="folder-icon sm" aria-hidden="true"><FileText size={19} strokeWidth={1.8}/></span>
+    <span className="deck-text"><b>{Tx.title}</b><small>{count?Tx.count(count):Tx.none}</small></span><Fwd size={18}/>
+  </button>;
+}
+function deckCrumbs(lib:Library,deck:Deck,extra:{label:string;path:string}[]=[]){
+  const folder=lib.folders.find(f=>f.id===deck.folderId);
+  return [{label:T.lib.title,path:'words'},...(folder?[{label:folderName(folder),path:folderPath(folder.id)}]:[]),{label:deckName(deck),path:deckPath(deck.id)},...extra];
+}
+function TextsView({deckId,lib,passages,go}:{deckId:string;lib:Library;passages:Passage[];go:(path:string)=>void}){
+  const Tx=T.texts,deck=lib.decks.find(d=>d.id===deckId);
+  if(!deck)return <NotFound go={go}/>;
+  const list=passages.filter(p=>p.deckId===deckId);
+  return <div className="page library head-inline">
+    <Crumbs items={deckCrumbs(lib,deck)} go={go}/>
+    <PageHead title={Tx.title} lead={Tx.lead}>
+      <div className="head-actions"><button type="button" className="btn btn-ink head-add" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18} aria-hidden="true"/>{Tx.add}</button></div>
+    </PageHead>
+    {list.length?<ul className="deck-list">{list.map(p=><li key={p.id}><button type="button" className="deck-row" onClick={()=>go(passagePath(deckId,p.id))}>
+        <span className="folder-icon sm" aria-hidden="true"><FileText size={19} strokeWidth={1.8}/></span>
+        <span className="deck-text"><b dir="auto">{p.title}</b><small dir={dirOf(p.contentLanguage)} lang={p.contentLanguage} className="passage-snippet">{p.body.replace(/\s+/g,' ').slice(0,90)}</small></span>
+        <span className="lang-chip" dir="ltr">{langCode(p.contentLanguage)}</span><Fwd size={18}/>
+      </button></li>)}</ul>
+      :<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{Tx.emptyTitle}</h2><p>{Tx.emptyBody}</p>
+        <button type="button" className="btn btn-ink" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18}/>{Tx.add}</button></div>}
+  </div>;
+}
+
+/** Read and listen to one passage: the whole text in its own language, one listen button (with «أبطأ»), optional translation and facts. */
+function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string;id:string;lib:Library;passages:Passage[];onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const Tx=T.texts,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const [showTr,setShowTr]=useState(false),[confirm,setConfirm]=useState(false);
+  if(!p||!deck)return <NotFound go={go}/>;
+  async function remove(){setConfirm(false);try{await deletePassage(p!.id);await onChanged();notify(Tx.deleted(p!.title));go(textsPath(deckId));}catch(e){notify(getError(e),'error');}}
+  return <div className="page library passage-page">
+    <Crumbs items={deckCrumbs(lib,deck,[{label:Tx.title,path:textsPath(deckId)}])} go={go}/>
+    <PageHead title={p.title}>
+      <div className="head-actions"><span className="lang-chip" dir="ltr" title={p.contentLanguage}>{langCode(p.contentLanguage)}</span></div>
+    </PageHead>
+    <div className="passage-actions">
+      <SpeakButton text={p.body} lang={p.contentLanguage} label={Tx.listen} className="btn btn-ink passage-listen" showLabel/>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{Tx.edit}</button>
+      <button type="button" className="btn btn-quiet sm danger-text" onClick={()=>setConfirm(true)}><Trash2 size={16}/>{Tx.delete}</button>
+    </div>
+    <article className="passage-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article>
+    {p.translation&&<div className="passage-extra">
+      <button type="button" className="link-btn" aria-expanded={showTr} onClick={()=>setShowTr(v=>!v)}>{showTr?Tx.hideTranslation:Tx.showTranslation}</button>
+      {showTr&&<p className="passage-translation" dir="auto">{p.translation}</p>}
+    </div>}
+    {p.questions.length>0&&<details className="learn-details passage-facts"><summary>{Tx.factsTitle(p.questions.length)}</summary>
+      <ol className="fact-list">{p.questions.map(q=><li key={q.id}><b dir="auto">{q.question}</b><span dir="auto">{q.answer}{q.alternatives.length>0&&<small> · {q.alternatives.join('، ')}</small>}</span>{q.quote&&<q dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{q.quote}</q>}</li>)}</ol>
+    </details>}
+    <p className="passage-note">{Tx.localNote}</p>
+    <ConfirmDialog open={confirm} title={Tx.deleteTitle(p.title)} body={Tx.deleteBody} confirm={Tx.deleteYes} cancel={Tx.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirm(false)}/>
+  </div>;
+}
+
+type FactDraft={key:string;id?:string;question:string;answer:string;alternatives:string;quote:string};
+const newFact=():FactDraft=>({key:crypto.randomUUID(),question:'',answer:'',alternatives:'',quote:''});
+/** Create or edit a passage. Facts are optional: comprehension practice (#22) only ever asks these, never invented ones. */
+function PassageEditor({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string;id:string|null;lib:Library;passages:Passage[];onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const Tx=T.texts,deck=lib.decks.find(d=>d.id===deckId),old=id?passages.find(p=>p.id===id&&p.deckId===deckId):undefined;
+  const [title,setTitle]=useState(old?.title??''),[body,setBody]=useState(old?.body??''),[lang,setLang]=useState(old?.contentLanguage??deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE);
+  const [translation,setTranslation]=useState(old?.translation??''),[showTr,setShowTr]=useState(!!old?.translation);
+  const [facts,setFacts]=useState<FactDraft[]>(()=>old?.questions.map(q=>({key:q.id,id:q.id,question:q.question,answer:q.answer,alternatives:q.alternatives.join('، '),quote:q.quote}))??[]);
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const bodyRef=useRef<HTMLTextAreaElement|null>(null);
+  useLayoutEffect(()=>{const el=bodyRef.current;if(el){el.style.height='auto';el.style.height=Math.max(160,el.scrollHeight)+'px';}},[body]);
+  if(!deck||(id&&!old))return <NotFound go={go}/>;
+  const setFact=(i:number,patch:Partial<FactDraft>)=>setFacts(fs=>fs.map((f,j)=>j===i?{...f,...patch}:f));
+  async function submit(e:FormEvent){
+    e.preventDefault();if(busy)return;setError('');setBusy(true);
+    const questions=facts.filter(f=>f.question.trim()||f.answer.trim()||f.quote.trim()).map(f=>({id:f.id,question:f.question,answer:f.answer,quote:f.quote,alternatives:f.alternatives.split(/[,،\n]/).map(a=>a.trim()).filter(Boolean)}));
+    try{
+      const input={deckId,title,body,contentLanguage:lang,translation:showTr?translation:'',questions};
+      const saved=old?await updatePassage(old.id,input):await createPassage(input);
+      await onChanged();notify(Tx.saved(saved.title));go(passagePath(deckId,saved.id));
+    }catch(err){setError(getError(err));}finally{setBusy(false);}
+  }
+  return <div className="page library passage-editor">
+    <Crumbs items={deckCrumbs(lib,deck,[{label:Tx.title,path:textsPath(deckId)}])} go={go}/>
+    <PageHead title={old?Tx.editTitle:Tx.newTitle} lead={Tx.editorLead}/>
+    <form className="add-form" onSubmit={e=>void submit(e)} noValidate>
+      <div className="field"><label htmlFor="passage-title">{Tx.titleLabel}</label><input id="passage-title" dir="auto" maxLength={PASSAGE_LIMITS.title} value={title} onChange={e=>setTitle(e.target.value)} placeholder={Tx.titlePh} autoFocus={!old}/></div>
+      <div className="field"><label htmlFor="passage-lang">{Tx.langLabel}</label><LanguageSelect id="passage-lang" value={lang} onChange={setLang}/></div>
+      <div className="field"><label htmlFor="passage-body">{Tx.bodyLabel}</label>
+        <textarea ref={bodyRef} id="passage-body" className="passage-input" dir={dirOf(lang)} lang={lang} maxLength={PASSAGE_LIMITS.body} value={body} onChange={e=>setBody(e.target.value)} placeholder={Tx.bodyPh(lang)} spellCheck={false}/>
+        <small className="field-hint">{Tx.bodyHint(body.length,PASSAGE_LIMITS.body)}</small></div>
+      {showTr?<div className="field"><label htmlFor="passage-translation">{Tx.translationLabel}</label>
+          <div className="with-remove"><textarea id="passage-translation" dir="auto" rows={3} maxLength={PASSAGE_LIMITS.translation} value={translation} onChange={e=>setTranslation(e.target.value)}/>
+          <button type="button" className="icon-btn ghost" aria-label={Tx.removeTranslation} title={Tx.removeTranslation} onClick={()=>{setTranslation('');setShowTr(false);}}><X size={18}/></button></div></div>
+        :<div className="add-more-row"><button type="button" className="add-more" onClick={()=>setShowTr(true)}><Plus size={16}/>{Tx.addTranslation}</button></div>}
+      <fieldset className="facts-fields"><legend>{Tx.factsLegend}</legend><p className="field-hint">{Tx.factsHint}</p>
+        {facts.map((f,i)=><div key={f.key} className="fact-card">
+          <div className="fact-head"><b>{Tx.factN(i+1)}</b><button type="button" className="icon-btn ghost" aria-label={Tx.removeFact(i+1)} title={Tx.removeFact(i+1)} onClick={()=>setFacts(fs=>fs.filter((_,j)=>j!==i))}><X size={18}/></button></div>
+          <div className="field"><label htmlFor={'fq-'+i}>{Tx.question}</label><input id={'fq-'+i} dir="auto" maxLength={PASSAGE_LIMITS.question} value={f.question} onChange={e=>setFact(i,{question:e.target.value})} placeholder={Tx.questionPh}/></div>
+          <div className="field"><label htmlFor={'fa-'+i}>{Tx.answer}</label><input id={'fa-'+i} dir="auto" maxLength={PASSAGE_LIMITS.answer} value={f.answer} onChange={e=>setFact(i,{answer:e.target.value})} placeholder={Tx.answerPh}/></div>
+          <div className="field"><label htmlFor={'fl-'+i}>{Tx.alternatives}</label><input id={'fl-'+i} dir="auto" value={f.alternatives} onChange={e=>setFact(i,{alternatives:e.target.value})}/></div>
+          <div className="field"><label htmlFor={'fs-'+i}>{Tx.quote}</label><input id={'fs-'+i} dir={dirOf(lang)} lang={lang} maxLength={PASSAGE_LIMITS.quote} value={f.quote} onChange={e=>setFact(i,{quote:e.target.value})}/></div>
+        </div>)}
+        {facts.length<PASSAGE_LIMITS.questions&&<div className="add-more-row"><button type="button" className="add-more" onClick={()=>setFacts(fs=>[...fs,newFact()])}><Plus size={16}/>{Tx.addFact}</button></div>}
+      </fieldset>
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      <div className="form-foot"><button type="submit" className="btn btn-save" disabled={busy}>{busy?Tx.saving:Tx.save}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>go(old?passagePath(deckId,old.id):textsPath(deckId))}>{Tx.cancel}</button></div>
+    </form>
   </div>;
 }
 
@@ -995,14 +1119,14 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
 export default function App(){
   const [locale,setLocaleState]=useState<Locale>(storedLocale);
   T=dictionaries[locale];
-  const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[passages,setPassages]=useState<Passage[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [online,setOnline]=useState(()=>navigator.onLine),[toast,setToast]=useState<{id:number;text:string;tone:'ok'|'error'}|null>(null),[lastBackup,setLastBackup]=useState<string|null>(null),[installPrompt,setInstallPrompt]=useState<InstallPrompt|null>(null);
   const first=useRef(true);
   const latest=useRef(0),[loadedOnce,setLoadedOnce]=useState(false);
   const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
     // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.
     const ticket=++latest.current;
-    try{const [w,r,l]=await Promise.all([listWords(),listReviews(),listLibrary()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
+    try{const [w,r,l,p]=await Promise.all([listWords(),listReviews(),listLibrary(),listPassages()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setPassages(p);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
     catch(e){if(ticket===latest.current)setError(getError(e));return null;}
     finally{if(ticket===latest.current)setLoading(false);}
   },[]);
@@ -1049,7 +1173,7 @@ export default function App(){
   else content=page==='home'?<HomePage words={words} reviews={reviews} decks={lib.decks} lastBackup={lastBackup} onNavigate={navigate}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
-    :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
+    :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} passages={passages} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
     :page==='stats'?<StatsPage words={words} reviews={reviews} onNavigate={navigate}/>
     :<SettingsPage words={words} online={online} lastBackup={lastBackup} setLastBackup={setLastBackup} installPrompt={installPrompt} onInstalled={()=>setInstallPrompt(null)} onRestored={fetchLocal} notify={notify} locale={locale} onLocale={changeLocale}/>;
 

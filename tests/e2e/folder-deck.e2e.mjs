@@ -48,7 +48,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const file=await (await download).createReadStream();
       const chunks=[];for await(const c of file)chunks.push(c);
       const backup=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      assert.equal(backup.version,3);
+      assert.equal(backup.version,4);
       assert.deepEqual(backup.folders.map(f=>f.id).sort(),[DEFAULT_FOLDER,ids.f].sort());
       assert.equal(backup.decks.find(d=>d.id===ids.d).contentLanguage,'es-ES');
       assert.equal(backup.words.find(w=>w.id===ids.w).deckId,ids.d);

@@ -16,9 +16,9 @@ function backup(words=[word()],reviews=[]){
   return {app:'wordloop',version:1,exportedAt:now,words,reviews};
 }
 
-test('accepts a well-formed v1 backup and returns it as v3: vocabulary (#5) in the default folder/deck (#15)',()=>{
+test('accepts a well-formed v1 backup and returns it as v4: vocabulary (#5) in the default folder/deck (#15), no passages (#21)',()=>{
   const payload=backup();
-  assert.deepEqual(validateBackup(payload),{...payload,version:3,
+  assert.deepEqual(validateBackup(payload),{...payload,version:4,passages:[],
     folders:[{id:DEFAULT_FOLDER_ID,name:'غير مصنفة',createdAt:now,updatedAt:now}],
     decks:[{id:DEFAULT_DECK_ID,folderId:DEFAULT_FOLDER_ID,name:'بطاقاتي',contentLanguage:'en-US',meaningLanguage:'ar-SA',createdAt:now,updatedAt:now}],
     words:payload.words.map(w=>({...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]}))});

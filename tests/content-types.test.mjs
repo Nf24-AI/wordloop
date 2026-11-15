@@ -92,7 +92,7 @@ test('DATA-01: a v1 backup imports as vocabulary with ids, due dates, FSRS state
   const w=legacyWord(3),r=legacyReview(1,w.id);
   const v1={app:'wordloop',version:1,exportedAt:at,words:[w],reviews:[r]};
   const safe=validateBackup(JSON.parse(JSON.stringify(v1)));
-  assert.equal(safe.version,3); // #15: always returned in the current format
+  assert.equal(safe.version,4); // always returned in the current format (v4 since #21)
   assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]});
   await restoreBackup(safe);
   const [got]=await listWords();
@@ -106,7 +106,7 @@ test('DATA-02: an export (now v3, #15) round-trips into a fresh database with ev
   const [first]=await listWords();await reviewWord(first.id,'again');
   const file=JSON.stringify(await buildBackup());
   const before={words:await listWords(),reviews:await listReviews()};
-  assert.equal(JSON.parse(file).version,3);
+  assert.equal(JSON.parse(file).version,4);
   globalThis.indexedDB=new IDBFactory();resetConnectionForTests(); // "another device"
   await restoreBackup(validateBackup(JSON.parse(file)));
   assert.deepEqual(await listWords(),before.words);
@@ -117,7 +117,7 @@ test('DATA-03: invalid backups are rejected before anything local is replaced',a
   await addWord(card('vocabulary','keepme'));
   const good=await buildBackup();
   const bad=[
-    ['unknown version',{...good,version:4}],
+    ['unknown version',{...good,version:5}],
     ['v2 card without kind',{...good,words:good.words.map(({contentType,...w})=>w)}],
     ['unknown kind',{...good,words:good.words.map(w=>({...w,contentType:'proverb'}))}],
     ['v1 with a bad kind',{...good,version:1,words:good.words.map(w=>({...w,contentType:'proverb'}))}],

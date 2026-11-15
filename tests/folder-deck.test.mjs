@@ -194,7 +194,7 @@ test('MIG-05: a v3 export round-trips folders, decks, languages, ids, reviews an
   const file=JSON.stringify(await buildBackup());
   const before={words:await listWords(),reviews:await listReviews(),lib:await listLibrary()};
   const parsed=JSON.parse(file);
-  assert.equal(parsed.version,3);assert.equal(parsed.folders.length,2);assert.equal(parsed.decks.length,2);
+  assert.equal(parsed.version,4);assert.equal(parsed.folders.length,2);assert.equal(parsed.decks.length,2);
   assert.ok(parsed.words.every(x=>typeof x.deckId==='string'));
   globalThis.indexedDB=new IDBFactory();resetConnectionForTests(); // "another device"
   await restoreBackup(validateBackup(parsed));
