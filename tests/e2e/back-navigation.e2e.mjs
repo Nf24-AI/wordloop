@@ -153,6 +153,13 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.getByRole('button',{name:'الخروج بدون حفظ'}).click();
       await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
       assert.equal((await data(page,async m=>(await m.listLibrary()).folders.length)),1,'no folder was created');
+      // An untouched Edit sheet closed right away (before its fields finished loading) never asks.
+      await page.goto(base()+'/#/add/'+DECK);await addCard(page,base(),'gate','بوابة',{navigate:false});await page.getByRole('status').filter({hasText:'«gate»'}).waitFor();
+      await page.goto(base()+'/#/words/all');await page.reload();await page.locator('.word-main',{hasText:'gate'}).click();
+      for(let i=0;i<3;i++){
+        await page.locator('.word-detail .word-actions > button.btn').filter({has:page.locator('.lucide-pencil')}).click();await page.keyboard.press('Escape');
+        await page.waitForFunction(()=>!document.querySelector('dialog[open]'));
+      }
       assert.deepEqual(errors,[]);await context.close();
     });
 
