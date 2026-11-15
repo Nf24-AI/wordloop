@@ -62,9 +62,13 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.locator('.listen-text').getAttribute('lang'),'es-ES');
       assert.match(await page.locator('.listen-text').innerText(),/Lucía vive en Madrid/);
       // Leaving the screen stops the voice.
+      await page.locator('.listen-play').click(); // speaking again
       const before=(await events(page)).filter(e=>e==='cancel').length;
+      await page.evaluate(()=>{window.__sameDoc=true;});
       await page.locator('.back-btn').click();await page.locator('.passage-body').waitFor();
-      assert.ok((await events(page)).filter(e=>e==='cancel').length>before,'speech cancelled on leave');
+      // Same document: the screen must have cancelled the voice. (WebKit may restore the page as a new document,
+      // which ends speech by itself — then there is nothing left to cancel.)
+      if(await page.evaluate(()=>window.__sameDoc===true))assert.ok((await events(page)).filter(e=>e==='cancel').length>before,'speech cancelled on leave');
       assert.deepEqual(errors,[]);await context.close();
     });
 
