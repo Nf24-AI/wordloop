@@ -54,6 +54,11 @@
 - [ ] Export a valid JSON backup, import it, and verify the same words and reviews.
 - [ ] Reject a corrupted backup without altering saved data.
 - [ ] Open Staging offline after installing its PWA; re-enable network and verify service worker updates.
+- [ ] **App update (#41), iPhone Home Screen PWA:** with version A installed and open, deploy version B to Staging. Send the PWA to the background and bring it back (or wait ≤30 min while it is open): «تحديث جديد لـ WordLoop» appears with «تحديث الآن» / «لاحقًا». Tap «تحديث الآن»: the app reloads **once** inside the installed PWA (no Safari, no re-adding to the Home Screen) and the prompt does not come back. Cards, decks, review history and the next due dates are unchanged.
+- [ ] **#41 «لاحقًا» / relaunch:** tap «لاحقًا», swipe the PWA closed and reopen it: the new version is already running (iOS activates it once no WordLoop window is open) or the prompt is offered again — never a broken or mixed version.
+- [ ] **#41 while typing:** type a card on Add, then tap «تحديث الآن»: the app first asks «عندك تغييرات غير محفوظة، تبي تطلع؟»; «إكمال التعديل» keeps the text and does not reload.
+- [ ] **#41 Access session expired (after 12 h):** reopen the PWA: no update prompt and no error loop; after signing in with the OTP the app opens normally, and offline it still opens the app — never the Access sign-in page.
+- [ ] **#41 offline:** with the prompt visible, turn on Airplane mode and tap «تحديث الآن»: it either completes from the already-downloaded version or shows «ما كمل التحديث…» with «جرّب مرة ثانية»; cards stay intact.
 - [ ] Verify staging push subscriptions and test notifications use the **staging** D1 database.
 - [ ] Test Safari installed PWA on iPhone and Chrome PWA on Android.
 - [ ] Confirm Staging and Production are different origins, separate browser storage, and cannot send notifications across environments.

@@ -1,4 +1,9 @@
-const CACHE = 'wordloop-shell-v4';
+// #41: every build stamps its own id here (vite.config.ts → wordloopBuildId), so each deploy ships a byte-different
+// worker: the browser then installs it and the app can offer «تحديث الآن». In dev the placeholder stays as is.
+const VERSION = '__WL_BUILD__';
+const CACHE = 'wordloop-shell-' + VERSION;
+/** Only a real page of this app may become the offline shell — never a redirect (e.g. Cloudflare Access sign-in / OTP) or an error. */
+const isAppPage = r => r.ok && !r.redirected && r.type === 'basic' && (r.headers.get('content-type') || '').includes('text/html');
 // Files referenced from inside the bundle (lazy FSRS chunks, self-hosted fonts) are not listed in index.html,
 // so we read the HTML's JS/CSS once and precache everything they point to under /assets/.
 const ASSET_REF=/\/?assets\/[\w.-]+\.(?:js|css|woff2)/g;
@@ -6,7 +11,7 @@ self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
     const response=await fetch('/',{cache:'reload'});
-    if(!response.ok)throw new Error('Could not precache WordLoop shell');
+    if(!isAppPage(response))throw new Error('Could not precache WordLoop shell');
     const html=await response.clone().text();
     await cache.put('/',response);
     const assets=new Set([...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(m=>m[1]));
@@ -16,14 +21,22 @@ self.addEventListener('install',event=>{
       for(const m of (await r.text()).matchAll(ASSET_REF))assets.add('/'+m[0].replace(/^\//,''));
     }
     await cache.addAll(['/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png',...assets]);
-    await self.skipWaiting();
+    // No automatic skipWaiting (#41): a new version waits until the learner taps «تحديث الآن» (or every WordLoop window is closed),
+    // so it never swaps the app under someone typing a card or reviewing.
   })());
+});
+self.addEventListener('message',event=>{
+  if(event.data?.type==='SKIP_WAITING')void self.skipWaiting();
+  if(event.data?.type==='GET_VERSION')event.ports[0]?.postMessage(VERSION);
 });
 self.addEventListener('activate', event => {event.waitUntil((async()=>{for(const name of await caches.keys())if(name!==CACHE)await caches.delete(name);await self.clients.claim();})());});
 self.addEventListener('fetch', event => {
   if(event.request.method!=='GET'||event.request.url.includes('/api/'))return;
   if(event.request.mode==='navigate'){
-    event.respondWith(fetch(event.request).then(response=>{if(response.ok){const clone=response.clone();void caches.open(CACHE).then(c=>c.put('/',clone));}return response;}).catch(async()=>(await caches.match('/'))||Response.error()));
+    // The app lives at / (routes are #hash). Any other page reached by navigation — e.g. /cdn-cgi/access/login after an
+    // expired Access session — is passed through and never stored as the offline shell.
+    const isShell=new URL(event.request.url).pathname==='/';
+    event.respondWith(fetch(event.request).then(response=>{if(isShell&&isAppPage(response)){const clone=response.clone();void caches.open(CACHE).then(c=>c.put('/',clone));}return response;}).catch(async()=>(await caches.match('/'))||Response.error()));
   } else {
     // ignoreVary: module/font requests carry an Origin header; a "Vary: Origin" response must still match offline.
     event.respondWith(caches.match(event.request,{ignoreVary:true}).then(hit=>hit||fetch(event.request).then(response=>{
