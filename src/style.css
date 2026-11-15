@@ -568,3 +568,15 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .btn-save{background:var(--teal);color:#fff;border-color:var(--teal)}
 @media(hover:hover){.btn-save:hover:not(:disabled){background:var(--teal-deep);border-color:var(--teal-deep)}}
 .add-form .form-foot .btn-save{min-inline-size:160px}
+
+/* #17: scoped due review — folder/deck counters + «راجع هذه الحزمة», and the scope chip inside the review */
+.scope-panel{display:grid;gap:12px;margin-block:4px 18px}
+.scope-facts>div{padding:14px clamp(12px,2vw,22px)}
+.scope-facts dd{font-size:clamp(28px,3.2vw,36px)}
+.scope-review{justify-self:start}
+.scope-rest{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0;color:var(--muted);font-size:15px}
+.scope-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin-block-end:14px}
+.finish .scope-bar{inline-size:100%;max-inline-size:560px;margin-inline:auto}
+.scope-chip{display:inline-flex;align-items:center;gap:8px;min-block-size:36px;padding:6px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:var(--muted);max-inline-size:100%}
+.scope-chip b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:600px){.scope-review{justify-self:stretch;justify-content:center}}

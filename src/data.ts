@@ -439,3 +439,28 @@ export function summary(words:Word[],reviews:Review[],now=new Date()):Summary{
     reviewAttemptsToday:today.length,
   };
 }
+
+/* #17: scoped due review + scoped counters. Read-only helpers; FSRS, dueAt and the review log are never changed. */
+export type ReviewScope={kind:'all'}|{kind:'folder';id:string}|{kind:'deck';id:string};
+/** The deck a card counts in *now*. A card whose deck is missing counts in the default deck (same rule as libraryCounts). */
+export function currentDeckId(w:Pick<Word,'deckId'>,decks:readonly Deck[]):string{return decks.some(d=>d.id===w.deckId)?w.deckId:DEFAULT_DECK_ID;}
+/** Membership by the card's current deck: a moved card counts in its new deck/folder; its old review events stay in the log untouched. */
+export function inScope(w:Pick<Word,'deckId'>,scope:ReviewScope,decks:readonly Deck[]):boolean{
+  if(scope.kind==='all')return true;
+  const id=currentDeckId(w,decks);
+  if(scope.kind==='deck')return id===scope.id;
+  return decks.find(d=>d.id===id)?.folderId===scope.id;
+}
+/** Active due cards in scope, oldest due first. Each card appears once and keeps its own dueAt. */
+export function dueInScope(words:readonly Word[],scope:ReviewScope,decks:readonly Deck[],now=Date.now()):Word[]{
+  return words.filter(w=>!w.archived&&Date.parse(w.dueAt)<=now&&inScope(w,scope,decks)).sort((a,b)=>a.dueAt.localeCompare(b.dueAt));
+}
+/**
+ * The #10 counters for one scope. Cards are scoped by their current deck; review events follow their card.
+ * Events of a card that no longer exists only count in «all», so per-scope numbers never invent a deck for them.
+ */
+export function scopedSummary(words:Word[],reviews:Review[],decks:readonly Deck[],scope:ReviewScope,now=new Date()):Summary{
+  if(scope.kind==='all')return summary(words,reviews,now);
+  const mine=words.filter(w=>inScope(w,scope,decks)),ids=new Set(mine.map(w=>w.id));
+  return summary(mine,reviews.filter(r=>ids.has(r.wordId)),now);
+}
