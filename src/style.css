@@ -580,3 +580,16 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .scope-chip{display:inline-flex;align-items:center;gap:8px;min-block-size:36px;padding:6px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:14px;color:var(--muted);max-inline-size:100%}
 .scope-chip b{color:var(--ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:600px){.scope-review{justify-self:stretch;justify-content:center}}
+
+/* #19/#20: one listen button; after the first listen a light «أبطأ» replay; tap again to stop */
+.speak-group{display:inline-flex;align-items:center;gap:6px}
+.slow-btn{display:inline-flex;align-items:center;gap:6px;min-block-size:40px;padding:0 13px;border:1px solid var(--line-2);border-radius:var(--r-pill);background:var(--surface);color:var(--teal-deep);font:600 13.5px/1 var(--ar);cursor:pointer;animation:slow-in .22s ease-out}
+.slow-btn:hover{background:var(--mint)}
+.slow-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.slow-btn.is-playing,.icon-btn.is-playing,.btn.is-playing{background:var(--mint);border-color:var(--teal);color:var(--teal-deep)}
+@keyframes slow-in{from{opacity:0;transform:scale(.92)}}
+@media(prefers-reduced-motion:reduce){.slow-btn{animation:none}}
+.example-line{display:flex;align-items:center;gap:8px}
+.example-line>span{flex:1;min-inline-size:0}
+.example-line .speak-group{flex:none}
+.example-speak{inline-size:40px;block-size:40px}

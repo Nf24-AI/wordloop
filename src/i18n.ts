@@ -41,6 +41,12 @@ const ar={
   due:'حان وقت المراجعة',noDue:'ما عليك مراجعة اليوم!',dueLead:'بضع دقائق اليوم تخلي كلماتك أقرب لذاكرتك.',
   startReview:'ابدأ المراجعة',addCard:'أضف بطاقة',privacy:'كلماتك تبقى على جهازك.',
   listen:(what:string)=>`اسمع نطق ${what}`,
+  speech:{
+    noVoice:(l:string)=>`ما فيه صوت ${l} على جهازك، فما نطقناها بلغة ثانية.`,
+    failed:'ما اشتغل الصوت. جرّب مرة ثانية.',
+    stop:'أوقف النطق',slower:'أبطأ',slowerLabel:(w:string)=>`اسمع «${w}» أبطأ`,
+    listenExample:'اسمع الجملة',
+  },
   optional:'اختياري',
   /* time */
   now:'الحين',tomorrow:'بكرة',today:'اليوم',
@@ -158,7 +164,6 @@ const ar={
     missingTerm:'اكتب الكلمة أو العبارة أول.',missingMeaning:'اكتب معنى واحد على الأقل.',tooLong:(n:number)=>`النص أطول من ${n} حرف، اختصره شوي.`,
     duplicate:'هذا النص موجود في مكتبتك من قبل.',
     saved:(t:string)=>`حفظنا «${t}». اكتب اللي بعدها.`,
-    noVoice:(l:string)=>`ما فيه صوت ${l} على جهازك، فما نطقناها.`,
   },
   /* #25: simplified card details */
   card:{
@@ -305,6 +310,12 @@ const en:Dict={
   due:'Time to review',noDue:'Nothing to review today!',dueLead:'A few minutes today keeps your words close.',
   startReview:'Start review',addCard:'Add a card',privacy:'Your words stay on your device.',
   listen:what=>`Hear “${what}”`,
+  speech:{
+    noVoice:l=>`There’s no ${l} voice on this device, so we didn’t read it in another language.`,
+    failed:'The voice didn’t start. Try again.',
+    stop:'Stop',slower:'Slower',slowerLabel:w=>`Hear “${w}” slower`,
+    listenExample:'Hear the sentence',
+  },
   optional:'optional',
   now:'now',tomorrow:'tomorrow',today:'Today',
   inMinutes:n=>`in ${enCount(n,'minute','minutes')}`,inHours:n=>`in ${enCount(n,'hour','hours')}`,inDays:n=>`in ${enCount(n,'day','days')}`,
@@ -411,7 +422,6 @@ const en:Dict={
     missingTerm:'Type the word or phrase first.',missingMeaning:'Type at least one meaning.',tooLong:n=>`The text is longer than ${n} characters. Shorten it a little.`,
     duplicate:'This text is already in your library.',
     saved:t=>`Saved “${t}”. Type the next one.`,
-    noVoice:l=>`There’s no ${l} voice on this device, so it wasn’t read aloud.`,
   },
   card:{
     deck:'Deck:',edit:'Edit',more:t=>`More options for “${t}”`,moreTitle:t=>`What would you like to do with “${t}”?`,
