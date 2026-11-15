@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,editWord,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
+import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -289,9 +289,28 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
 }
 
 /* ───────────── Review ───────────── */
-function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>Promise<unknown>;onNavigate:(p:Page)=>void}){
+/** #17: `review` all due · `review/f/<id>` a folder · `review/d/<id>` a deck. An unknown place falls back to all (never an empty queue by mistake). */
+function parseScope(sub:string,lib:Library):ReviewScope{
+  const [k,raw]=sub.split('/'),id=raw?decodeURIComponent(raw):'';
+  if(k==='d'&&lib.decks.some(d=>d.id===id))return {kind:'deck',id};
+  if(k==='f'&&lib.folders.some(f=>f.id===id))return {kind:'folder',id};
+  return {kind:'all'};
+}
+const scopePath=(s:{kind:'folder'|'deck';id:string})=>'review/'+(s.kind==='deck'?'d/':'f/')+encodeURIComponent(s.id);
+function scopeName(s:ReviewScope,lib:Library):string{
+  if(s.kind==='deck'){const d=lib.decks.find(x=>x.id===s.id);return d?deckName(d):'';}
+  if(s.kind==='folder'){const f=lib.folders.find(x=>x.id===s.id);return f?folderName(f):'';}
+  return '';
+}
+/** «تراجع: …» + a way back to the full review. Shown only inside a folder/deck review. */
+function ScopeBar({scope,lib,go}:{scope:ReviewScope;lib:Library;go:(path:string)=>void}){
+  if(scope.kind==='all')return null;const R=T.review,Icon=scope.kind==='deck'?Layers3:FolderIcon;
+  return <div className="scope-bar"><span className="scope-chip"><Icon size={16} aria-hidden="true"/>{R.scopeLabel(scope.kind)} <b dir="auto">{scopeName(scope,lib)}</b></span><button type="button" className="link-btn" onClick={()=>go('review')}>{R.reviewAll}</button></div>;
+}
+
+function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib:Library;scope:ReviewScope;onReviewed:()=>Promise<unknown>;onNavigate:(p:Page)=>void;go:(path:string)=>void}){
   const R=T.review;
-  const dueIds=useCallback(()=>words.filter(w=>!w.archived&&isDue(w)).sort((a,b)=>a.dueAt.localeCompare(b.dueAt)).map(w=>w.id),[words]);
+  const dueIds=useCallback(()=>dueInScope(words,scope,lib.decks).map(w=>w.id),[words,scope,lib.decks]);
   const [queue,setQueue]=useState<string[]>(dueIds),[revealed,setRevealed]=useState(false),[busy,setBusy]=useState(false),[done,setDone]=useState(0),[msg,setMsg]=useState(''),[last,setLast]=useState<{term:string;next:string}|null>(null);
   const active=queue.length?words.find(w=>w.id===queue[0]):undefined;
   const revealRef=useRef<HTMLButtonElement>(null),gradesRef=useRef<HTMLDivElement>(null);
@@ -317,6 +336,25 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
 
   if(!active){
     const moreDue=dueIds().length;
+    if(scope.kind!=='all'){
+      // Nothing (more) due here: say so for this place, show when its next card is due, and offer the full review / the way back.
+      const t=Date.now(),allDue=dueInScope(words,{kind:'all'},lib.decks,t).length;
+      const next=words.filter(w=>!w.archived&&Date.parse(w.dueAt)>t&&inScope(w,scope,lib.decks)).map(w=>w.dueAt).sort()[0];
+      const back=scope.kind==='deck'?deckPath(scope.id):folderPath(scope.id);
+      return <section className="finish">
+        <ScopeBar scope={scope} lib={lib} go={go}/>
+        <div className="finish-orb" aria-hidden="true"><Wash/></div>
+        <h1 tabIndex={-1}>{done?R.done:R.scopeNoDue(scope.kind)}</h1>
+        <p className="lead">{done?R.doneLead(done):next?R.scopeNext(relative(next)):R.restLead}</p>
+        {msg&&<p className="inline-error" role="alert">{msg}</p>}
+        {last&&<p className="finish-note">{comesBack(last)}</p>}
+        <div className="finish-actions">
+          {moreDue>0&&<button type="button" className="btn btn-ink btn-lg" onClick={()=>{setQueue(dueIds());setDone(0);setLast(null);setMsg('');}}>{R.again(moreDue)}<RotateCcw size={18}/></button>}
+          {allDue>0&&<button type="button" className={'btn btn-lg '+(moreDue?'btn-quiet':'btn-ink')} onClick={()=>go('review')}>{R.reviewAllN(allDue)}<Fwd/></button>}
+          <button type="button" className="btn btn-lg btn-quiet" onClick={()=>go(back)}>{R.backTo(scope.kind)}</button>
+        </div>
+      </section>;
+    }
     return <section className="finish">
       <div className="finish-orb" aria-hidden="true"><Wash/></div>
       <h1 tabIndex={-1}>{done?R.done:T.noDue}</h1>
@@ -331,6 +369,7 @@ function ReviewPage({words,onReviewed,onNavigate}:{words:Word[];onReviewed:()=>P
   }
   const total=done+queue.length;
   return <section className="review" aria-labelledby="review-title">
+    <ScopeBar scope={scope} lib={lib} go={go}/>
     <div className="review-top">
       <h1 id="review-title" tabIndex={-1} className="visually-hidden">{R.title}</h1>
       <div className="progress" role="progressbar" aria-label={R.progress} aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-valuetext={R.of(done,total)}><span style={{inlineSize:`${Math.max(4,100*done/total)}%`}}/></div>
@@ -467,7 +506,28 @@ function NotFound({go}:{go:(path:string)=>void}){
   return <div className="page"><div className="empty"><Wash tone="soft"/><FolderIcon size={30} strokeWidth={1.6}/><h1 tabIndex={-1} className="empty-h1">{T.lib.notFoundTitle}</h1><p>{T.lib.notFoundBody}</p><button type="button" className="btn btn-ink" onClick={()=>go('words')}>{T.lib.title}<Fwd size={18}/></button></div></div>;
 }
 
-function FolderView({id,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
+/**
+ * #17: real counters for this folder/deck (#10 rules: unique cards vs attempts) and «راجع …» for what is due *here*.
+ * No mastery bar and no free study: free study is approved for later and must not touch FSRS.
+ */
+function ScopePanel({scope,words,reviews,lib,go}:{scope:{kind:'folder'|'deck';id:string};words:Word[];reviews:Review[];lib:Library;go:(path:string)=>void}){
+  const L=T.lib,H=T.home;
+  const s=scopedSummary(words,reviews,lib.decks,scope),t=Date.now();
+  if(!s.inLibrary)return null; // the empty state already explains an empty folder/deck
+  const next=s.dueNow?undefined:words.filter(w=>!w.archived&&Date.parse(w.dueAt)>t&&inScope(w,scope,lib.decks)).map(w=>w.dueAt).sort()[0];
+  const allDue=s.dueNow?0:dueInScope(words,{kind:'all'},lib.decks,t).length;
+  return <section className="scope-panel" aria-label={L.scopeStats(scope.kind)}>
+    <dl className="facts scope-facts">
+      <div><dt>{L.dueNow}</dt><dd>{s.dueNow}<small>{T.cardUnit(s.dueNow)}</small></dd></div>
+      <div><dt>{H.reviewedToday}</dt><dd>{s.cardsReviewedToday}<small>{T.cardUnit(s.cardsReviewedToday)}</small></dd>{s.reviewAttemptsToday>s.cardsReviewedToday&&<p className="fact-note">{H.attemptsNote(T.attempts(s.reviewAttemptsToday))}</p>}</div>
+      <div><dt>{L.next7}</dt><dd>{s.scheduledNext7Days}<small>{T.cardUnit(s.scheduledNext7Days)}</small></dd></div>
+    </dl>
+    {s.dueNow?<button type="button" className="btn btn-ink btn-lg scope-review" onClick={()=>go(scopePath(scope))}><Layers3 size={19} aria-hidden="true"/>{L.reviewHere(scope.kind,s.dueNow)}</button>
+      :<p className="scope-rest"><span>{next?L.restUntil(relative(next)):L.restNone}</span>{allDue>0&&<button type="button" className="link-btn" onClick={()=>go('review')}>{T.review.reviewAllN(allDue)}</button>}</p>}
+  </section>;
+}
+
+function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
   const L=T.lib;
   const [sheet,setSheet]=useState<null|'deck'|'settings'>(null),[confirmDelete,setConfirmDelete]=useState(false);
   const folder=lib.folders.find(f=>f.id===id);
@@ -485,6 +545,7 @@ function FolderView({id,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
         <button type="button" className="btn btn-ink head-add" onClick={()=>setSheet('deck')}><Plus size={18} aria-hidden="true"/>{L.newDeck}</button>
       </div>
     </PageHead>
+    <ScopePanel scope={{kind:'folder',id}} words={words} reviews={reviews} lib={lib} go={go}/>
     {decks.length?<DeckRows items={decks.map(d=>deckRow(d,counts))} go={go}/>
       :<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.folderEmptyTitle}</h2><p>{L.folderEmptyBody}</p></div>}
     <button type="button" className="deck-row new" onClick={()=>setSheet('deck')}><span className="folder-icon sm" aria-hidden="true"><Plus size={19}/></span><span className="deck-text"><b>{L.newDeck}</b></span></button>
@@ -515,7 +576,8 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
         <button type="button" className="icon-btn" aria-label={L.deckSettings} title={L.deckSettings} onClick={()=>setSettings(true)}><MoreHorizontal size={20}/></button>
       </div>
     </PageHead>
-    <div className="deck-actions"><button type="button" className="btn btn-ink" onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
+    <ScopePanel scope={{kind:'deck',id}} words={words} reviews={reviews} lib={lib} go={go}/>
+    <div className="deck-actions"><button type="button" className={'btn '+(counts.deck.get(id)?.due?'btn-quiet':'btn-ink')} onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
@@ -944,7 +1006,7 @@ export default function App(){
   else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>{T.fatalTitle}</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>{T.tryAgain}</button></div>;
   else content=page==='home'?<HomePage words={words} reviews={reviews} lastBackup={lastBackup} onNavigate={navigate}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
-    :page==='review'?<ReviewPage words={words} onReviewed={fetchLocal} onNavigate={navigate}/>
+    :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
     :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
     :page==='stats'?<StatsPage words={words} reviews={reviews} onNavigate={navigate}/>
     :<SettingsPage words={words} online={online} lastBackup={lastBackup} setLastBackup={setLastBackup} installPrompt={installPrompt} onInstalled={()=>setInstallPrompt(null)} onRestored={fetchLocal} notify={notify} locale={locale} onLocale={changeLocale}/>;
