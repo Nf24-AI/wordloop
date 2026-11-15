@@ -68,7 +68,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.locator('.back-btn').click();await page.locator('.passage-body').waitFor();
       // Same document: the screen must have cancelled the voice. (WebKit may restore the page as a new document,
       // which ends speech by itself — then there is nothing left to cancel.)
-      if(await page.evaluate(()=>window.__sameDoc===true))assert.ok((await events(page)).filter(e=>e==='cancel').length>before,'speech cancelled on leave');
+      // React runs the unmount cleanup just after the next screen paints, so wait for it rather than checking at once.
+      if(await page.evaluate(()=>window.__sameDoc===true))await page.waitForFunction(b=>window.__spoken.filter(e=>e==='cancel').length>b,before,{timeout:3000});
       assert.deepEqual(errors,[]);await context.close();
     });
 
