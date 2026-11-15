@@ -112,7 +112,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await answer(s.page,'right');
       await s.page.locator('.back-btn').click();
       await s.page.getByRole('dialog').waitFor();
-      await s.page.getByRole('dialog').getByRole('button').first().click(); // stay
+      await s.page.getByRole('dialog').getByRole('button',{name:'إكمال التعديل'}).click(); // stay
       assert.equal(await s.page.locator('.practice-q').count(),1,'the session is still there');
       assert.deepEqual([...errors,...s.errors],[]);await s.context.close();
       void path;
