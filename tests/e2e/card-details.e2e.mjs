@@ -20,9 +20,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
 
     await t.test('CARD-01: expanded card shows content + deck, not kind/«عام»/stage/«لسا»/next-review rows; learning details are optional',async()=>{
       const {context,page,errors}=await freshPage(browser,base());
-      await page.goto(base()+'/#/add');await page.waitForSelector('#term');
-      await page.fill('#term','overlook');await page.fill('#meaning','يغفل عن');await page.fill('#example','I overlooked an important email.');await page.fill('#translation','فاتتني رسالة مهمة.');
-      await page.click('form button[type=submit]');await page.getByRole('status').filter({hasText:'«overlook»'}).waitFor();
+      // A legacy-style card with a sentence translation (the unified Add form no longer asks for one; old cards keep it).
+      await data(page,async m=>{await m.addWord({contentType:'vocabulary',term:'overlook',meanings:['يغفل عن'],example:'I overlooked an important email.',translation:'فاتتني رسالة مهمة.',note:'',tag:''});});
       await open(page,'overlook');
       const detail=page.locator('.word-detail');
       const visible=await detail.evaluate(el=>{const c=el.cloneNode(true);c.querySelector('details')?.remove();return c.textContent;});

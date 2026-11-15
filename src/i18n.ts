@@ -141,6 +141,20 @@ const ar={
     removeBody:'الأرشفة مو حذف: تختفي من مكتبتك ومن المراجعة، لكنها تبقى محفوظة على جهازك مع سجل مراجعاتها، وتطلع في النسخة الاحتياطية.',
     removeYes:'إيه، أرشفها',removeNo:'لا، خلها',removed:(t:string)=>`أرشفنا «${t}». ما انحذفت، وتبقى في نسختك الاحتياطية.`,
   },
+  /* #26: unified Add form */
+  addForm:{
+    title:'وش تبي تحفظ؟',lead:'كلمة أو عبارة أو جملة: اكتبها ومعناها، والباقي علينا.',
+    termLabel:'المحتوى',meaningLabel:(i:number,n:number)=>n>1?`المعنى ${i}`:'المعنى',exampleLabel:'جملة توضيحية',
+    addMeaning:'إضافة معنى آخر',addExample:'إضافة جملة توضيحية',
+    removeMeaning:(i:number)=>`احذف المعنى ${i}`,removeExample:'احذف الجملة التوضيحية',
+    changeLang:'تغيير',contentLangShort:'لغة المحتوى',meaningLangShort:'لغة المعنى',
+    deckLangNote:'هذي لغات الحزمة. غيّرها هنا لو هذي البطاقة بلغة ثانية.',overrideNote:'البطاقات اللي تحفظها الحين بتنحفظ بهذي اللغات.',useDeckLang:'ارجع للغات الحزمة',
+    save:'حفظ',saving:'نحفظ…',
+    missingTerm:'اكتب الكلمة أو العبارة أول.',missingMeaning:'اكتب معنى واحد على الأقل.',tooLong:(n:number)=>`النص أطول من ${n} حرف، اختصره شوي.`,
+    duplicate:'هذا النص موجود في مكتبتك من قبل.',
+    saved:(t:string)=>`حفظنا «${t}». اكتب اللي بعدها.`,
+    noVoice:(l:string)=>`ما فيه صوت ${l} على جهازك، فما نطقناها.`,
+  },
   /* #25: simplified card details */
   card:{
     deck:'الحزمة:',edit:'عدّلها',more:(t:string)=>`خيارات أكثر لـ«${t}»`,moreTitle:(t:string)=>`وش تبي تسوي بـ«${t}»؟`,
@@ -371,6 +385,19 @@ const en:Dict={
     removeTitle:t=>`Archive “${t}”?`,
     removeBody:'Archiving isn’t deleting: it leaves your library and reviews, but stays saved on this device with its review history, and is included in your backups.',
     removeYes:'Yes, archive it',removeNo:'No, keep it',removed:t=>`Archived “${t}”. It wasn’t deleted and stays in your backups.`,
+  },
+  addForm:{
+    title:'What do you want to remember?',lead:'A word, phrase or sentence: write it and its meaning. We’ll handle the rest.',
+    termLabel:'Content',meaningLabel:(i,n)=>n>1?`Meaning ${i}`:'Meaning',exampleLabel:'Example sentence',
+    addMeaning:'Add another meaning',addExample:'Add an example sentence',
+    removeMeaning:i=>`Remove meaning ${i}`,removeExample:'Remove the example sentence',
+    changeLang:'Change',contentLangShort:'Content language',meaningLangShort:'Meaning language',
+    deckLangNote:'These are the deck’s languages. Change them here if this card is in another language.',overrideNote:'Cards you save now use these languages.',useDeckLang:'Back to the deck’s languages',
+    save:'Save',saving:'Saving…',
+    missingTerm:'Type the word or phrase first.',missingMeaning:'Type at least one meaning.',tooLong:n=>`The text is longer than ${n} characters. Shorten it a little.`,
+    duplicate:'This text is already in your library.',
+    saved:t=>`Saved “${t}”. Type the next one.`,
+    noVoice:l=>`There’s no ${l} voice on this device, so it wasn’t read aloud.`,
   },
   card:{
     deck:'Deck:',edit:'Edit',more:t=>`More options for “${t}”`,moreTitle:t=>`What would you like to do with “${t}”?`,

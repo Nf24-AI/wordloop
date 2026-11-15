@@ -97,7 +97,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       for(const route of ['','add','review','words','words/all','words/due','words/f/00000000-0000-4000-8000-00000000f001','words/d/00000000-0000-4000-8000-00000000d001','stats','settings']){
         await page.goto(base()+'/#/'+route);await page.waitForSelector('main h1');
         if(route==='words/all'||route.startsWith('words/d/'))await page.click('.word-main');
-        if(route==='add'){for(const k of ['phrase','sentence','idiom','vocabulary']){await page.click(`[data-kind=${k}]`);const txt=await uiText(page);assert.ok(!ARABIC.test(txt),`add/${k}: ${txt.match(/.{0,30}[؀-ۿ]+.{0,30}/)?.[0]}`);}}
+        if(route==='add'){for(const b of await page.locator('.add-more').all())await b.click();await page.locator('#meaning-1').waitFor();await page.locator('#example').waitFor();} // #26: extra meaning + example boxes
         const txt=await uiText(page);
         assert.ok(!ARABIC.test(txt),`#/${route}: ${txt.match(/.{0,30}[؀-ۿ]+.{0,30}/)?.[0]}`);
         assert.ok(!ARABIC.test(await page.title()),`title of #/${route}`);
