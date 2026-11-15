@@ -1,6 +1,6 @@
-import {useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,deleteDeck,deleteFolder,editWord,isContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
+import {addWord,archiveWord,buildBackup,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,editWord,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type Word} from './data';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -62,7 +62,17 @@ function relative(iso:string,now=Date.now()){
 const daysBetween=(iso:string,now=Date.now())=>Math.round((new Date(dayKey(new Date(now))).getTime()-new Date(dayKey(new Date(iso))).getTime())/DAY);
 const isDue=(w:Word,now=Date.now())=>new Date(w.dueAt).getTime()<=now;
 const canSpeak=typeof window!=='undefined'&&'speechSynthesis' in window;
-function speak(text:string){if(!canSpeak||!text.trim())return;window.speechSynthesis.cancel();const voice=new SpeechSynthesisUtterance(text);voice.lang='en-US';voice.rate=.87;window.speechSynthesis.speak(voice);}
+/** A voice for the tag (exact, then same base language). undefined = voices not listed yet (let the browser choose); null = none for this language. */
+function voiceFor(tag:string):SpeechSynthesisVoice|null|undefined{
+  const vs=canSpeak?window.speechSynthesis.getVoices():[];if(!vs.length)return undefined;
+  const t=tag.toLowerCase(),b=t.split('-')[0];
+  return vs.find(v=>v.lang.toLowerCase().replace('_','-')===t)??vs.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===b)??null;
+}
+/** Speaks in the given language. Returns false (and says nothing) when the device has no voice for it (#26/#19: never the wrong language silently). */
+function speak(text:string,lang='en-US'):boolean{
+  if(!canSpeak||!text.trim())return true;const v=voiceFor(lang);if(v===null)return false;
+  window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=lang;if(v)u.voice=v;u.rate=.87;window.speechSynthesis.speak(u);return true;
+}
 type Stage='new'|'learning'|'growing'|'strong';
 const STAGES:Stage[]=['new','learning','growing','strong'];
 function stageOf(w:Word):Stage{const s=Number(w.fsrsState.state),st=Number(w.fsrsState.stability);if(!s)return 'new';if(s===1||s===3)return 'learning';return st>=21?'strong':'growing';}
@@ -72,9 +82,9 @@ type Notify=(text:string,tone?:'ok'|'error')=>void;
 function Mark(){return <span className="mark" aria-hidden="true"/>;}
 function Logo(){return <span className="brand" dir="ltr"><Mark/><span>WordLoop</span></span>;}
 function Wash({tone='full'}:{tone?:'full'|'soft'|'cool'|'warm'}){return <div className={'wash wash-'+tone} aria-hidden="true"><i/><i/><i/><i/></div>;}
-function SpeakButton({text,label,className='icon-btn'}:{text:string;label:string;className?:string}){
+function SpeakButton({text,label,className='icon-btn',lang='en-US',onNoVoice}:{text:string;label:string;className?:string;lang?:string;onNoVoice?:()=>void}){
   if(!canSpeak)return null;
-  return <button type="button" className={className} aria-label={label} title={label} onClick={()=>speak(text)} disabled={!text.trim()}><Volume2 size={19} strokeWidth={1.8}/></button>;
+  return <button type="button" className={className} aria-label={label} title={label} onClick={()=>{if(!speak(text,lang))onNoVoice?.();}} disabled={!text.trim()}><Volume2 size={19} strokeWidth={1.8}/></button>;
 }
 function PageHead({title,lead,children}:{title:string;lead?:string;children?:ReactNode}){
   return <header className="page-head"><div><h1 tabIndex={-1}>{title}</h1>{lead&&<p className="lead">{lead}</p>}</div>{children}</header>;
@@ -157,36 +167,11 @@ function HomePage({words,reviews,lastBackup,onNavigate}:{words:Word[];reviews:Re
 }
 
 /* ───────────── Card kinds (#5 / #12) ───────────── */
-/** English names stay visible as a learning aid under the Arabic labels. */
-const KIND_EN:Record<ContentType,string>={vocabulary:'Vocabulary',phrase:'Phrase',sentence:'Sentence',idiom:'Idiom'};
-/** Structure per kind (text lives in the dictionary). */
-const kindShape:Record<ContentType,{multiline:boolean;noteFirst?:boolean}>={vocabulary:{multiline:false},phrase:{multiline:false},sentence:{multiline:true},idiom:{multiline:false,noteFirst:true}};
 const kindLabel=(k:ContentType)=>T.kinds[k].label;
 /** The built-in default tag is stored as «عام»; show it in the UI language without changing what is saved. */
 const DEFAULT_TAG='عام';
 const tagText=(t:string)=>t===DEFAULT_TAG?T.add.defaultTag:t;
-const LAST_KIND='wordloop-last-kind';
-function initialKind():ContentType{try{const v=localStorage.getItem(LAST_KIND);return isContentType(v)?v:'vocabulary';}catch{return 'vocabulary';}}
-
-function KindPicker({value,onChange}:{value:ContentType;onChange:(k:ContentType)=>void}){
-  const refs=useRef<(HTMLButtonElement|null)[]>([]);
-  const kinds=CONTENT_TYPES;
-  // Radio-group keyboard behaviour: arrows move and select (mirrored in RTL), Home/End jump.
-  function onKey(e:ReactKeyboardEvent,i:number){
-    const rtl=getComputedStyle(e.currentTarget).direction==='rtl';
-    const step=e.key==='ArrowDown'||e.key===(rtl?'ArrowLeft':'ArrowRight')?1:e.key==='ArrowUp'||e.key===(rtl?'ArrowRight':'ArrowLeft')?-1:0;
-    const to=e.key==='Home'?0:e.key==='End'?kinds.length-1:step?(i+step+kinds.length)%kinds.length:-1;
-    if(to<0)return;e.preventDefault();onChange(kinds[to]);refs.current[to]?.focus();
-  }
-  return <div className="kinds" role="radiogroup" aria-label={T.kindsLabel}>
-    {kinds.map((k,i)=><button key={k} ref={el=>{refs.current[i]=el;}} type="button" role="radio" data-kind={k} aria-checked={value===k} tabIndex={value===k?0:-1} className="kind" onClick={()=>onChange(k)} onKeyDown={e=>onKey(e,i)}>
-      <b>{kindLabel(k)}</b>{T.locale!=='en'&&<span dir="ltr" lang="en">{KIND_EN[k]}</span>}<small>{T.kinds[k].hint}</small>
-    </button>)}
-  </div>;
-}
-
-/* ───────────── Add card ───────────── */
-type FieldText={label:string;ph:string;hint?:string};
+/* ───────────── Add card (#26: one unified form) ───────────── */
 const LAST_DECK='wordloop-last-deck';
 /** #16/#9: the deck a new card goes to — the deck it was opened from, else the last deck used on this device, else the default deck. */
 function initialDeck(lib:Library,fromRoute:string){
@@ -195,83 +180,111 @@ function initialDeck(lib:Library,fromRoute:string){
   let last:string|null=null;try{last=localStorage.getItem(LAST_DECK);}catch{/* private mode */}
   return ok(last)?last:DEFAULT_DECK_ID;
 }
+const RTL_LANGS=new Set(['ar','fa','he','ur','ps','yi']);
+const isRtl=(tag:string)=>RTL_LANGS.has(tag.split('-')[0].toLowerCase());
+/** Native-language name of a BCP-47 tag in the interface language (falls back to the tag). */
+function langName(tag:string){try{return new Intl.DisplayNames([T.locale],{type:'language'}).of(tag)||tag;}catch{return tag;}}
+/** Short examples shown as placeholders only for common languages; otherwise the box stays empty. */
+const TERM_PH:Record<string,string>={en:'show',es:'mostrar',fr:'montrer',de:'zeigen',it:'mostrare',pt:'mostrar',tr:'göstermek'};
+const MEANING_PH:Record<string,string>={ar:'يُظهر',en:'to show'};
+const EXAMPLE_PH:Record<string,string>={en:'I’ll show you around.',es:'Te mostraré la ciudad.',fr:'Je vais te montrer la ville.'};
+const phFor=(map:Record<string,string>,tag:string)=>map[tag.split('-')[0].toLowerCase()]||'';
+
+/**
+ * One box style for content, every meaning and the optional sentence (#26 points 4–5): the language badge and the
+ * listen button sit inside the box; the text direction follows the box language. Enter saves, Shift+Enter adds a line.
+ */
+function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,describedBy,boxRef,onRemove,removeLabel,onNoVoice}:{id:string;lang:string;label:string;value:string;onChange:(v:string)=>void;placeholder?:string;maxLength:number;invalid?:boolean;describedBy?:string;boxRef?:(el:HTMLTextAreaElement|null)=>void;onRemove?:()=>void;removeLabel?:string;onNoVoice?:()=>void}){
+  const ref=useRef<HTMLTextAreaElement|null>(null);
+  useLayoutEffect(()=>{const el=ref.current;if(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}},[value]);
+  return <div className={'lang-box'+(invalid?' invalid':'')}>
+    <label htmlFor={id} className="visually-hidden">{label} · {langName(lang)}</label>
+    <span className="lang-badge" dir="ltr" aria-hidden="true">{langCode(lang)}</span>
+    <textarea ref={el=>{ref.current=el;boxRef?.(el);}} id={id} rows={1} dir={isRtl(lang)?'rtl':'ltr'} lang={lang} autoComplete="off" autoCapitalize="none" spellCheck={false}
+      maxLength={maxLength} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)} aria-invalid={invalid||undefined} aria-describedby={describedBy}
+      onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();e.currentTarget.form?.requestSubmit();}}}/>
+    <SpeakButton text={value} lang={lang} label={T.listen(value.trim()||label)} className="icon-btn box-icon" onNoVoice={onNoVoice}/>
+    {onRemove&&<button type="button" className="icon-btn box-icon" aria-label={removeLabel} title={removeLabel} onClick={onRemove}><X size={18}/></button>}
+  </div>;
+}
+
 function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
-  const A=T.add;
+  const A=T.add,F=T.addForm;
   const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
+  const deck=lib.decks.find(d=>d.id===deckId)??lib.decks.find(d=>d.id===DEFAULT_DECK_ID);
+  // Languages come from the deck (#15/#16); an optional override applies to the cards saved from this form until reset.
+  const [override,setOverride]=useState<{content:string;meaning:string}|null>(null),[langOpen,setLangOpen]=useState(false);
+  const content=override?.content??deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,meaningLang=override?.meaning??deck?.meaningLanguage??DEFAULT_MEANING_LANGUAGE;
   const [lastDeck,setLastDeck]=useState<string|null>(null);
-  const [kind,setKindState]=useState<ContentType>(initialKind);
-  const [term,setTerm]=useState(''),[meaning,setMeaning]=useState(''),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState(''),[tag,setTag]=useState('');
+  const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>(['']),[example,setExample]=useState(''),[showExample,setShowExample]=useState(false);
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
-  const termRef=useRef<HTMLInputElement&HTMLTextAreaElement>(null);
-  const f=T.kindForm[kind],shape=kindShape[kind],limit=TERM_LIMIT[kind];
-  const tags=useMemo(()=>[...new Set(words.filter(w=>!w.archived).map(w=>w.tag).filter(Boolean))].slice(0,12),[words]);
-  const duplicate=term.trim()&&words.some(w=>!w.archived&&w.contentType===kind&&normalizeTerm(w.term)===normalizeTerm(term));
-  const tooLong=term.trim().length>limit;
-  function setKind(k:ContentType){setKindState(k);setError('');setSaved(null);try{localStorage.setItem(LAST_KIND,k);}catch{/* private mode */}}
+  const termRef=useRef<HTMLTextAreaElement|null>(null),meaningRefs=useRef<(HTMLTextAreaElement|null)[]>([]),focusMeaning=useRef<number|null>(null),exampleRef=useRef<HTMLTextAreaElement|null>(null);
+  const kind=inferContentType(term),limit=TERM_LIMIT[kind];
+  const duplicate=term.trim()?words.find(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(term)):undefined;
+  const tooLong=term.trim().length>limit,hasMeaning=meanings.some(m=>m.trim());
+  const noVoice=(tag:string)=>()=>notify(F.noVoice(langName(tag)),'error');
+  useEffect(()=>{if(focusMeaning.current!==null){meaningRefs.current[focusMeaning.current]?.focus();focusMeaning.current=null;}},[meanings.length]);
+  useEffect(()=>{if(showExample&&!example)exampleRef.current?.focus();},[showExample]); // eslint-disable-line react-hooks/exhaustive-deps
+  const touched=()=>{setSaved(null);setError('');};
+  function addMeaning(){if(meanings.length>=MAX_MEANINGS)return;focusMeaning.current=meanings.length;setMeanings(m=>[...m,'']);touched();}
+  function removeMeaning(i:number){setMeanings(m=>m.length>1?m.filter((_,j)=>j!==i):m);meaningRefs.current[Math.max(0,i-1)]?.focus();touched();}
   async function submit(e:FormEvent){
     e.preventDefault();setTried(true);setError('');
-    if(!term.trim()||!meaning.trim()){(!term.trim()?termRef.current:document.getElementById('meaning'))?.focus();return;}
-    if(tooLong){termRef.current?.focus();return;}
+    if(!term.trim()||tooLong||duplicate){termRef.current?.focus();return;}
+    if(!hasMeaning){meaningRefs.current[0]?.focus();return;}
     setLoading(true);setUnsynced(null);
-    let word:Word;
-    // Only the fields this kind shows are saved; text typed under another kind stays in the form, unsaved.
     const target=lib.decks.some(d=>d.id===deckId)?deckId:DEFAULT_DECK_ID;
-    try{word=await addWord({contentType:kind,deckId:target,term,meaning,example:f.example?example:'',translation:f.translation?translation:'',note:f.note?note:'',tag});try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);}
-    catch(err){setError(getError(err));setLoading(false);return;}
-    setTerm('');setMeaning('');setExample('');setTranslation('');setNote('');setTag('');setTried(false);
+    let word:Word;
+    try{
+      word=await addWord({contentType:kind,deckId:target,term,meanings,example:showExample?example:'',translation:'',tag:'',
+        ...(override&&override.content!==deck?.contentLanguage?{contentLanguage:override.content}:{}),...(override&&override.meaning!==deck?.meaningLanguage?{meaningLanguage:override.meaning}:{})});
+      try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);
+    }catch(err){setError(getError(err));setLoading(false);return;}
+    // Ready for the next card: same deck and languages, empty boxes (#26 point 8).
+    setTerm('');setMeanings(['']);setExample('');setShowExample(false);setTried(false);
     await confirmVisible(word);setLoading(false);termRef.current?.focus();
   }
   /** #4: success is announced only once the saved card is in the refreshed list. */
   async function confirmVisible(word:Word){
     const list=await onSaved();
-    if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(A.saved(word.term,kindLabel(word.contentType)));}
+    if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(F.saved(word.term));}
     else{setSaved(null);setUnsynced(word);}
   }
-  const missing=(v:string)=>tried&&!v.trim();
-  const termHint=missing(term)?A.missingTerm(f.noun):tooLong?A.tooLong(f.noun,limit):duplicate?A.duplicate(f.noun,kindLabel(kind)):f.term.hint;
-  const termProps={ref:termRef,id:'term',dir:'ltr' as const,lang:'en',autoComplete:'off',autoCapitalize:'none',spellCheck:false,placeholder:f.term.ph,maxLength:limit,value:term,
-    onChange:(e:{target:{value:string}})=>{setTerm(e.target.value);setSaved(null);setError('');},'aria-invalid':missing(term)||tooLong,'aria-describedby':'term-hint'};
-  // English fields are LTR; the learner's own notes and meanings follow their text direction (dir=auto).
-  const optional=(id:'example'|'translation'|'note',field:FieldText|undefined,value:string,set:(v:string)=>void,english:boolean,max:number)=>field&&<div className="field" key={id}>
-    <label htmlFor={id}>{field.label} <small>{T.optional}</small></label>
-    {english||id==='note'?<textarea id={id} dir={english?'ltr':'auto'} lang={english?'en':undefined} rows={2} maxLength={max} placeholder={field.ph} value={value} onChange={e=>set(e.target.value)} aria-describedby={field.hint?id+'-hint':undefined}/>
-      :<input id={id} dir="auto" maxLength={max} placeholder={field.ph} value={value} onChange={e=>set(e.target.value)}/>}
-    {field.hint&&<p id={id+'-hint'} className="hint">{field.hint}</p>}
-  </div>;
-  const noteField=optional('note',f.note,note,setNote,false,NOTE_LIMIT);
-  const exampleFields=<>{optional('example',f.example,example,setExample,true,500)}{optional('translation',f.translation,translation,setTranslation,false,400)}</>;
+  const termHint=tried&&!term.trim()?F.missingTerm:tooLong?F.tooLong(limit):duplicate?F.duplicate:'';
   return <div className="page add-page">
-    <PageHead title={f.title} lead={f.lead}/>
-    <div className="add-layout">
-      <form className="word-form" onSubmit={submit} noValidate>
-        <KindPicker value={kind} onChange={setKind}/>
-        <div className={'field'+(missing(term)||tooLong?' invalid':'')}>
-          <label htmlFor="term">{f.term.label}</label>
-          <div className={'input-wrap'+(shape.multiline?' multiline':'')}>{shape.multiline?<textarea {...termProps} rows={3}/>:<input {...termProps}/>}<SpeakButton text={term} label={T.listen(f.noun)} className="icon-btn in-input"/></div>
-          <p id="term-hint" className="hint">{termHint}</p>
-        </div>
-        <div className={'field'+(missing(meaning)?' invalid':'')}>
-          <label htmlFor="meaning">{f.meaning.label}</label>
-          <input id="meaning" dir="auto" maxLength={240} placeholder={f.meaning.ph} value={meaning} onChange={e=>setMeaning(e.target.value)} aria-invalid={missing(meaning)} aria-describedby="meaning-hint"/>
-          <p id="meaning-hint" className="hint">{missing(meaning)?A.missingMeaning(f.noun):f.meaning.hint||''}</p>
-        </div>
-        {shape.noteFirst?<>{noteField}{exampleFields}</>:<>{exampleFields}{noteField}</>}
-        <div className="field">
-          <label htmlFor="tag">{A.tag} <small>{T.optional}</small></label>
-          <input id="tag" dir="auto" list="tag-list" maxLength={40} placeholder={A.tagPh} value={tag} onChange={e=>setTag(e.target.value)}/>
-          <datalist id="tag-list">{tags.map(t=><option key={t} value={t}/>)}</datalist>
-          {tags.length>0&&<div className="chips" role="group" aria-label={A.pastTags}>{tags.slice(0,6).map(t=><button type="button" key={t} dir="auto" className={'chip'+(tag===t?' on':'')} aria-pressed={tag===t} onClick={()=>setTag(tag===t?'':t)}>{tagText(t)}</button>)}</div>}
-        </div>
-        <DeckPicker lib={lib} value={deckId} onChange={setDeckId}/>
-        {error&&<p className="inline-error" role="alert">{error}</p>}
-        {unsynced&&<div className="inline-error soft" role="alert"><p>{A.unsynced[0]}<span dir="ltr">{unsynced.term}</span>{A.unsynced[1]}</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>{A.refreshList}</button></div>}
-        <div className="form-foot">
-          <button disabled={loading} type="submit" className="btn btn-ink btn-lg">{loading?A.saving(f.noun):A.save(f.noun)}{!loading&&<Check size={20}/>}</button>
-          {saved&&<button type="button" className="btn btn-quiet" onClick={()=>go(lastDeck?deckPath(lastDeck):'words')}>{A.seeLibrary}</button>}
-        </div>
-      </form>
-      <aside className="add-aside" aria-hidden="true"><Wash tone="warm"/><div className="aside-card"><i className="kind-badge">{kindLabel(kind)}</i><span dir="ltr" className={kind==='sentence'?'is-long':undefined}>{term.trim()||f.term.ph}</span><p dir="auto">{meaning.trim()||f.meaning.ph}</p>{f.note&&(note.trim()||!term.trim())&&<small className="aside-note-text" dir="auto">{note.trim()||f.note.ph}</small>}{f.example&&(example.trim()||!term.trim())&&<em dir="ltr">{example.trim()||f.example.ph}</em>}</div><p className="aside-note">{A.asideNote}</p></aside>
-    </div>
+    <PageHead title={F.title} lead={F.lead}/>
+    <form className="word-form add-form" onSubmit={submit} noValidate>
+      <div className="add-target">
+        <DeckPicker lib={lib} value={deckId} onChange={id=>{setDeckId(id);setOverride(null);}}/>
+        <button type="button" className="lang-pair" aria-expanded={langOpen} aria-controls="lang-override" onClick={()=>setLangOpen(o=>!o)}>
+          <span dir="ltr">{langCode(content)} → {langCode(meaningLang)}</span><small>{F.changeLang}</small><ChevronDown size={16} className="chev" aria-hidden="true"/>
+        </button>
+      </div>
+      {langOpen&&<div className="lang-override" id="lang-override">
+        <div className="field"><label htmlFor="add-content-lang">{F.contentLangShort}</label><LanguageSelect id="add-content-lang" value={content} onChange={v=>setOverride({content:v,meaning:meaningLang})}/></div>
+        <div className="field"><label htmlFor="add-meaning-lang">{F.meaningLangShort}</label><LanguageSelect id="add-meaning-lang" value={meaningLang} onChange={v=>setOverride({content,meaning:v})}/></div>
+        <p className="hint">{override?<>{F.overrideNote} <button type="button" className="link-btn" onClick={()=>setOverride(null)}>{F.useDeckLang}</button></>:F.deckLangNote}</p>
+      </div>}
+      <LangBox id="term" lang={content} label={F.termLabel} value={term} onChange={v=>{setTerm(v);touched();}} placeholder={phFor(TERM_PH,content)} maxLength={TERM_LIMIT.sentence}
+        invalid={!!termHint} describedBy={termHint?'term-hint':undefined} boxRef={el=>{termRef.current=el;}} onNoVoice={noVoice(content)}/>
+      {termHint&&<p id="term-hint" className="hint box-hint" role="alert">{termHint}</p>}
+      {meanings.map((m,i)=><LangBox key={i} id={i?'meaning-'+i:'meaning'} lang={meaningLang} label={F.meaningLabel(i+1,meanings.length)} value={m} placeholder={i?'':phFor(MEANING_PH,meaningLang)} maxLength={240}
+        onChange={v=>{setMeanings(ms=>ms.map((x,j)=>j===i?v:x));touched();}} invalid={tried&&!hasMeaning&&i===0} describedBy={tried&&!hasMeaning&&i===0?'meaning-hint':undefined}
+        boxRef={el=>{meaningRefs.current[i]=el;}} onRemove={meanings.length>1?()=>removeMeaning(i):undefined} removeLabel={F.removeMeaning(i+1)} onNoVoice={noVoice(meaningLang)}/>)}
+      {tried&&!hasMeaning&&<p id="meaning-hint" className="hint box-hint" role="alert">{F.missingMeaning}</p>}
+      <div className="add-more-row">
+        {meanings.length<MAX_MEANINGS&&<button type="button" className="add-more" onClick={addMeaning}><Plus size={18} aria-hidden="true"/>{F.addMeaning}</button>}
+        {!showExample&&<button type="button" className="add-more" onClick={()=>setShowExample(true)}><Plus size={18} aria-hidden="true"/>{F.addExample}</button>}
+      </div>
+      {showExample&&<LangBox id="example" lang={content} label={F.exampleLabel} value={example} onChange={setExample} placeholder={phFor(EXAMPLE_PH,content)} maxLength={500}
+        boxRef={el=>{exampleRef.current=el;}} onRemove={()=>{setExample('');setShowExample(false);}} removeLabel={F.removeExample} onNoVoice={noVoice(content)}/>}
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      {unsynced&&<div className="inline-error soft" role="alert"><p>{A.unsynced[0]}<span dir="auto">{unsynced.term}</span>{A.unsynced[1]}</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>{A.refreshList}</button></div>}
+      <div className="form-foot">
+        <button disabled={loading} type="submit" className="btn btn-save btn-lg">{!loading&&<Check size={20} aria-hidden="true"/>}{loading?F.saving:F.save}</button>
+        {saved&&<button type="button" className="btn btn-quiet" onClick={()=>go(lastDeck?deckPath(lastDeck):'words')}>{A.seeLibrary}</button>}
+      </div>
+    </form>
   </div>;
 }
 

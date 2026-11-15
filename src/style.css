@@ -540,3 +540,31 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .action-row{display:flex;align-items:center;gap:12px;inline-size:100%;min-block-size:52px;padding:10px 16px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:16px;text-align:start}
 .action-row.archive{color:var(--ink-2)}
 @media(hover:hover){.action-row:hover{border-color:var(--line-2)}.action-row.archive:hover{background:var(--cream)}}
+
+/* ── #26 unified Add form: content, meanings and example share one box style ── */
+.add-form{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-inline-size:620px}
+.add-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;margin-block-end:6px}
+.add-target .deck-picker{flex:1 1 220px;margin:0}
+.lang-pair{display:inline-flex;align-items:center;gap:8px;min-block-size:52px;padding:0 16px;border-radius:var(--r-md);border:1px solid var(--line-2);background:var(--surface);font:inherit;font-weight:700;color:var(--ink-2)}
+.lang-pair small{font-weight:500;color:var(--teal-deep);font-size:14px}
+.lang-pair[aria-expanded=true] .chev{transform:rotate(180deg)}
+.lang-override{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:14px;border-radius:var(--r-md);background:var(--cream)}
+.lang-override .hint{grid-column:1/-1;margin:0}
+.link-btn{border:0;background:none;padding:0;font:inherit;color:var(--teal-deep);font-weight:600;text-decoration:underline;text-underline-offset:3px;min-block-size:24px}
+.lang-box{display:flex;align-items:center;gap:6px;min-block-size:64px;padding:6px 6px 6px 14px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:#fff;transition:border-color .15s,box-shadow .15s}
+[dir=rtl] .lang-box{padding:6px 14px 6px 6px}
+.lang-box:focus-within{border-color:var(--teal);box-shadow:0 0 0 4px #2f7d6826}
+.lang-box.invalid{border-color:var(--danger)}
+.lang-badge{flex:none;display:inline-grid;place-items:center;min-inline-size:34px;block-size:26px;padding:0 6px;border-radius:8px;background:var(--mint);color:var(--teal-deep);font:700 12px/1 var(--ar);letter-spacing:.04em}
+.lang-box textarea{flex:1;min-inline-size:0;border:0;outline:none;background:transparent;resize:none;overflow:hidden;padding:10px 4px;font:inherit;font-size:18px;line-height:1.5;color:var(--ink)}
+.lang-box textarea[dir=ltr]{font-family:var(--en);font-size:20px}
+.lang-box .box-icon{inline-size:44px;block-size:44px;border-color:transparent;background:transparent;color:var(--muted)}
+@media(hover:hover){.lang-box .box-icon:hover:not(:disabled){background:var(--cream);color:var(--ink)}}
+.box-hint{margin:-4px 4px 0}
+.box-hint[role=alert]{color:var(--danger);font-weight:500}
+.add-more-row{display:flex;flex-wrap:wrap;gap:8px}
+.add-more{display:inline-flex;align-items:center;gap:6px;min-block-size:44px;padding:6px 14px;border-radius:var(--r-pill);border:1px dashed var(--line-2);background:transparent;font:inherit;font-size:15px;font-weight:600;color:var(--teal-deep)}
+@media(hover:hover){.add-more:hover{border-color:var(--teal);background:var(--mint)}}
+.btn-save{background:var(--teal);color:#fff;border-color:var(--teal)}
+@media(hover:hover){.btn-save:hover:not(:disabled){background:var(--teal-deep);border-color:var(--teal-deep)}}
+.add-form .form-foot .btn-save{min-inline-size:160px}

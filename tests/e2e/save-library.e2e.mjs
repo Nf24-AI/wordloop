@@ -45,7 +45,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await addCard(page,base(),'in charge of','مسؤول عن');
       await page.getByRole('status').filter({hasText:'حفظنا'}).waitFor();
       await addCard(page,base(),'  In   Charge OF ','معنى ثاني',{navigate:false});
-      await page.locator('.inline-error[role=alert]').waitFor();
+      await page.locator('#term-hint[role=alert]').waitFor(); // #26: refused in place, under the content box
       assert.equal(await page.inputValue('#term'),'  In   Charge OF ');
       assert.equal(await page.inputValue('#meaning'),'معنى ثاني');
       assert.deepEqual(await libraryTerms(page,base()),['in charge of']);

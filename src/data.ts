@@ -245,7 +245,18 @@ export async function listWords():Promise<Word[]>{return (await getAll<StoredWor
 export async function listReviews(){return getAll<Review>('reviews');}
 export async function getWord(id:string):Promise<Word|undefined>{const w=await request<StoredWord|undefined>((await transaction('words','readonly')).objectStore('words').get(id));return w&&normalizeWord(w);}
 /** `meanings` (#26) or the single legacy `meaning`; at least one non-empty meaning is required. */
-export type NewCard={contentType?:ContentType;deckId?:string;term:string;meaning?:string;meanings?:string[];example:string;translation:string;note?:string;tag:string};
+export type NewCard={contentType?:ContentType;deckId?:string;term:string;meaning?:string;meanings?:string[];example:string;translation:string;note?:string;tag:string;contentLanguage?:string;meaningLanguage?:string};
+/**
+ * #26: the unified Add form no longer asks for a kind. New cards get a safe internal kind from the text's shape only
+ * (never its meaning): one word → vocabulary; ends like a sentence or has 6+ words → sentence; otherwise phrase.
+ * Idiom is never guessed. Legacy kinds stay stored and displayed as they were (#5).
+ */
+export function inferContentType(term:string):ContentType{
+  const t=term.trim().replace(/\s+/g,' ');const n=t?t.split(' ').length:0;
+  if(n<=1)return 'vocabulary';
+  if(/[.!?؟…]$/.test(t)||n>=6)return 'sentence';
+  return 'phrase';
+}
 export async function addWord(data:NewCard):Promise<Word>{
   const contentType=data.contentType??'vocabulary';
   if(!isContentType(contentType))throw Error('نوع البطاقة غير معروف');
@@ -256,11 +267,14 @@ export async function addWord(data:NewCard):Promise<Word>{
   // Duplicates are checked within the same kind only: "break the ice" may be both a phrase and an idiom.
   const words=await listWords();const key=normalizeTerm(term);if(words.some(w=>!w.archived&&w.contentType===contentType&&normalizeTerm(w.term)===key))throw Error('هذه الكلمة موجودة عندك بالفعل');
   const deckId=data.deckId??DEFAULT_DECK_ID;
+  // Optional per-card language override (#26 point 3); stored only when given, validated as BCP-47.
+  const langs:{contentLanguage?:string;meaningLanguage?:string}={};
+  for(const k of ['contentLanguage','meaningLanguage'] as const){const v=data[k];if(v===undefined)continue;const c=canonicalLanguage(v);if(!c)throw Error('رمز اللغة غير صحيح');langs[k]=c;}
   if(deckId!==DEFAULT_DECK_ID&&!(await listLibrary()).decks.some(d=>d.id===deckId))throw Error('لم نجد الحزمة');
   const now=new Date(),id=crypto.randomUUID();
   const scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
   const fsrs=scheduler.newCard({cardId:id,now});
-  const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0};
+  const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0,...langs};
   const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(word);await end;
   announceChange();return word;
 }
