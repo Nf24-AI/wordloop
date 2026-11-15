@@ -19,7 +19,7 @@ const at='2026-11-10T09:00:00.000Z';
 function legacyWord(i,overrides={}){
   const id=`legacy-${i}`,dueAt=new Date(Date.parse(at)+i*3600_000).toISOString();
   return {id,term:`word${i}`,meaning:`معنى ${i}`,example:'',translation:'',tag:'عام',createdAt:at,updatedAt:at,dueAt,
-    fsrsState:{cardId:id,dueAt,stability:1.5+i,difficulty:5,state:2,reps:3,lapses:0,lastReviewAt:at,learningSteps:0},archived:i%7===0,revision:i%4,...overrides};
+    fsrsState:{cardId:id,dueAt,stability:1.5+i,stabilityFast:1.2+i,difficulty:5,state:2,scheduleStatus:'review',reps:3,lapses:0,lastReviewAt:at,scheduledDays:2,learningStep:0},archived:i%7===0,revision:i%4,...overrides};
 }
 function legacyReview(i,wordId){return {id:`r-${i}`,wordId,grade:['again','hard','good','easy'][i%4],reviewedAt:at,nextDueAt:at};}
 
