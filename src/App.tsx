@@ -20,6 +20,41 @@ const navItems:{id:Page;icon:typeof Home}[]=[
 function hashParts(){const [h,...rest]=window.location.hash.replace(/^#\/?/,'').split('/');return {page:(PAGES.includes(h as Page)?h:'home') as Page,sub:PAGES.includes(h as Page)?rest.join('/'):''};}
 function readHash():Page{return hashParts().page;}
 function readSub():string{return hashParts().sub;}
+/**
+ * #42 — in-app trail of routes visited in this session (newest last), so «رجوع» can use the real history when it is
+ * known to stay inside the app, and a parent route otherwise. history.back() is never called blindly: in an installed
+ * PWA it can leave the app, or land on the Cloudflare Access page.
+ */
+const TRAIL_KEY='wordloop-trail';
+let trail:string[]=(()=>{try{const t=JSON.parse(sessionStorage.getItem(TRAIL_KEY)||'[]');return Array.isArray(t)?t.filter((x):x is string=>typeof x==='string').slice(-30):[];}catch{return [];}})();
+let replacingRoute=false;
+const currentRoute=()=>window.location.hash.replace(/^#\/?/,'');
+/** Called on every route change: a step back pops the trail, a replace swaps its top, anything else pushes. */
+function recordRoute(){
+  const r=currentRoute();
+  if(replacingRoute){replacingRoute=false;trail[Math.max(0,trail.length-1)]=r;}
+  else if(trail.length>=2&&trail[trail.length-2]===r)trail.pop();
+  else if(trail[trail.length-1]!==r)trail.push(r);
+  trail=trail.slice(-30);
+  try{sessionStorage.setItem(TRAIL_KEY,JSON.stringify(trail));}catch{/* private mode: the trail lasts for this page only */}
+}
+const previousRoute=():string|null=>trail.length>=2?trail[trail.length-2]:null;
+/** Go to `target` as a step back: the real Back when the previous in-app entry is that route, otherwise replace (no history loops). */
+function stepBackTo(target:string){
+  if(previousRoute()===target&&history.length>1){history.back();return;}
+  replacingRoute=true;window.location.replace('#/'+target);
+}
+/** #42: a form with typed, unsaved text marks itself data-unsaved="true"; leaving asks first. */
+const hasUnsaved=()=>!!document.querySelector('[data-unsaved="true"]');
+let askLeave:(proceed:()=>void)=>void=proceed=>proceed();
+/** Set when the learner chose «الخروج بدون حفظ»: the route change that follows is not questioned again. */
+let leaveConfirmedAt=0;
+const confirmLeave=()=>{leaveConfirmedAt=Date.now();};
+/** Run `proceed` now, or after the learner confirms leaving unsaved text. */
+function guardLeave(proceed:()=>void){if(hasUnsaved())askLeave(()=>{confirmLeave();proceed();});else proceed();}
+recordRoute();
+/** "Back" arrow: points right in Arabic (RTL), left in English (LTR). */
+function BackArrow({size=20}:{size?:number}){return T.dir==='rtl'?<ArrowRight size={size} aria-hidden="true"/>:<ArrowLeft size={size} aria-hidden="true"/>;}
 /** "Forward" arrow: points left in Arabic (RTL), right in English (LTR). */
 function Fwd({size=20}:{size?:number}){return T.dir==='rtl'?<ArrowLeft size={size} aria-hidden="true"/>:<ArrowRight size={size} aria-hidden="true"/>;}
 
@@ -250,6 +285,16 @@ function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,des
   </div>;
 }
 
+/** #42: the Add form's unsaved text, kept on this device only (localStorage), never in IndexedDB or the cloud. */
+const ADD_DRAFT='wordloop-add-draft';
+type AddDraft={deckParam:string;term:string;meanings:string[];example:string};
+function readAddDraft(deckParam:string):AddDraft|null{
+  try{const d=JSON.parse(localStorage.getItem(ADD_DRAFT)||'null');
+    if(d&&d.deckParam===deckParam&&typeof d.term==='string'&&Array.isArray(d.meanings)&&d.meanings.length&&d.meanings.every((m:unknown)=>typeof m==='string')&&typeof d.example==='string')return {...d,meanings:d.meanings.slice(0,MAX_MEANINGS)};
+  }catch{/* unreadable draft: start empty */}
+  return null;
+}
+function writeAddDraft(d:AddDraft|null){try{if(d)localStorage.setItem(ADD_DRAFT,JSON.stringify(d));else localStorage.removeItem(ADD_DRAFT);}catch{/* private mode */}}
 function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
   const A=T.add,F=T.addForm;
   const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
@@ -258,7 +303,12 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   const [override,setOverride]=useState<{content:string;meaning:string}|null>(null),[langOpen,setLangOpen]=useState(false);
   const content=override?.content??deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,meaningLang=override?.meaning??deck?.meaningLanguage??DEFAULT_MEANING_LANGUAGE;
   const [lastDeck,setLastDeck]=useState<string|null>(null);
-  const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>(['']),[example,setExample]=useState(''),[showExample,setShowExample]=useState(false);
+  // #42: typed text survives Back, a refresh or iOS closing the PWA in the background; cleared on save or when leaving the page.
+  const [draft]=useState(()=>readAddDraft(deckParam));
+  const [term,setTerm]=useState(draft?.term??''),[meanings,setMeanings]=useState<string[]>(draft?.meanings??['']),[example,setExample]=useState(draft?.example??''),[showExample,setShowExample]=useState(!!draft?.example);
+  const unsaved=!!(term.trim()||meanings.some(m=>m.trim())||example.trim());
+  useEffect(()=>{writeAddDraft(unsaved?{deckParam,term,meanings,example}:null);},[unsaved,deckParam,term,meanings,example]);
+  useEffect(()=>()=>{if(!document.hidden)writeAddDraft(null);},[]);
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
   const termRef=useRef<HTMLTextAreaElement|null>(null),meaningRefs=useRef<(HTMLTextAreaElement|null)[]>([]),focusMeaning=useRef<number|null>(null),exampleRef=useRef<HTMLTextAreaElement|null>(null);
   const kind=inferContentType(term),limit=TERM_LIMIT[kind];
@@ -294,7 +344,7 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   const termHint=tried&&!term.trim()?F.missingTerm:tooLong?F.tooLong(limit):duplicate?F.duplicate:'';
   return <div className="page add-page">
     <PageHead title={F.title} lead={F.lead}/>
-    <form className="word-form add-form" onSubmit={submit} noValidate>
+    <form className="word-form add-form" onSubmit={submit} data-unsaved={unsaved&&!loading?'true':undefined} noValidate>
       <div className="add-target">
         <DeckPicker lib={lib} value={deckId} onChange={id=>{setDeckId(id);setOverride(null);}}/>
         <button type="button" className="lang-pair" aria-expanded={langOpen} aria-controls="lang-override" onClick={()=>setLangOpen(o=>!o)}>
@@ -470,9 +520,6 @@ type LibShared={words:Word[];reviews:Review[];lib:Library;counts:ReturnType<type
 function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:string)=>void;placeholder:string;label:string}){
   return <label className="search"><Search size={19}/><span className="visually-hidden">{label}</span><input type="search" dir="auto" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} enterKeyHint="search"/>{value&&<button type="button" className="icon-btn ghost" aria-label={T.library.clearSearch} onClick={()=>onChange('')}><X size={17}/></button>}</label>;
 }
-function Crumbs({items,go}:{items:{label:string;path:string}[];go:(path:string)=>void}){
-  return <nav className="crumbs" aria-label={T.lib.crumbs}><ol>{items.map(i=><li key={i.path}><button type="button" dir="auto" onClick={()=>go(i.path)}>{i.label}</button></li>)}</ol></nav>;
-}
 
 function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{tab:'folders'|'all'|'due'}){
   const L=T.lib;
@@ -579,7 +626,6 @@ function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&
   async function rename(name:string){await renameFolder(id,name);await onChanged();notify(L.saved);setSheet(null);}
   async function remove(){setConfirmDelete(false);try{await deleteFolder(id);await onChanged();notify(L.deleted(folderName(folder!)));go('words');}catch(e){notify(getError(e),'error');}}
   return <div className="page library head-inline">
-    <Crumbs items={[{label:L.title,path:'words'}]} go={go}/>
     <PageHead title={folderName(folder)} lead={`${L.decksCount(c.decks)} · ${L.cardsCount(c.cards)}`}>
       <div className="head-actions">
         <button type="button" className="icon-btn" aria-label={L.folderSettings} title={L.folderSettings} onClick={()=>setSheet('settings')}><MoreHorizontal size={20}/></button>
@@ -603,14 +649,12 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
   const deck=lib.decks.find(d=>d.id===id);
   const cards=useMemo(()=>words.filter(w=>!w.archived&&deckIdOf(w,lib)===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[words,lib,id]);
   if(!deck)return <NotFound go={go}/>;
-  const folder=lib.folders.find(f=>f.id===deck.folderId);
   const s=q.trim().toLocaleLowerCase(),list=cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)));
   const hasAny=words.some(w=>deckIdOf(w,lib)===id); // archived cards still belong to the deck
   const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:'';
   async function save(v:DeckForm){await updateDeck(id,v);await onChanged();notify(L.saved);setSettings(false);}
   async function remove(){setConfirmDelete(false);try{await deleteDeck(id);await onChanged();notify(L.deleted(deckName(deck!)));go(folderPath(deck!.folderId));}catch(e){notify(getError(e),'error');}}
   return <div className="page library">
-    <Crumbs items={[{label:L.title,path:'words'},...(folder?[{label:folderName(folder),path:folderPath(folder.id)}]:[])]} go={go}/>
     <PageHead title={deckName(deck)} lead={(c=>c?`${L.cardsCount(cards.length)} · ${L.dueCount(c)}`:L.cardsCount(cards.length))(counts.deck.get(id)?.due??0)}>
       <div className="head-actions">
         <span className="lang-chip" dir="ltr" title={`${deck.contentLanguage} → ${deck.meaningLanguage}`}>{langCode(deck.contentLanguage)} → {langCode(deck.meaningLanguage)}</span>
@@ -697,11 +741,14 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
   const C=T.card,open=!!word;
   const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>([]),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState('');
   const {busy,error,run}=useSheetAction(open);
-  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}},[word]);
+  // #42: «changed» is judged only once the fields hold this card's text — never in the first render, before they are filled.
+  const [loadedId,setLoadedId]=useState<string|null>(null);
+  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}setLoadedId(word?.id??null);},[word]);
   if(!word)return <FormSheet open={false} title="" onClose={onClose} onSubmit={()=>undefined} submit="" busy error=""><span/></FormSheet>;
   const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
-  return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}>
+  return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}
+    dirty={loadedId===word.id&&(term!==word.term||meanings.join('\n')!==word.meanings.join('\n')||example!==word.example||translation!==word.translation||note!==word.note)}>
     <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={dirOf(lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
     {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} name={'edit-meaning-'+i} dir="auto" autoComplete="off" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
     {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
@@ -736,8 +783,10 @@ function useKeyboardInset(){
     return()=>{cancelAnimationFrame(raf);vv.removeEventListener('resize',set);vv.removeEventListener('scroll',set);window.removeEventListener('orientationchange',set);document.removeEventListener('visibilitychange',set);};
   },[]);
 }
-function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode}){
+function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra,dirty=false}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode;dirty?:boolean}){
   const ref=useRef<HTMLDialogElement>(null);
+  /** #42: Cancel, Esc and Back never drop typed text silently. */
+  const cancel=()=>{if(dirty)askLeave(onClose);else onClose();};
   useEffect(()=>{
     const d=ref.current;if(!d)return;
     if(open&&!d.open){
@@ -750,12 +799,12 @@ function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra
     }
     if(!open&&d.open)d.close();
   },[open]);
-  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby="fs-title">
-    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} onFocus={keepFieldVisible} noValidate>
+  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();cancel();}} aria-labelledby="fs-title">
+    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} onFocus={keepFieldVisible} data-unsaved={dirty&&!busy?'true':undefined} noValidate>
       <h2 id="fs-title" tabIndex={-1}>{title}</h2>
       <div className="sheet-fields">{children}</div>
       {error&&<p className="inline-error" role="alert">{error}</p>}
-      <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
+      <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={cancel}>{T.lib.cancel}</button></div>
       {extra}
     </form>}
   </dialog>;
@@ -769,7 +818,7 @@ function useSheetAction(open:boolean){
 function NameSheet({open,title,label,placeholder,initial='',submit,onSubmit,onClose,extra}:{open:boolean;title:string;label:string;placeholder:string;initial?:string;submit:string;onSubmit:(name:string)=>Promise<void>;onClose:()=>void;extra?:ReactNode}){
   const [name,setName]=useState(initial),{busy,error,run}=useSheetAction(open);
   useEffect(()=>{if(open)setName(initial);},[open,initial]);
-  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra}>
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra} dirty={name.trim()!==initial.trim()}>
     <div className="field"><label htmlFor="folder-title">{label}</label><input id="folder-title" name="folder-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
   </FormSheet>;
 }
@@ -784,7 +833,7 @@ function DeckSheet({open,title,lib,deck,submit,onSubmit,onClose,extra}:{open:boo
   const [v,setV]=useState<DeckForm>(blank),{busy,error,run}=useSheetAction(open);
   useEffect(()=>{if(open)setV(blank());},[open]); // eslint-disable-line react-hooks/exhaustive-deps
   const set=(k:keyof DeckForm)=>(x:string)=>setV(o=>({...o,[k]:x}));
-  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra}>
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra} dirty={JSON.stringify(v)!==JSON.stringify(blank())}>
     <div className="field"><label htmlFor="deck-title">{L.nameLabel}</label><input id="deck-title" name="deck-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
     {deck&&<div className="field"><label htmlFor="deck-folder">{L.folderLabel}</label><select id="deck-folder" className="select" value={v.folderId} onChange={e=>set('folderId')(e.target.value)}>{lib.folders.map(f=><option key={f.id} value={f.id}>{folderName(f)}</option>)}</select></div>}
     <div className="field"><label htmlFor="deck-content-lang">{L.contentLang}</label><LanguageSelect id="deck-content-lang" value={v.contentLanguage} onChange={set('contentLanguage')}/><p className="hint">{L.langHint}</p></div>
@@ -1026,6 +1075,51 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
   </dialog>;
 }
 
+/* ───────────── Back (#42) ───────────── */
+type BackTo={target:string;label:string};
+/** Human name of an in-app route, for «رجوع إلى …». */
+function routeLabel(route:string,lib:Library):string{
+  const [h,...rest]=route.split('/'),page=(PAGES.includes(h as Page)?h:'home') as Page,sub=rest.join('/');
+  if(page==='words'){
+    const v=parseLibrary(sub);
+    if(v.kind==='folder'){const f=lib.folders.find(x=>x.id===v.id);if(f)return folderName(f);}
+    if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);if(d)return deckName(d);}
+  }
+  return T.nav[page];
+}
+/**
+ * Where «رجوع» leads from each screen: a clear parent when there is one (folder → library, deck → its folder,
+ * add-to-deck → that deck, scoped review → its folder/deck); otherwise the previous in-app screen, or Home.
+ * Top-level tabs (Home, Library, Progress) have no Back — the tab bar is their navigation.
+ */
+function backFor(page:Page,sub:string,lib:Library):BackTo|null{
+  const to=(target:string):BackTo=>({target,label:routeLabel(target,lib)});
+  const previousOr=(fallback:string)=>{const p=previousRoute();return to(p!==null&&p!==currentRoute()?p:fallback);};
+  if(page==='words'){
+    const v=parseLibrary(sub);
+    if(v.kind==='folder')return to('words');
+    if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);return to(d&&lib.folders.some(f=>f.id===d.folderId)?folderPath(d.folderId):'words');}
+    return null;
+  }
+  if(page==='add'){const id=decodeURIComponent(sub);return id&&lib.decks.some(d=>d.id===id)?to(deckPath(id)):previousOr('');}
+  if(page==='review'){
+    const [k,raw]=sub.split('/'),id=raw?decodeURIComponent(raw):'';
+    if(k==='d'&&lib.decks.some(d=>d.id===id))return to(deckPath(id));
+    if(k==='f'&&lib.folders.some(f=>f.id===id))return to(folderPath(id));
+    return previousOr('');
+  }
+  if(page==='settings')return previousOr('');
+  return null;
+}
+function BackBar({back}:{back:BackTo}){
+  const label=T.backTo(back.label);
+  return <nav className="backbar" aria-label={T.backNav}>
+    <button type="button" className="back-btn" aria-label={label} onClick={()=>guardLeave(()=>stepBackTo(back.target))}>
+      <BackArrow size={20}/><span className="back-word">{T.back}</span><span className="back-dest" dir="auto">{back.label}</span>
+    </button>
+  </nav>;
+}
+
 /* ───────────── Shell ───────────── */
 export default function App(){
   const [locale,setLocaleState]=useState<Locale>(storedLocale);
@@ -1045,7 +1139,16 @@ export default function App(){
   useEffect(()=>{
     void fetchLocal();void lastBackupDate().then(setLastBackup).catch(()=>null);
     // #4: iOS PWAs often resume without a window "focus" event, so also refresh on visibility/pageshow and on writes from other tabs.
-    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>{setPage(readHash());setSub(readSub());},on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
+    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>{
+      // #42: Back gesture, browser Back or a link left a form with typed text: put the route back and ask first.
+      const next=currentRoute(),here=trail[trail.length-1];
+      if(here!==undefined&&next!==here&&hasUnsaved()&&Date.now()-leaveConfirmedAt>1500){
+        history.pushState(null,'','#/'+here);
+        askLeave(()=>{confirmLeave();if(previousRoute()===next)history.back();else{replacingRoute=true;window.location.replace('#/'+next);}});
+        return;
+      }
+      recordRoute();setPage(readHash());setSub(readSub());
+    },on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
     const stopListening=onOtherTabChange(()=>{void fetchLocal();});
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
     window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
@@ -1066,8 +1169,12 @@ export default function App(){
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   useEffect(()=>{speechNotice=text=>notify(text,'error');},[notify]);
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});},[locale]);
-  const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
-  const go=useCallback((path:string)=>{window.location.hash='/'+path;},[]);
+  const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}guardLeave(()=>{window.location.hash=to==='home'?'/':'/'+to;});};
+  const go=useCallback((path:string)=>{guardLeave(()=>{window.location.hash='/'+path;});},[]);
+  // #42: one «unsaved changes» question for every way out (Back button, tabs, Back gesture, Cancel on a sheet).
+  const [leave,setLeave]=useState<{proceed:()=>void}|null>(null);
+  useEffect(()=>{askLeave=proceed=>setLeave({proceed});return()=>{askLeave=proceed=>proceed();};},[]);
+  const back=loading?null:backFor(page,sub,lib);
   // #9 (contextual +): inside a deck, + adds a card to that deck directly, with no intermediate menu.
   const ctxView=page==='words'?parseLibrary(sub):null,ctxDeck=ctxView?.kind==='deck'&&lib.decks.some(d=>d.id===ctxView.id)?ctxView.id:null;
   const onAdd=(e:{currentTarget:HTMLElement})=>{if(ctxDeck)go('add/'+encodeURIComponent(ctxDeck));else openQuick(e);};
@@ -1111,6 +1218,7 @@ export default function App(){
       {!online&&<p className="offline-note" role="status"><WifiOff size={15}/>{T.offlineNote}</p>}
       <main id="main" className="content" key={page}>
         {error&&loadedOnce&&<div className="banner" role="alert"><span>{error}</span><button type="button" className="icon-btn ghost" onClick={()=>setError('')} aria-label={T.close}><X size={16}/></button></div>}
+        {back&&<BackBar back={back}/>}
         {content}
       </main>
     </div>
@@ -1121,6 +1229,8 @@ export default function App(){
         return <button key={id} type="button" className={'tab'+(page===id?' on':'')} aria-current={page===id?'page':undefined} onClick={()=>navigate(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{T.nav[id]}</span></button>;
       })}
     </nav>
+    <ConfirmDialog open={!!leave} title={T.leave.title} body={T.leave.body} confirm={T.leave.yes} cancel={T.leave.stay}
+      onConfirm={()=>{const l=leave;setLeave(null);l?.proceed();}} onCancel={()=>setLeave(null)}/>
     <QuickActions open={quickOpen} onClose={closeQuick} due={due} nextDue={nextDue} returnFocus={quickReturn}/>
     <div className="toast-zone" aria-live="polite">{toast&&<div key={toast.id} className={'toast '+toast.tone} role={toast.tone==='error'?'alert':'status'}><span>{toast.text}</span><button type="button" className="icon-btn ghost" aria-label={T.closeToast} onClick={()=>setToast(null)}><X size={16}/></button></div>}</div>
   </div>;

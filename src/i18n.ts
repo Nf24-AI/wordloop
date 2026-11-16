@@ -35,6 +35,8 @@ const ar={
   dueBadge:(n:number)=>`${n} تنتظر`,
   online:'متصل',offline:'بدون إنترنت',offlineNote:'أنت بدون إنترنت. كلماتك ومراجعتك شغّالة عادي.',
   staging:'نسخة اختبار',stagingTitle:'بيئة اختبار مع بيانات منفصلة عن الموقع الرئيسي',
+  back:'رجوع',backNav:'رجوع',backTo:(place:string)=>`رجوع إلى ${place}`,
+  leave:{title:'عندك تغييرات غير محفوظة، تبي تطلع؟',body:'إذا طلعت الحين، اللي كتبته ما بينحفظ.',stay:'إكمال التعديل',yes:'الخروج بدون حفظ'},
   close:'إغلاق',closeToast:'إغلاق التنبيه',loading:'نجهّز كلماتك',
   fatalTitle:'ما قدرنا نفتح كلماتك',tryAgain:'جرّب مرة ثانية',
   /* shared copy */
@@ -305,6 +307,8 @@ const en:Dict={
   dueBadge:n=>`${n} waiting`,
   online:'Online',offline:'Offline',offlineNote:'You’re offline. Your cards and reviews still work.',
   staging:'Test version',stagingTitle:'Test environment with data separate from the main site',
+  back:'Back',backNav:'Back',backTo:(place:string)=>`Back to ${place}`,
+  leave:{title:'You have unsaved changes. Leave anyway?',body:'If you leave now, what you typed won’t be saved.',stay:'Keep editing',yes:'Leave without saving'},
   close:'Close',closeToast:'Dismiss notification',loading:'Getting your cards ready',
   fatalTitle:'We couldn’t open your cards',tryAgain:'Try again',
   due:'Time to review',noDue:'Nothing to review today!',dueLead:'A few minutes today keeps your words close.',
