@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
 import {pickVoice,RATE} from './voice';
@@ -702,8 +702,8 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
   const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
   return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}>
-    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" dir={dirOf(lang)} lang={lang} autoFocus maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
-    {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} dir="auto" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
+    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={dirOf(lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
+    {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} name={'edit-meaning-'+i} dir="auto" autoComplete="off" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
     {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
     {has.translation&&<div className="field"><label htmlFor="edit-translation">{f.translation?.label||C.translation}</label><textarea id="edit-translation" dir="auto" maxLength={400} value={translation} onChange={e=>setTranslation(e.target.value)}/></div>}
     {has.note&&<div className="field"><label htmlFor="edit-note">{f.note?.label||T.library.noteFallback}</label><textarea id="edit-note" dir="auto" maxLength={NOTE_LIMIT} value={note} onChange={e=>setNote(e.target.value)}/></div>}
@@ -712,12 +712,47 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
 }
 
 /* ── Sheets (native <dialog>: focus trap, Esc, backdrop) ── */
+const isTouch=()=>window.matchMedia?.('(pointer:coarse)').matches??false;
+/** #43: after the on-screen keyboard settles, keep the focused field inside the part of the sheet the user can see. */
+function keepFieldVisible(e:ReactFocusEvent){
+  const el=e.target as HTMLElement;if(!el.matches('input,textarea,select')||!isTouch())return;
+  setTimeout(()=>{if(document.activeElement===el)el.scrollIntoView({block:'nearest',inline:'nearest'});},320);
+}
+/**
+ * #43: publishes the on-screen keyboard height (--kb) and the visible height (--vvh) as CSS variables.
+ * iOS (Safari and the installed PWA) does not shrink the layout viewport for the keyboard, so a bottom sheet
+ * anchored to the layout bottom ends up behind it; the sheet CSS lifts itself by --kb and caps its height to --vvh.
+ */
+function useKeyboardInset(){
+  useEffect(()=>{
+    const vv=window.visualViewport;if(!vv)return;
+    const root=document.documentElement;let raf=0;
+    const set=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
+      const kb=Math.max(0,Math.round(window.innerHeight-vv.height-vv.offsetTop));
+      root.style.setProperty('--kb',(kb>60?kb:0)+'px');root.style.setProperty('--vvh',Math.round(vv.height)+'px');
+      root.classList.toggle('kb-open',kb>60);
+    });};
+    set();vv.addEventListener('resize',set);vv.addEventListener('scroll',set);window.addEventListener('orientationchange',set);document.addEventListener('visibilitychange',set);
+    return()=>{cancelAnimationFrame(raf);vv.removeEventListener('resize',set);vv.removeEventListener('scroll',set);window.removeEventListener('orientationchange',set);document.removeEventListener('visibilitychange',set);};
+  },[]);
+}
 function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode}){
   const ref=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{const d=ref.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
-  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby={ref.current?undefined:'fs-title'}>
-    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} noValidate>
-      <h2 id="fs-title">{title}</h2>
+  useEffect(()=>{
+    const d=ref.current;if(!d)return;
+    if(open&&!d.open){
+      // #43: on a phone, focusing the field inside showModal() raises the keyboard over the sheet before it is even seen.
+      // Touch: focus the title (the sheet is read first, the field is one tap away). Mouse/keyboard: focus the first field.
+      const target=isTouch()?d.querySelector<HTMLElement>('h2'):d.querySelector<HTMLElement>('input,textarea,select');
+      d.querySelectorAll('[autofocus]').forEach(e=>e.removeAttribute('autofocus'));
+      target?.setAttribute('autofocus','');
+      d.showModal();target?.focus({preventScroll:true});d.scrollTop=0;
+    }
+    if(!open&&d.open)d.close();
+  },[open]);
+  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby="fs-title">
+    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} onFocus={keepFieldVisible} noValidate>
+      <h2 id="fs-title" tabIndex={-1}>{title}</h2>
       <div className="sheet-fields">{children}</div>
       {error&&<p className="inline-error" role="alert">{error}</p>}
       <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
@@ -735,7 +770,7 @@ function NameSheet({open,title,label,placeholder,initial='',submit,onSubmit,onCl
   const [name,setName]=useState(initial),{busy,error,run}=useSheetAction(open);
   useEffect(()=>{if(open)setName(initial);},[open,initial]);
   return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra}>
-    <div className="field"><label htmlFor="sheet-name">{label}</label><input id="sheet-name" dir="auto" autoFocus maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
+    <div className="field"><label htmlFor="folder-title">{label}</label><input id="folder-title" name="folder-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
   </FormSheet>;
 }
 type DeckForm={name:string;folderId:string;contentLanguage:string;meaningLanguage:string};
@@ -750,7 +785,7 @@ function DeckSheet({open,title,lib,deck,submit,onSubmit,onClose,extra}:{open:boo
   useEffect(()=>{if(open)setV(blank());},[open]); // eslint-disable-line react-hooks/exhaustive-deps
   const set=(k:keyof DeckForm)=>(x:string)=>setV(o=>({...o,[k]:x}));
   return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra}>
-    <div className="field"><label htmlFor="deck-name">{L.nameLabel}</label><input id="deck-name" dir="auto" autoFocus maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
+    <div className="field"><label htmlFor="deck-title">{L.nameLabel}</label><input id="deck-title" name="deck-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
     {deck&&<div className="field"><label htmlFor="deck-folder">{L.folderLabel}</label><select id="deck-folder" className="select" value={v.folderId} onChange={e=>set('folderId')(e.target.value)}>{lib.folders.map(f=><option key={f.id} value={f.id}>{folderName(f)}</option>)}</select></div>}
     <div className="field"><label htmlFor="deck-content-lang">{L.contentLang}</label><LanguageSelect id="deck-content-lang" value={v.contentLanguage} onChange={set('contentLanguage')}/><p className="hint">{L.langHint}</p></div>
     <div className="field"><label htmlFor="deck-meaning-lang">{L.meaningLang}</label><LanguageSelect id="deck-meaning-lang" value={v.meaningLanguage} onChange={set('meaningLanguage')}/></div>
@@ -998,6 +1033,7 @@ export default function App(){
   const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [online,setOnline]=useState(()=>navigator.onLine),[toast,setToast]=useState<{id:number;text:string;tone:'ok'|'error'}|null>(null),[lastBackup,setLastBackup]=useState<string|null>(null),[installPrompt,setInstallPrompt]=useState<InstallPrompt|null>(null);
   const first=useRef(true);
+  useKeyboardInset();
   const latest=useRef(0),[loadedOnce,setLoadedOnce]=useState(false);
   const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
     // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.

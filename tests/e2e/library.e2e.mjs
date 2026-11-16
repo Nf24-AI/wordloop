@@ -45,17 +45,17 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.goto(base()+'/#/words');await page.locator('.folder-card').first().waitFor();
       for(const n of ['الإنجليزية','علوم الحاسب','إدارة المشاريع']){
         await page.goto(base()+'/#/words');await page.locator('.folder-card.new').click();
-        await page.fill('#sheet-name',n);await sheetSubmit(page);
+        await page.fill('#folder-title',n);await sheetSubmit(page);
         await page.waitForFunction(n=>document.querySelector('main h1')?.textContent===n,n);
         assert.match(await hashOf(page),/^#\/words\/f\//);
       }
       // Inside «إدارة المشاريع» (last created): two decks, the second with Spanish content.
       assert.equal(await page.locator('.page-head').getByRole('button',{name:'حزمة جديدة'}).count(),1,'folder header button is labelled');
-      await page.locator('.deck-row.new').click();await page.fill('#deck-name','Business English');await sheetSubmit(page);
+      await page.locator('.deck-row.new').click();await page.fill('#deck-title','Business English');await sheetSubmit(page);
       await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='Business English');
       const deckHash=await hashOf(page);
       await page.locator('.crumbs button').nth(1).click();await page.locator('.deck-row.new').click();
-      await page.fill('#deck-name','Vocabulario');await page.selectOption('#deck-content-lang','es-ES');await sheetSubmit(page);
+      await page.fill('#deck-title','Vocabulario');await page.selectOption('#deck-content-lang','es-ES');await sheetSubmit(page);
       await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='Vocabulario');
       assert.equal(await page.locator('.head-actions .lang-chip').innerText(),'ES → AR');
       const lib=await data(page,async m=>m.listLibrary());

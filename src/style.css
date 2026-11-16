@@ -384,7 +384,9 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
   .chip{flex:none}
   .legend{grid-template-columns:repeat(2,minmax(0,1fr))}
   .page-head .btn{display:none}
-  .sheet{margin:auto auto 0;inline-size:100%;max-inline-size:100%;border-radius:24px 24px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom))}
+  /* #43: a bottom sheet sits on top of the on-screen keyboard (--kb, from visualViewport) and never grows taller than what is visible. */
+  .sheet{margin:auto auto var(--kb,0px);inline-size:100%;max-inline-size:100%;max-block-size:calc(var(--vvh,100dvh) - env(safe-area-inset-top) - 8px);border-radius:24px 24px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom))}
+  .kb-open .sheet{padding-block-end:16px;border-radius:24px}
   .sheet-actions .btn{flex:1}
   .card{min-block-size:320px}
 }
@@ -593,3 +595,17 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .example-line>span{flex:1;min-inline-size:0}
 .example-line .speak-group{flex:none}
 .example-speak{inline-size:40px;block-size:40px}
+
+/* ───────── #43: sheets with fields stay usable with the on-screen keyboard ───────── */
+.sheet{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sheet h2:focus{outline:none}
+.sheet h2:focus-visible{outline:2px solid var(--teal);outline-offset:4px;border-radius:6px}
+.form-sheet .field input,.form-sheet .field textarea,.form-sheet .select{scroll-margin-block:16px 96px}
+@media(max-width:899px){
+  /* Save / Cancel stay reachable at the bottom of the visible sheet while its fields scroll. */
+  .form-sheet .sheet-actions{position:sticky;inset-block-end:calc(-24px - env(safe-area-inset-bottom));z-index:1;margin-inline:-20px;padding:12px 20px;background:var(--surface);box-shadow:0 -1px 0 var(--line)}
+  .form-sheet .sheet-actions:last-child{margin-block-end:calc(-24px - env(safe-area-inset-bottom));padding-block-end:calc(24px + env(safe-area-inset-bottom))}
+  .kb-open .form-sheet .sheet-actions{inset-block-end:-16px}
+  .kb-open .form-sheet .sheet-actions:last-child{margin-block-end:-16px;padding-block-end:16px}
+  .form-sheet .danger-zone{margin-block-start:20px}
+}
