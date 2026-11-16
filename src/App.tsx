@@ -2,6 +2,7 @@ import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSPr
 import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
 import {pickVoice,RATE} from './voice';
+import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -1120,6 +1121,28 @@ function BackBar({back}:{back:BackTo}){
   </nav>;
 }
 
+/* ───────────── App update (#41) ───────────── */
+/** A calm card above the tab bar when a new version is ready. One action; «لاحقًا» hides it until the next launch. */
+function UpdatePrompt(){
+  const U=T.update;
+  const [status,setStatus]=useState<UpdateStatus>(updateStatus);
+  useEffect(()=>onUpdateStatus(setStatus),[]);
+  if(status==='idle')return null;
+  const now=()=>guardLeave(applyUpdate); // unsaved text first asks (#42); nothing reloads by itself
+  return <section className={'update-card'+(status==='failed'?' failed':'')} role="status" aria-live="polite" aria-labelledby="upd-title">
+    <span className="update-icon" aria-hidden="true"><RotateCcw size={18}/></span>
+    <div className="update-text">
+      <b id="upd-title">{status==='elsewhere'?U.elsewhereTitle:U.title}</b>
+      <small>{status==='failed'?U.failed:status==='elsewhere'?U.elsewhereBody:status==='updating'?U.updating:U.body}</small>
+    </div>
+    <div className="update-actions">
+      <button type="button" className="btn btn-ink sm" onClick={now} disabled={status==='updating'} aria-busy={status==='updating'||undefined}>
+        {status==='failed'?U.retry:status==='elsewhere'?U.reload:U.now}</button>
+      {status!=='updating'&&<button type="button" className="btn btn-quiet sm" onClick={dismissUpdate}>{U.later}</button>}
+    </div>
+  </section>;
+}
+
 /* ───────────── Shell ───────────── */
 export default function App(){
   const [locale,setLocaleState]=useState<Locale>(storedLocale);
@@ -1232,6 +1255,7 @@ export default function App(){
     <ConfirmDialog open={!!leave} title={T.leave.title} body={T.leave.body} confirm={T.leave.yes} cancel={T.leave.stay}
       onConfirm={()=>{const l=leave;setLeave(null);l?.proceed();}} onCancel={()=>setLeave(null)}/>
     <QuickActions open={quickOpen} onClose={closeQuick} due={due} nextDue={nextDue} returnFocus={quickReturn}/>
+    <UpdatePrompt/>
     <div className="toast-zone" aria-live="polite">{toast&&<div key={toast.id} className={'toast '+toast.tone} role={toast.tone==='error'?'alert':'status'}><span>{toast.text}</span><button type="button" className="icon-btn ghost" aria-label={T.closeToast} onClick={()=>setToast(null)}><X size={16}/></button></div>}</div>
   </div>;
 }

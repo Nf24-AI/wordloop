@@ -619,3 +619,15 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .back-btn svg{flex:none}
 .back-dest{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:600}
 .back-dest::before{content:"·";margin-inline-end:6px;color:var(--line-2)}
+
+/* ───────── #41: «تحديث الآن» ───────── */
+.update-card{position:fixed;z-index:55;inset-inline:12px;inset-block-end:calc(84px + env(safe-area-inset-bottom));margin-inline:auto;max-inline-size:440px;display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;padding:14px 16px;border-radius:var(--r-lg,20px);background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 18px 40px -18px #1a1a1240;animation:rise .3s var(--ease) both}
+.update-icon{display:grid;place-items:center;inline-size:36px;block-size:36px;border-radius:12px;background:#2f7d681a;color:var(--teal)}
+.update-card.failed .update-icon{background:#d6513f1a;color:#b5402f}
+.update-text{display:grid;gap:2px;min-inline-size:0}
+.update-text b{font-size:15px}
+.update-text small{color:var(--muted);font-size:13.5px;line-height:1.6}
+.update-actions{grid-column:1/-1;display:flex;gap:8px}
+.update-actions .btn{flex:1;min-block-size:44px}
+@media(min-width:1024px){.update-card{inset-inline:auto 24px;inset-block-end:24px}}
+@media(prefers-reduced-motion:reduce){.update-card{animation:none}}
