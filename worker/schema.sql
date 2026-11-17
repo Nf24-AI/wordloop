@@ -7,6 +7,17 @@ CREATE TABLE IF NOT EXISTS push_devices (
   next_due_at TEXT,
   updated_at TEXT NOT NULL,
   last_sent_day TEXT,
-  last_test_at INTEGER
+  last_test_at INTEGER,
+  -- #30 Smart Reminders (same columns as migrations/0002_smart_reminders.sql)
+  time_zone TEXT,
+  locale TEXT,
+  notified_due_at TEXT,
+  last_sent_at INTEGER,
+  sent_day TEXT,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  -- #30 practice nudges (same columns as migrations/0003_practice_reminders.sql)
+  practice_ok INTEGER NOT NULL DEFAULT 0,
+  last_practice_day TEXT,
+  practice_sent_day TEXT
 );
 CREATE INDEX IF NOT EXISTS push_devices_due ON push_devices(next_due_at,last_sent_day);
