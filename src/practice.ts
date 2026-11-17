@@ -4,7 +4,8 @@
  * Every question comes from something the learner saved, never from guessing at free text:
  * - cloze: a card's term that really occurs in the passage (whole-word match), blanked in its sentence; the card's
  *   meaning is the hint, so the context determines the answer;
- * - meaning: the deck's cards (those in the passage first); multiple choice only when ≥3 independent distractors exist
+ * - meaning: only the cards whose term occurs in the passage (the rest of the deck is just the pool of wrong options);
+ *   multiple choice only when ≥3 independent distractors exist
  *   (no shared or overlapping meaning, not the same term) — otherwise «show the answer» recall;
  * - comprehension (reading and listening): ONLY the passage's saved questions (PassageQuestion), with their quote as
  *   the source. No saved questions → no comprehension questions;
@@ -71,21 +72,28 @@ export function sentences(body:string):string[]{
   return body.split(/\n+/).flatMap(line=>line.split(/(?<=[.!?…؟。])\s+/)).map(s=>s.trim()).filter(s=>normalize(s));
 }
 const escapeRe=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-/** Whole-word, case-insensitive occurrences of `term` (letters/digits on either side mean «not this word»). */
-function wordRe(term:string){return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(term.trim()).replace(/\s+/g,'\\s+')}(?![\\p{L}\\p{N}])`,'giu');}
+/** Whole-word, case-insensitive occurrences of `term` (letters/digits/combining marks on either side mean «not this
+ *  word»: «e» never matches inside «é» written as e + U+0301). Callers compare NFC text, so a passage typed with
+ *  decomposed accents still matches a card typed with composed ones. */
+function wordRe(term:string){return new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])${escapeRe(term.normalize('NFC').trim()).replace(/\s+/g,'\\s+')}(?![\\p{L}\\p{N}\\p{M}])`,'giu');}
+const nfc=(s:string)=>s.normalize('NFC');
 /** #18: a Q&A card is a question, not a word of the text, so it never feeds cloze or meaning items. */
 const usable=(w:Word)=>!w.archived&&w.contentType!=='question_answer'&&normalize(w.term).length>=2&&w.term.trim().length<=60;
 /** Deck cards whose term occurs in the passage text. */
 export function cardsInPassage(p:Passage,cards:readonly Word[]):Word[]{
-  return cards.filter(w=>w.deckId===p.deckId&&usable(w)&&wordRe(w.term).test(p.body));
+  const body=nfc(p.body);
+  return cards.filter(w=>w.deckId===p.deckId&&usable(w)&&wordRe(w.term).test(body));
 }
 const meaningsOf=(w:Word)=>(w.meanings?.length?w.meanings:[w.meaning]).map(m=>m.trim()).filter(Boolean);
 
 export function clozeItems(p:Passage,cards:readonly Word[]):ClozeItem[]{
-  const out:ClozeItem[]=[],seen=new Set<string>(),all=sentences(p.body);
+  const out:ClozeItem[]=[],seen=new Set<string>(),all=sentences(nfc(p.body));
   for(const w of cardsInPassage(p,cards)){
     const key=fold(w.term,p.contentLanguage);if(seen.has(key))continue;
-    const sentence=all.find(s=>wordRe(w.term).test(s));if(!sentence)continue; // spans a sentence break: skip, never guess
+    // #61: prefer a sentence where the term occurs exactly once, so the rest of the sentence stays readable context.
+    // Only if every sentence repeats it are all its occurrences blanked (the answer must never stay visible).
+    const hits=all.filter(s=>wordRe(w.term).test(s));if(!hits.length)continue; // spans a sentence break: skip, never guess
+    const sentence=hits.find(s=>[...s.matchAll(wordRe(w.term))].length===1)??hits[0];
     const matches=[...sentence.matchAll(wordRe(w.term))];
     const parts:string[]=[];let at=0;for(const m of matches){parts.push(sentence.slice(at,m.index));at=m.index!+m[0].length;}parts.push(sentence.slice(at));
     const answer=matches[0][0];seen.add(key);
@@ -105,11 +113,11 @@ export function distractorsFor(target:Word,pool:readonly Word[],lang='und'):stri
   }
   return out;
 }
+/** #61: «معنى الكلمة» in a text's practice asks ONLY about the words of that text (cards whose term occurs in it).
+ *  The rest of the deck is used just as the pool of wrong options, never as questions. */
 export function meaningItems(p:Passage,cards:readonly Word[],rand:()=>number=Math.random):MeaningItem[]{
   const deck=cards.filter(w=>w.deckId===p.deckId&&usable(w)&&meaningsOf(w).length);
-  const inText=new Set(cardsInPassage(p,deck).map(w=>w.id));
-  const ordered=[...deck.filter(w=>inText.has(w.id)),...deck.filter(w=>!inText.has(w.id))];
-  return ordered.map(w=>{
+  return cardsInPassage(p,deck).map(w=>{
     const ms=meaningsOf(w),d=shuffle(distractorsFor(w,deck),rand).slice(0,3);
     if(d.length<3)return {kind:'meaning',id:'meaning:'+w.id,term:w.term,answer:ms.join('، '),accepted:ms,options:null,correct:-1};
     const options=shuffle([ms[0],...d],rand);
@@ -144,10 +152,13 @@ export function buildReading(p:Passage,cards:readonly Word[],kinds:readonly Read
 }
 /** A listening session: dictation in passage order, then listening comprehension. */
 export function buildListening(p:Passage,kinds:readonly ListeningKind[],count:number):PracticeItem[]{
+  if(!kinds.length)return [];
   const items:PracticeItem[]=[...(kinds.includes('dictation')?dictationItems(p):[]),...(kinds.includes('comprehension')?comprehensionItems(p):[])];
   return count>0?items.slice(0,count):items;
 }
 function interleave(pools:PracticeItem[][],count:number){
+  pools=pools.filter(p=>p.length); // #61: no activity / only empty activities → an empty session, never a spin
+  if(!pools.length)return [];
   const out:PracticeItem[]=[];let k=0;const total=pools.reduce((n,p)=>n+p.length,0),max=count>0?Math.min(count,total):total;
   while(out.length<max){const p=pools[k++%pools.length];if(p.length)out.push(p.shift()!);}
   return out;

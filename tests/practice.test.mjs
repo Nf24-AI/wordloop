@@ -102,3 +102,68 @@ test('practice never touches cards, reviews or FSRS (the engine has no write pat
   buildReading(p,words,['cloze','meaning','comprehension'],0);buildListening(p,['dictation','comprehension'],0);
   assert.equal(JSON.stringify([await listWords(),await listReviews()]),before);
 });
+
+/* ───────── #61 engine audit regressions ───────── */
+test('#61: no activity selected, or only empty activities → an empty session, never a hang or a crash',()=>{
+  const p=passage(),cards=[card('a','Madrid',['مدريد'])];
+  assert.deepEqual(buildReading(p,cards,[],5),[]);
+  assert.deepEqual(buildReading(p,cards,['comprehension'],5),[],'the only chosen activity has no questions');
+  assert.deepEqual(buildReading(p,[],['cloze','meaning','comprehension'],0),[]);
+  assert.deepEqual(buildListening(p,[],5),[]);
+  assert.equal(buildReading(p,cards,['cloze','comprehension'],10).length,1,'empty pools are skipped, the others still mix');
+});
+
+test('#61: cloze prefers a sentence with a single occurrence so the context stays readable',()=>{
+  const p=passage({body:'Vive y vive en casa. Lucía vive en Madrid.'});
+  const [it]=clozeItems(p,[card('v','vive',['يعيش'])]);
+  assert.equal(it.sentence,'Lucía vive en Madrid.');
+  assert.deepEqual(it.parts,['Lucía ',' en Madrid.'],'exactly one blank');
+  const only=clozeItems(passage({body:'Vive y vive.'}),[card('v','vive',['يعيش'])])[0];
+  assert.equal(only.parts.length,3,'when every sentence repeats the term, all occurrences stay hidden');
+});
+
+test('#61: Unicode — decomposed accents match composed cards, and a combining mark is part of the word',()=>{
+  const nfd='Lucía vive en Madrid y estudia español.'.normalize('NFD');
+  const p=passage({body:nfd});
+  const cards=[card('a','español',['الإسبانية']),card('b','Lucía',['لوسيا']),card('c','Luci',['ليس كلمة'])];
+  assert.deepEqual(cardsInPassage(p,cards).map(c=>c.id).sort(),['a','b'],'«Luci» does not match inside «Luci\u0301a»');
+  const it=clozeItems(p,cards).find(i=>i.id==='cloze:a');
+  assert.equal(it.answer,'español','the blank shows the NFC form');
+  assert.equal(checkAnswer('español',it.accepted,'es-ES').verdict,'correct','typed NFD answer is fine');
+  assert.equal(checkAnswer('espanol',it.accepted,'es-ES').verdict,'accent');
+});
+
+test('#61: regex metacharacters, punctuation-edged and multi-word terms are literal and whole-word',()=>{
+  const p=passage({body:'Uso C++ y C# a diario. ¿Te gusta el café con leche? Sí, a diario.'});
+  const cards=[card('a','C++',['لغة']),card('b','café con leche',['قهوة بالحليب']),card('c','a diario',['يوميًا']),card('d','$^.*',['رموز'])];
+  const ids=cardsInPassage(p,cards).map(c=>c.id).sort();
+  assert.deepEqual(ids,['b','c'],'«C++» is one letter once punctuation is ignored, so it is too short to ask about');
+  const c=clozeItems(p,cards).find(i=>i.id==='cloze:c');
+  assert.equal(c.parts.length,2,'«a diario» occurs once in its first single-occurrence sentence');
+});
+
+test('#61: meaning questions are only about words of THIS text; the rest of the deck only supplies wrong options',()=>{
+  const p=passage({body:'Mi casa es grande.'});
+  const pool=[card('t','casa',['بيت']),card('x','perro',['كلب']),card('y','gato',['قطة']),card('z','libro',['كتاب'])];
+  const items=meaningItems(p,pool,seeded(3));
+  assert.deepEqual(items.map(i=>i.term),['casa']);
+  assert.equal(items[0].options.length,4,'distractors still come from the whole deck');
+  assert.equal(readingAvailability(passage({body:'Nada aquí.'}),pool).meaning,0);
+});
+
+test('#61: accents stay meaningful, Arabic diacritics/hamza variants are «almost» or correct, alternatives accepted',()=>{
+  assert.equal(checkAnswer('año',['ano']).verdict,'accent','the reverse slip is also only «almost»');
+  assert.equal(checkAnswer('أحمد',['احمد'],'ar-SA').verdict,'accent');
+  assert.equal(checkAnswer('مدرسة',['مدرسة'],'ar-SA').verdict,'correct');
+  assert.equal(checkAnswer('el centro',['Madrid','el centro'],'es-ES').verdict,'correct');
+  assert.equal(checkAnswer('   ',['Madrid']).verdict,'wrong');
+});
+
+test('#61: dictation reports missing, extra, wrong and accent words separately',()=>{
+  const r=compareDictation('Lucía vive vive en Madrid hoy','Lucía vive en Madríd.','es-ES');
+  assert.deepEqual(r.extra,['vive','hoy']);
+  assert.deepEqual(r.words.map(w=>w.status),['ok','ok','ok','accent']);
+  assert.equal(r.verdict,'wrong','extra words are not «correct»');
+  const m=compareDictation('Lucía en','Lucía vive en Madrid.','es-ES');
+  assert.deepEqual(m.words.map(w=>w.status),['ok','missing','ok','missing']);
+});
