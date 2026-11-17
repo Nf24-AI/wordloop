@@ -371,6 +371,49 @@ export async function addWord(data:NewCard):Promise<Word>{
   const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(toStored(word));await end;
   announceChange();return word;
 }
+/** #28: one card of a bulk paste. `id` is fixed when the preview is built, which makes a retried save idempotent. */
+export type BulkCard={id:string;deckId:string;term:string;meanings:string[];example?:string;contentType?:ContentType};
+/**
+ * #28: saves many cards in ONE IndexedDB transaction — all of them or none (no partial success).
+ * Every card is checked like `addWord` (text, meanings, limits, deck exists, no duplicate of the same kind among
+ * active cards or within the batch). A card whose id is already stored with the same text was saved by an earlier
+ * attempt (e.g. the app lost the result): it is counted in `alreadySaved`, never written twice.
+ * A refused card throws with `row` = its index in `cards`. Existing cards are never touched.
+ */
+export async function addWords(cards:readonly BulkCard[]):Promise<{saved:Word[];alreadySaved:number}>{
+  if(!cards.length)return {saved:[],alreadySaved:0};
+  if(cards.length>BATCH_LIMIT)throw Error('أحد النصوص أطول من اللازم');
+  const fsrs=await scheduler();
+  const tx=await transaction(['words','meta'],'readwrite'),end=settled(tx),store=tx.objectStore('words'),meta=tx.objectStore('meta');
+  const saved:Word[]=[];let alreadySaved=0;
+  try{
+    await ensureDefaults(meta);
+    const {decks}=await readLibrary(meta);
+    const existing=(await request(store.getAll()) as StoredWord[]).map(normalizeWord),byId=new Map(existing.map(w=>[w.id,w]));
+    const keys=new Set(existing.filter(w=>!w.archived).map(w=>w.contentType+'\u0000'+normalizeTerm(w.term)));
+    const now=new Date(),at=now.toISOString(),ids=new Set<string>();
+    cards.forEach((c,row)=>{
+      try{
+        if(typeof c.id!=='string'||!c.id||c.id.length>80||ids.has(c.id))throw Error('توجد بيانات مكررة أو مراجعات بلا كلمات');
+        ids.add(c.id);
+        const term=String(c.term??'').trim().replace(/\s+/g,' ');
+        const prev=byId.get(c.id);
+        if(prev){if(normalizeTerm(prev.term)===normalizeTerm(term)){alreadySaved++;return;}throw Error('توجد بيانات مكررة أو مراجعات بلا كلمات');}
+        const contentType=c.contentType??inferContentType(term);
+        if(!isContentType(contentType))throw Error('نوع البطاقة غير معروف');
+        if(!term)throw Error('أضف الكلمة ومعناها أولًا');
+        const meanings=cleanMeanings(c.meanings??[]),example=String(c.example??'').trim();
+        if(term.length>TERM_LIMIT[contentType]||example.length>500)throw Error('أحد النصوص أطول من اللازم');
+        if(!decks.some(d=>d.id===c.deckId))throw Error('لم نجد الحزمة');
+        const key=contentType+'\u0000'+normalizeTerm(term);if(keys.has(key))throw Error('هذه الكلمة موجودة عندك بالفعل');keys.add(key);
+        const card=fsrs.newCard({cardId:c.id,now});
+        const word:Word={id:c.id,deckId:c.deckId,contentType,term,meaning:meanings[0],meanings,example,translation:'',note:'',tag:'عام',createdAt:at,updatedAt:at,dueAt:card.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(card)),archived:false,revision:0};
+        store.add(toStored(word));saved.push(word);
+      }catch(e){if(e instanceof Error)Object.assign(e,{row});throw e;}
+    });
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
+  await end;if(saved.length)announceChange();return {saved,alreadySaved};
+}
 export type CardEdit={term?:string;meanings?:string[];example?:string;translation?:string;note?:string;tag?:string};
 /**
  * #26: edit a card's content (term, meanings, example, translation, note, tag). The card keeps its id, deck, kind,
