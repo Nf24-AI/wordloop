@@ -2,6 +2,7 @@ import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSPr
 import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
+import {buildReading,checkAnswer,readingAvailability,score,type Answered,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
@@ -488,13 +489,14 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 /* ───────────── Library (#16): «مكتبتي» — folders → decks → cards ───────────── */
 type Library={folders:Folder[];decks:Deck[]};
 type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
-  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null};
+  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
   const [k,id,t,pid,e]=sub.split('/');
   // #21: `d/<deck>/texts` · `d/<deck>/texts/new` · `d/<deck>/texts/<id>` · `d/<deck>/texts/<id>/edit`
   if(k==='d'&&id&&t==='texts'){const deckId=decodeURIComponent(id);
     if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
+    if(e==='read'||e==='listen')return {kind:'practice',mode:e,deckId,id:decodeURIComponent(pid)}; // #22 / #23
     return e==='edit'?{kind:'passageEdit',deckId,id:decodeURIComponent(pid)}:{kind:'passage',deckId,id:decodeURIComponent(pid)};}
   if(k==='f'&&id)return {kind:'folder',id:decodeURIComponent(id)};
   if(k==='d'&&id)return {kind:'deck',id:decodeURIComponent(id)};
@@ -519,6 +521,8 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   const shared={words,reviews,lib,passages,counts,onChanged,notify,go};
   if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
+  if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
+  if(view.kind==='practice')return <NotFound go={go}/>;
   if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
   if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
@@ -724,6 +728,7 @@ function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string
     </PageHead>
     <div className="passage-actions">
       <SpeakButton text={p.body} lang={p.contentLanguage} label={Tx.listen} className="btn btn-ink passage-listen" showLabel/>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/read')}><BookOpen size={16}/>{T.practice.readAction}</button>
       <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{Tx.edit}</button>
       <button type="button" className="btn btn-quiet sm danger-text" onClick={()=>setConfirm(true)}><Trash2 size={16}/>{Tx.delete}</button>
     </div>
@@ -738,6 +743,110 @@ function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string
     <p className="passage-note">{Tx.localNote}</p>
     <ConfirmDialog open={confirm} title={Tx.deleteTitle(p.title)} body={Tx.deleteBody} confirm={Tx.deleteYes} cancel={Tx.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirm(false)}/>
   </div>;
+}
+
+/* ───────────── Reading Practice (#22): questions only from saved data; never touches FSRS ───────────── */
+const READING_KINDS:ReadingKind[]=['cloze','meaning','comprehension'];
+const COUNTS=[5,10,0] as const;
+function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:string;lib:Library;passages:Passage[];words:Word[];go:(path:string)=>void}){
+  const P=T.practice,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const avail=useMemo(()=>p?readingAvailability(p,words):{cloze:0,meaning:0,comprehension:0},[p,words]);
+  const [kinds,setKinds]=useState<ReadingKind[]>(READING_KINDS);
+  const [count,setCount]=useState<number>(5),[items,setItems]=useState<PracticeItem[]|null>(null);
+  const [idx,setIdx]=useState(0),[answers,setAnswers]=useState<Answered[]>([]);
+  if(!p||!deck)return <NotFound go={go}/>;
+  const total=READING_KINDS.reduce((n,k)=>n+avail[k],0),chosen=kinds.filter(k=>avail[k]>0);
+  const start=()=>{setItems(buildReading(p,words,chosen,count));setIdx(0);setAnswers([]);};
+  const done=items!==null&&idx>=items.length;
+  const inProgress=items!==null&&!done&&answers.length>0;
+  if(items===null)return <div className="page practice">
+    <PageHead title={P.readTitle} lead={p.title}/>
+    {total===0?<div className="practice-empty"><h2>{P.notEnoughTitle}</h2><p>{P.notEnoughBody}</p>
+        <div className="btn-row"><button type="button" className="btn btn-ink" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{P.addQuestions}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>go('add/'+encodeURIComponent(deckId))}><Plus size={16}/>{P.addCards}</button></div></div>
+    :<div className="practice-setup">
+      <fieldset className="practice-field"><legend>{P.activities}</legend>
+        <div className="chips">{READING_KINDS.map(k=><button type="button" key={k} className={'chip'+(chosen.includes(k)?' on':'')} aria-pressed={chosen.includes(k)} disabled={!avail[k]}
+          onClick={()=>setKinds(ks=>ks.includes(k)?ks.filter(x=>x!==k):[...ks,k])}>{P.kind[k]} <span className="chip-n">{avail[k]}</span></button>)}</div>
+        {READING_KINDS.some(k=>!avail[k])&&<ul className="practice-why">{READING_KINDS.filter(k=>!avail[k]).map(k=><li key={k}>{P.why[k]}</li>)}</ul>}
+      </fieldset>
+      <fieldset className="practice-field"><legend>{P.howMany}</legend>
+        <div className="chips">{COUNTS.map(n=><button type="button" key={n} className={'chip'+(count===n?' on':'')} aria-pressed={count===n} onClick={()=>setCount(n)}>{n?String(n):P.all}</button>)}</div>
+      </fieldset>
+      <p className="practice-note">{P.noFsrs}</p>
+      <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
+    </div>}
+  </div>;
+  if(done){
+    const sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
+    return <div className="page practice"><section className="finish">
+      <div className="finish-orb" aria-hidden="true"><Wash/></div>
+      <h1>{P.result(sc.right,sc.total)}</h1>
+      {sc.almost>0&&<p className="lead">{P.almostCount(sc.almost)}</p>}
+      <p className="finish-note">{P.noFsrs}</p>
+      {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
+        <span><b dir="auto">{promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
+      <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={()=>setItems(null)}>{P.again}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>go(passagePath(deckId,p.id))}>{P.backToText}</button></div>
+    </section></div>;
+  }
+  const item=items[idx];
+  return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
+    <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
+      <div className="progress" role="progressbar" aria-label={P.progress} aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={idx}><span style={{inlineSize:`${Math.max(4,100*idx/items.length)}%`}}/></div></div>
+    {/* The cloze sentence comes from the text, so the text stays folded during a cloze question. */}
+    <details key={item.kind==='cloze'?'c':'t'} className="learn-details practice-text" open={item.kind!=='cloze'}><summary>{P.theText}</summary>
+      <article className="passage-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article></details>
+    <PracticeQuestion key={item.id} item={item} lang={p.contentLanguage} meaningLang={deck.meaningLanguage} last={idx===items.length-1}
+      onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>setIdx(i=>i+1)}/>
+  </div>;
+}
+const promptOf=(it:PracticeItem)=>it.kind==='cloze'?it.parts.join('____'):it.kind==='meaning'?it.term:it.kind==='comprehension'?it.question:it.text;
+const answerOf=(it:PracticeItem)=>it.kind==='dictation'?it.text:it.answer;
+
+function PracticeQuestion({item,lang,meaningLang,last,onAnswer,onNext}:{item:PracticeItem;lang:string;meaningLang:string;last:boolean;onAnswer:(v:Answered['verdict'])=>void;onNext:()=>void}){
+  const P=T.practice,[input,setInput]=useState(''),[result,setResult]=useState<Answered['verdict']|null>(null),[expected,setExpected]=useState(''),[picked,setPicked]=useState(-1);
+  const [shown,setShown]=useState(false);
+  const nextRef=useRef<HTMLButtonElement|null>(null);
+  useEffect(()=>{if(result)nextRef.current?.focus({preventScroll:true});},[result]);
+  if(item.kind==='dictation')return null;
+  const finish=(v:Answered['verdict'],exp:string)=>{setResult(v);setExpected(exp);onAnswer(v);};
+  const check=(e:FormEvent)=>{e.preventDefault();if(result||item.kind==='meaning')return;
+    const r=checkAnswer(input,item.accepted,item.kind==='cloze'?lang:'und');finish(r.verdict,r.verdict==='wrong'?item.answer:r.expected);};
+  const typed=item.kind==='cloze'||item.kind==='comprehension';
+  const inputLang=item.kind==='cloze'?lang:undefined;
+  return <section className="practice-q">
+    <span className="kind-badge">{P.kind[item.kind]}</span>
+    {item.kind==='cloze'&&<><p className="practice-prompt" dir={dirOf(lang)} lang={lang}>{item.parts.map((part,i)=><span key={i}>{part}{i<item.parts.length-1&&<span className={'blank'+(result?' filled':'')}>{result?item.answer:<span className="visually-hidden">{P.blank}</span>}</span>}</span>)}</p>
+      <p className="practice-hint"><small>{P.hint}</small> <span dir={dirOf(meaningLang)} lang={meaningLang}>{item.hint}</span></p></>}
+    {item.kind==='comprehension'&&<p className="practice-prompt question" dir="auto">{item.question}</p>}
+    {item.kind==='meaning'&&<><p className="practice-prompt term-prompt" dir={dirOf(lang)} lang={lang}>{item.term}</p>
+      {item.options?<div className="practice-options" role="group" aria-label={P.chooseMeaning}>{item.options.map((o,i)=>{
+          const cls=result?(i===item.correct?' right':i===picked?' wrong':''):'';
+          return <button type="button" key={i} className={'practice-option'+cls} disabled={!!result} dir={dirOf(meaningLang)} lang={meaningLang}
+            onClick={()=>{setPicked(i);finish(i===item.correct?'correct':'wrong',item.answer);}}>{o}</button>;})}</div>
+      :!shown?<button type="button" className="btn btn-ink reveal" onClick={()=>setShown(true)}>{P.showMeaning}</button>
+      :<div className="answer"><strong dir={dirOf(meaningLang)} lang={meaningLang}>{item.answer}</strong>
+        {!result&&<div className="btn-row"><button type="button" className="btn btn-save" onClick={()=>finish('knew','')}><Check size={16}/>{P.knew}</button>
+          <button type="button" className="btn btn-quiet" onClick={()=>finish('missed','')}>{P.missed}</button></div>}</div>}</>}
+    {typed&&!result&&<form className="practice-answer field" onSubmit={check} noValidate>
+      <label className="visually-hidden" htmlFor="practice-input">{P.yourAnswer}</label>
+      <input id="practice-input" dir={inputLang?dirOf(inputLang):'auto'} lang={inputLang} value={input} onChange={e=>setInput(e.target.value)} placeholder={P.yourAnswer}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} enterKeyHint="done"/>
+      <div className="btn-row"><button type="submit" className="btn btn-ink" disabled={!input.trim()}>{P.check}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>finish('revealed',item.answer)}>{P.reveal}</button></div>
+    </form>}
+    {result&&<Feedback verdict={result} expected={expected} lang={item.kind==='cloze'?lang:item.kind==='meaning'?meaningLang:undefined}/>}
+    {result&&item.kind==='comprehension'&&item.quote&&<p className="practice-source"><small>{P.source}</small> <q dir={dirOf(lang)} lang={lang}>{item.quote}</q></p>}
+    {result&&<button ref={nextRef} type="button" className="btn btn-ink practice-next" onClick={onNext}>{last?P.seeResult:P.next}</button>}
+  </section>;
+}
+/** One calm line: what happened, and the right form when it helps. */
+function Feedback({verdict,expected,lang}:{verdict:Answered['verdict'];expected:string;lang?:string}){
+  const P=T.practice,good=verdict==='correct'||verdict==='knew';
+  const text=verdict==='correct'?P.correct:verdict==='knew'?P.knewIt:verdict==='accent'?P.almost:verdict==='revealed'?P.answerIs:verdict==='missed'?P.nextTime:P.notQuite;
+  return <p className={'practice-feedback '+(good?'good':verdict==='accent'?'close':'bad')} role="status">
+    <b>{text}</b>{!good&&expected&&<> <span dir={lang?dirOf(lang):'auto'} lang={lang}>{expected}</span></>}</p>;
 }
 
 type FactDraft={key:string;id?:string;question:string;answer:string;alternatives:string;quote:string};
@@ -1225,6 +1334,7 @@ function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]
     // #21: texts → their deck; a text → the deck's texts; the editor → the text (or the list for a new one).
     if(v.kind==='texts')return to(deckPath(v.deckId));
     if(v.kind==='passage')return to(textsPath(v.deckId));
+    if(v.kind==='practice')return to(passagePath(v.deckId,v.id));
     if(v.kind==='passageEdit')return to(v.id&&passages.some(p=>p.id===v.id)?passagePath(v.deckId,v.id):textsPath(v.deckId));
     if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);return to(d&&lib.folders.some(f=>f.id===d.folderId)?folderPath(d.folderId):'words');}
     return null;
