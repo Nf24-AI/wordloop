@@ -5,7 +5,7 @@ import {test,beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
-import {runReminders,decide,localParts,safeZone,MESSAGES,REMINDER} from '../worker/reminders.ts';
+import {runReminders,decide,localParts,safeZone,safeDay,MESSAGES,REMINDER,URLS} from '../worker/reminders.ts';
 
 /** Minimal Cloudflare D1 API over node:sqlite (positional ?1..?n). */
 function d1(db){
@@ -32,6 +32,7 @@ beforeEach(()=>{
   raw=new DatabaseSync(':memory:');
   raw.exec(readFileSync('worker/schema.sql','utf8').replace(/,\s*-- #30[\s\S]*?(?=\n\);)/,'')); // the ORIGINAL table (pre-#30 columns only)
   raw.exec(readFileSync('worker/migrations/0002_smart_reminders.sql','utf8'));
+  raw.exec(readFileSync('worker/migrations/0003_practice_reminders.sql','utf8'));
   db=d1(raw);sent=[];
 });
 
@@ -124,11 +125,66 @@ test('decide() is pure and conservative',()=>{
 });
 
 test('notification copy: Arabic + English for each reason, short for a lock screen, no counts, no words, no emoji',()=>{
-  for(const l of ['ar','en'])for(const k of ['due','later']){
+  for(const l of ['ar','en'])for(const k of ['due','later','practice']){
     const {title,body}=MESSAGES[l][k];
     assert.ok(title.length<=30&&body.length<=60,`${l}.${k} fits the iPhone lock screen`);
     assert.ok(!/\p{Extended_Pictographic}/u.test(title+body),'no emoji');
     assert.ok(!/\d/.test(title+body),'no counts or times the server can’t vouch for');
   }
   assert.deepEqual(MESSAGES.ar.due,{title:'حان وقت المراجعة',body:'كلماتك جاهزة للمراجعة. كم دقيقة وتكمل!'});
+});
+
+const practice=(token,{day=null,ok=1}={})=>raw.prepare('UPDATE push_devices SET practice_ok=?,last_practice_day=? WHERE token_hash=?').run(ok,day,token);
+
+test('practice nudge: one per local day, only in a practice window, links to the library',async()=>{
+  device('p',null);practice('p');
+  for(const t of ['02:00','08:45','09:30','14:00','15:30'])await run(riyadh(t));
+  assert.equal(sent.length,0,'quiet hours and 14–17 are not practice windows');
+  await run(riyadh('10:15'));
+  assert.deepEqual(sent.map(s=>[s.title,s.url]),[[MESSAGES.ar.practice.title,URLS.practice]]);
+  for(const t of ['13:30','18:30','21:30','22:45'])await run(riyadh(t));
+  assert.equal(sent.length,1,'max one practice nudge per day');
+  await run(riyadh('10:00','2026-11-16'));assert.equal(sent.length,2,'next day again');
+});
+
+test('practice nudge: never without opt-in, never on a day already practised, never while a review is due',async()=>{
+  device('off',null);practice('off',{ok:0});
+  device('done',null);practice('done',{day:'2026-11-15'});
+  device('due',riyadh('09:00'));practice('due');
+  await run(riyadh('10:15'));
+  assert.deepEqual(sent.map(s=>[s.token,s.title]),[['due',MESSAGES.ar.later.title]],'due review wins; no practice for off/done');
+  for(const t of ['18:30','21:30'])await run(riyadh(t));
+  assert.equal(sent.filter(s=>s.token==='due').length,1,'a notified-but-unreviewed due still blocks practice');
+  assert.equal(sent.length,1);
+});
+
+test('practice and due share the daily cap and cooldown; a practice failure is retried',async()=>{
+  device('p',riyadh('09:00'));practice('p');
+  await run(riyadh('09:00'));assert.equal(sent.length,1);
+  sync('p',riyadh('23:59','2026-11-20'));            // reviewed: nothing due for days
+  await run(riyadh('10:15'));assert.equal(sent.length,1,'3-hour cooldown applies to practice too');
+  await run(riyadh('18:00'),'failed');assert.equal(row('p').practice_sent_day,null,'released after failure');
+  await run(riyadh('18:15'));assert.equal(sent.length,3);assert.equal(sent[2].title,MESSAGES.ar.practice.title);
+  assert.equal(row('p').sent_count,2);
+});
+
+test('a database with 0002 only (0003 not applied yet) still sends due reminders',async()=>{
+  raw=new DatabaseSync(':memory:');
+  raw.exec(readFileSync('worker/schema.sql','utf8').replace(/,\s*-- #30[\s\S]*?(?=\n\);)/,''));
+  raw.exec(readFileSync('worker/migrations/0002_smart_reminders.sql','utf8'));
+  db=d1(raw);device('a',riyadh('11:10'));
+  await run(riyadh('11:15'));assert.equal(sent.length,1);
+});
+
+test('devices in their cooldown are filtered in SQL, so they cannot starve the batch',async()=>{
+  const t=riyadh('12:00').getTime();
+  for(let i=0;i<REMINDER.batch+20;i++){device('busy'+i,riyadh('11:00'));raw.prepare('UPDATE push_devices SET last_sent_at=? WHERE token_hash=?').run(t-60_000,'busy'+i);}
+  device('fresh',riyadh('11:55'));
+  await run(riyadh('12:00'));
+  assert.deepEqual(sent.map(s=>s.token),['fresh']);
+});
+
+test('safeDay accepts only YYYY-MM-DD',()=>{
+  assert.equal(safeDay('2026-11-15'),'2026-11-15');
+  for(const v of ['2026-11-15T00:00','x',null,20261115])assert.equal(safeDay(v),null);
 });

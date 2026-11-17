@@ -1,5 +1,5 @@
 import {loadVapidKey,parseSubscription,sendPush} from '@codefusion-cc/web-push';
-import {runReminders,safeLocale,safeZone,type D1Database,type Outcome} from './reminders.ts';
+import {missingColumn,runReminders,safeDay,safeLocale,safeZone,type D1Database,type Outcome} from './reminders.ts';
 
 type RateLimiter={limit:(args:{key:string;delta?:number})=>Promise<{success:boolean}>};
 type Env={PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
@@ -29,12 +29,12 @@ async function body(request:Request){
   }catch{return null;}finally{reader.releaseLock();}
 }
 async function hash(token:string){const bytes=new TextEncoder().encode(token);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
-async function send(env:Env,row:Pick<PushRow,'endpoint'|'p256dh'|'auth_key'>,title:string,bodyText:string){
+async function send(env:Env,row:Pick<PushRow,'endpoint'|'p256dh'|'auth_key'>,title:string,bodyText:string,url='/'){
   const vapid=env.VAPID_PRIVATE_KEY?await loadVapidKey(env.VAPID_PRIVATE_KEY):null;
   if(!vapid||!env.VAPID_SUBJECT)throw Error('الإشعارات غير مجهزة');
   const sub=parseSubscription({endpoint:row.endpoint,keys:{p256dh:row.p256dh,auth:row.auth_key}});
   if(!sub)throw Error('اشتراك جهاز غير صالح');
-  return sendPush({vapid,subject:env.VAPID_SUBJECT,subscription:sub,payload:{title,body:bodyText,url:'/'},urgency:'normal'});
+  return sendPush({vapid,subject:env.VAPID_SUBJECT,subscription:sub,payload:{title,body:bodyText,url},urgency:'normal'});
 }
 function originOK(request:Request){const h=request.headers.get('origin');return !h||h===new URL(request.url).origin;}
 async function endpoint(request:Request,env:Env){
@@ -64,9 +64,23 @@ async function endpoint(request:Request,env:Env){
     const hashValue=await hash(token);
     // #30: canonical ISO so due times compare correctly in SQL; time zone + notification language only (validated, defaulted).
     const nextIso=next===null?null:new Date(next as string).toISOString(),zone=safeZone(data.timeZone),locale=safeLocale(data.locale);
-    await env.PUSH_DB.prepare(`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at,time_zone,locale)
-      VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
-      ON CONFLICT(token_hash) DO UPDATE SET endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth_key=excluded.auth_key,next_due_at=excluded.next_due_at,updated_at=excluded.updated_at,time_zone=excluded.time_zone,locale=excluded.locale`).bind(hashValue,sub.endpoint,sub.keys.p256dh,sub.keys.auth,nextIso,new Date().toISOString(),zone,locale).run();
+    const practiceOk=data.practice===true?1:0,practiceDay=safeDay(data.lastPracticeDay),now=new Date().toISOString();
+    const base=[hashValue,sub.endpoint,sub.keys.p256dh,sub.keys.auth,nextIso,now];
+    const keep='endpoint=excluded.endpoint,p256dh=excluded.p256dh,auth_key=excluded.auth_key,next_due_at=excluded.next_due_at,updated_at=excluded.updated_at';
+    // Newest schema first; fall back while a migration (0003, then 0002) is not applied yet, so subscribing never breaks.
+    const attempts:[string,unknown[]][]=[
+      [`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at,time_zone,locale,practice_ok,last_practice_day)
+        VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(token_hash) DO UPDATE SET ${keep},time_zone=excluded.time_zone,locale=excluded.locale,
+        practice_ok=excluded.practice_ok,last_practice_day=excluded.last_practice_day`,[...base,zone,locale,practiceOk,practiceDay]],
+      [`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at,time_zone,locale)
+        VALUES (?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(token_hash) DO UPDATE SET ${keep},time_zone=excluded.time_zone,locale=excluded.locale`,[...base,zone,locale]],
+      [`INSERT INTO push_devices (token_hash,endpoint,p256dh,auth_key,next_due_at,updated_at)
+        VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(token_hash) DO UPDATE SET ${keep}`,base],
+    ];
+    for(const [i,[sql,args]] of attempts.entries()){
+      try{await env.PUSH_DB.prepare(sql).bind(...args).run();break;}
+      catch(e){if(!missingColumn(e)||i===attempts.length-1)throw e;console.warn('push sync: schema migration pending, using older columns');}
+    }
     return reply({ok:true});
   }
   if((path==='/api/push/disable'||path==='/api/push/test')&&method==='POST'){
@@ -87,7 +101,7 @@ async function endpoint(request:Request,env:Env){
 async function reminders(env:Env){
   if(!env.PUSH_DB||!env.VAPID_PRIVATE_KEY)return;
   const stats=await runReminders(env.PUSH_DB,new Date(),async(row,msg):Promise<Outcome>=>{
-    const result=await send(env,row,msg.title,msg.body);
+    const result=await send(env,row,msg.title,msg.body,msg.url);
     if(result.outcome==='failed')console.warn('Notification failed',result.status);
     return result.outcome==='sent'?'sent':result.outcome==='gone'?'gone':'failed';
   });
