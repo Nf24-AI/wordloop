@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
+import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,Sparkles,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
 import {addWord,addWords,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
 import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
@@ -8,6 +8,7 @@ import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from '
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 import {readContinue,rememberContinue,resolveContinue} from './continue';
 import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX_LINES,type BulkRow} from './bulk';
+import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
 
 /* ───────────── Language (#6) ─────────────
  * The active dictionary. App sets it from its `locale` state on every render and remounts the tree
@@ -600,7 +601,8 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 /* ───────────── Library (#16): «مكتبتي» — folders → decks → cards ───────────── */
 type Library={folders:Folder[];decks:Deck[]};
 type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
-  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string};
+  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string}
+  |{kind:'lesson';deckId:string};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
   const [k,id,t,pid,e]=sub.split('/');
@@ -609,6 +611,7 @@ function parseLibrary(sub:string):LibView{
     if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
     if(e==='read'||e==='listen')return {kind:'practice',mode:e,deckId,id:decodeURIComponent(pid)}; // #22 / #23
     return e==='edit'?{kind:'passageEdit',deckId,id:decodeURIComponent(pid)}:{kind:'passage',deckId,id:decodeURIComponent(pid)};}
+  if(k==='d'&&id&&t==='lesson'&&!pid)return {kind:'lesson',deckId:decodeURIComponent(id)}; // #24
   if(k==='f'&&id)return {kind:'folder',id:decodeURIComponent(id)};
   if(k==='d'&&id)return {kind:'deck',id:decodeURIComponent(id)};
   return {kind:'root',tab:k==='all'?'all':k==='due'?'due':'folders'};
@@ -635,6 +638,7 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
   if(view.kind==='practice')return <ListeningPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
+  if(view.kind==='lesson')return <LessonPage key={view.deckId} deckId={view.deckId} lib={lib} words={words} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
   if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
   return <LibraryRoot tab={view.tab} {...shared}/>;
@@ -805,7 +809,9 @@ function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:Lib
       </div>
     </PageHead>
     <ScopePanel scope={{kind:'deck',id}} words={words} reviews={reviews} lib={lib} go={go}/>
-    <div className="deck-actions"><button type="button" className={'btn '+(counts.deck.get(id)?.due?'btn-quiet':'btn-ink')} onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
+    <div className="deck-actions"><button type="button" className={'btn '+(counts.deck.get(id)?.due?'btn-quiet':'btn-ink')} onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button>
+      {/* #24: only with the build flag AND a configured generator — neither exists in shipped builds. */}
+      {aiLessonsAvailable()&&cards.length>0&&<button type="button" className="btn btn-quiet" onClick={()=>go(deckPath(id)+'/lesson')}><Sparkles size={18} aria-hidden="true"/>{T.lesson.entry}</button>}</div>
     <TextsRow deckId={id} count={textCount} go={go}/>
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
@@ -873,6 +879,102 @@ function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string
     </details>}
     <p className="passage-note">{Tx.localNote}</p>
     <ConfirmDialog open={confirm} title={Tx.deleteTitle(p.title)} body={Tx.deleteBody} confirm={Tx.deleteYes} cancel={Tx.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirm(false)}/>
+  </div>;
+}
+
+/* ───────────── AI lesson (#24): architecture + UI only; no provider is connected (see docs/AI_LESSONS.md) ───────────── */
+type LessonStep='setup'|'consent'|'generating'|'review';
+function issueText(i:LessonIssue){const X=T.lesson;return (i.index!==undefined?X.questionN(i.index+1)+': ':'')+X.issue[i.code];}
+function LessonPage({deckId,lib,words,onChanged,notify,go}:{deckId:string;lib:Library;words:Word[];onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const X=T.lesson,deck=lib.decks.find(d=>d.id===deckId),generator=lessonGenerator();
+  const cards=useMemo(()=>words.filter(w=>!w.archived&&w.contentType!=='question_answer'&&deckIdOf(w,lib)===deckId),[words,lib,deckId]);
+  const [step,setStep]=useState<LessonStep>('setup'),[level,setLevel]=useState<LessonLevel>('A1'),[mode,setMode]=useState<LessonMode>('both'),[count,setCount]=useState<LessonQuestionCount>(5);
+  const [picked,setPicked]=useState<Set<string>>(()=>new Set(cards.slice(0,LESSON_MAX_CARDS).map(w=>w.id)));
+  const [consent,setConsent]=useState(false),[request,setRequest]=useState<LessonRequest|null>(null),[error,setError]=useState(''),[issues,setIssues]=useState<LessonIssue[]>([]);
+  const [draft,setDraft]=useState<GeneratedLesson|null>(null),[saving,setSaving]=useState(false),[leaving,setLeaving]=useState<string|null>(null);
+  const abort=useRef<AbortController|null>(null);
+  useEffect(()=>()=>abort.current?.abort(),[]);
+  useEffect(()=>{if(leaving)go(leaving);},[leaving]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Typing the URL never bypasses the switch: no flag or no generator → this page does not exist.
+  if(!deck||!aiLessonsAvailable()||!generator)return <NotFound go={go}/>;
+  const chosen=cards.filter(w=>picked.has(w.id));
+  function toConsent(){setError('');setIssues([]);setConsent(false);setRequest(buildLessonRequest(deck!,chosen,{level,mode,questionCount:count}));setStep('consent');}
+  async function generate(){
+    if(!request||!consent||!generator)return;
+    const ctl=new AbortController();abort.current=ctl;setStep('generating');setError('');setIssues([]);
+    try{
+      const raw=await generator.generate(request,ctl.signal);
+      if(ctl.signal.aborted)return;
+      const v=validateLesson(raw,request);
+      if(!v.ok){setIssues(v.issues);setError(X.invalid);setStep('setup');return;}
+      setDraft(v.lesson);setStep('review');
+    }catch(e){if(ctl.signal.aborted)return;setError(getError(e)+' '+X.localWorks);setStep('setup');}
+    finally{if(abort.current===ctl)abort.current=null;}
+  }
+  function cancel(){abort.current?.abort();abort.current=null;setError(X.cancelled);setStep('setup');}
+  async function save(){
+    if(!draft||!request||saving)return;
+    const v=validateLesson(draft,request,{exactCount:false});
+    if(!v.ok){setIssues(v.issues);return;}
+    setSaving(true);setIssues([]);setError('');
+    try{const p=await createPassage(lessonToPassageInput(v.lesson,deck!));await onChanged();notify(X.saved(p.title));setDraft(null);setLeaving(passagePath(deckId,p.id));}
+    catch(e){setError(getError(e));}finally{setSaving(false);}
+  }
+  const setQ=(i:number,patch:Partial<GeneratedLesson['questions'][number]>)=>setDraft(d=>d&&{...d,questions:d.questions.map((q,j)=>j===i?{...q,...patch}:q)});
+  const issueList=issues.length>0&&<ul className="practice-why lesson-issues">{issues.slice(0,12).map((i,k)=><li key={k}>{issueText(i)}</li>)}</ul>;
+  return <div className="page practice lesson-page">
+    <PageHead title={X.title} lead={deckName(deck)}/>
+    {step==='setup'&&<div className="practice-setup">
+      {error&&<div className="inline-error" role="alert"><p>{error}</p>{issueList}</div>}
+      {!cards.length?<p className="hint">{X.noCards}</p>:<>
+        <fieldset className="practice-field"><legend>{X.level}</legend>
+          <div className="chips" role="group" aria-label={X.level}>{LESSON_LEVELS.map(l=><button type="button" key={l} className={'chip'+(level===l?' on':'')} aria-pressed={level===l} onClick={()=>setLevel(l)} dir="ltr">{l}</button>)}</div></fieldset>
+        <fieldset className="practice-field"><legend>{X.mode}</legend>
+          <div className="chips" role="group" aria-label={X.mode}>{LESSON_MODES.map(m=><button type="button" key={m} className={'chip'+(mode===m?' on':'')} aria-pressed={mode===m} onClick={()=>setMode(m)}>{X.modes[m]}</button>)}</div></fieldset>
+        <fieldset className="practice-field"><legend>{T.practice.howMany}</legend>
+          <div className="chips" role="group" aria-label={T.practice.howMany}>{LESSON_QUESTION_COUNTS.map(n=><button type="button" key={n} className={'chip'+(count===n?' on':'')} aria-pressed={count===n} onClick={()=>setCount(n)}>{n}</button>)}</div></fieldset>
+        <fieldset className="practice-field"><legend>{X.cards}</legend>
+          <p className="hint">{X.cardsHint(LESSON_MAX_CARDS)}</p>
+          <ul className="lesson-cards">{cards.map(w=>{const on=picked.has(w.id),full=!on&&picked.size>=LESSON_MAX_CARDS;return <li key={w.id}><label className="lesson-card">
+            <input type="checkbox" checked={on} disabled={full} onChange={()=>setPicked(p=>{const n=new Set(p);if(n.has(w.id))n.delete(w.id);else n.add(w.id);return n;})}/>
+            <b dir="auto">{w.term}</b><small dir="auto">{w.meanings.join('؛ ')}</small></label></li>;})}</ul>
+        </fieldset>
+        <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={toConsent}>{X.next}</button>
+      </>}
+    </div>}
+    {step==='consent'&&request&&<section className="lesson-consent" aria-labelledby="lesson-consent-title">
+      <h2 id="lesson-consent-title">{X.consentTitle}</h2>
+      <p>{X.consentLead(generator.label)}</p>
+      <ul className="practice-why"><li>{X.sumLanguages(langName(request.contentLanguage),langName(request.meaningLanguage))}</li><li>{X.sumOptions(request.level,X.modes[request.mode],request.questionCount)}</li><li>{X.sumCards(request.vocabulary.length)}</li></ul>
+      <pre className="lesson-payload" dir="ltr" tabIndex={0} aria-label={X.payloadLabel}>{JSON.stringify(request,null,2)}</pre>
+      <p className="hint">{X.notSent}</p>
+      {generator.costNote&&<p className="hint"><b>{X.cost}</b> <span dir="auto">{generator.costNote}</span></p>}
+      <p className="hint">{X.notGuaranteed}</p>
+      <label className="lesson-agree"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>{X.agree}</label>
+      <div className="finish-actions">
+        <button type="button" className="btn btn-ink btn-lg" disabled={!consent} onClick={()=>void generate()}>{X.generate}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>setStep('setup')}>{X.back}</button>
+      </div>
+    </section>}
+    {step==='generating'&&<section className="lesson-wait" role="status" aria-live="polite"><p>{X.generating}</p><button type="button" className="btn btn-quiet" onClick={cancel}>{X.cancel}</button></section>}
+    {step==='review'&&draft&&<form className="word-form lesson-review" onSubmit={e=>{e.preventDefault();void save();}} data-unsaved={!saving&&!leaving?'true':undefined} noValidate>
+      <h2>{X.reviewTitle}</h2>
+      <p className="hint">{X.reviewNote}</p>
+      <div className="field"><label htmlFor="lesson-title">{X.titleLabel}</label><input id="lesson-title" dir="auto" maxLength={PASSAGE_LIMITS.title} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></div>
+      <div className="field"><label htmlFor="lesson-text">{X.textLabel}</label><textarea id="lesson-text" className="passage-input" rows={6} dir={dirOf(deck.contentLanguage)} lang={deck.contentLanguage} maxLength={PASSAGE_LIMITS.body} value={draft.text} onChange={e=>setDraft({...draft,text:e.target.value})}/></div>
+      <ol className="fact-list lesson-questions">{draft.questions.map((q,i)=><li key={i}><fieldset className="practice-field"><legend>{X.questionN(i+1)}</legend>
+        <div className="field"><label htmlFor={'lq-'+i}>{X.question}</label><input id={'lq-'+i} dir="auto" maxLength={PASSAGE_LIMITS.question} value={q.question} onChange={e=>setQ(i,{question:e.target.value})}/></div>
+        <div className="field"><label htmlFor={'la-'+i}>{X.answer}</label><input id={'la-'+i} dir="auto" maxLength={PASSAGE_LIMITS.answer} value={q.answer} onChange={e=>setQ(i,{answer:e.target.value})}/></div>
+        <div className="field"><label htmlFor={'lz-'+i}>{X.quote}</label><input id={'lz-'+i} dir={dirOf(deck.contentLanguage)} lang={deck.contentLanguage} maxLength={PASSAGE_LIMITS.quote} value={q.quote} onChange={e=>setQ(i,{quote:e.target.value})}/></div>
+      </fieldset></li>)}</ol>
+      {issues.length>0&&<div className="inline-error" role="alert"><p>{X.fixFirst}</p>{issueList}</div>}
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      <div className="form-foot">
+        <button type="submit" className="btn btn-save btn-lg" disabled={saving}><Check size={20} aria-hidden="true"/>{X.save}</button>
+        <button type="button" className="btn btn-quiet" disabled={saving} onClick={()=>{setDraft(null);setLeaving(deckPath(deckId));}}>{X.reject}</button>
+      </div>
+      <p className="passage-note">{X.rejectNote}</p>
+    </form>}
   </div>;
 }
 
@@ -1614,7 +1716,7 @@ function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]
     const v=parseLibrary(sub);
     if(v.kind==='folder')return to('words');
     // #21: texts → their deck; a text → the deck's texts; the editor → the text (or the list for a new one).
-    if(v.kind==='texts')return to(deckPath(v.deckId));
+    if(v.kind==='texts'||v.kind==='lesson')return to(deckPath(v.deckId));
     if(v.kind==='passage')return to(textsPath(v.deckId));
     if(v.kind==='practice')return to(passagePath(v.deckId,v.id));
     if(v.kind==='passageEdit')return to(v.id&&passages.some(p=>p.id===v.id)?passagePath(v.deckId,v.id):textsPath(v.deckId));
