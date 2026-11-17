@@ -6,6 +6,7 @@ import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvaila
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
+import {readContinue,rememberContinue,resolveContinue} from './continue';
 
 /* ───────────── Language (#6) ─────────────
  * The active dictionary. App sets it from its `locale` state on every render and remounts the tree
@@ -170,7 +171,8 @@ function ConfirmDialog({open,title,body,confirm,cancel,onConfirm,onCancel}:{open
 }
 
 /* ───────────── Home ───────────── */
-function HomePage({words,reviews,decks,lastBackup,onNavigate}:{words:Word[];reviews:Review[];decks:readonly Deck[];lastBackup:string|null;onNavigate:(p:Page)=>void}){
+function HomePage({words,reviews,lib,lastBackup,onNavigate,go}:{words:Word[];reviews:Review[];lib:Library;lastBackup:string|null;onNavigate:(p:Page)=>void;go:(path:string)=>void}){
+  const decks=lib.decks;
   const termProps=(w:Word)=>{const l=contentLang(w,decks);return {dir:termDir(w,l),lang:l};};
   const H=T.home;
   const stats=summary(words,reviews),now=Date.now();
@@ -180,6 +182,11 @@ function HomePage({words,reviews,decks,lastBackup,onNavigate}:{words:Word[];revi
   const lastAdded=active.reduce<Word|undefined>((a,w)=>!a||w.createdAt>a.createdAt?w:a,undefined);
   const dayIndex=Math.floor(new Date(dayKey(new Date(now))).getTime()/DAY);
   const backupStale=active.length>=5&&(!lastBackup||now-new Date(lastBackup).getTime()>14*DAY);
+  // #27: the last deck/folder the learner meant to work on, re-checked against today's data (never a stale «Continue»).
+  const cont=resolveContinue(readContinue(),lib,words,now);
+  const contPlace=cont&&(cont.kind==='deck'?lib.decks.find(d=>d.id===cont.id):lib.folders.find(f=>f.id===cont.id));
+  const contName=!cont||!contPlace?'':cont.kind==='deck'?deckName(contPlace as Deck):folderName(contPlace as Folder);
+  const contPath=!cont?'':cont.action==='review'?scopePath(cont):cont.action==='add'?'add/'+encodeURIComponent(cont.id):cont.kind==='deck'?deckPath(cont.id):folderPath(cont.id);
 
   if(!active.length)return <div className="home">
     <section className="hero hero-first">
@@ -222,6 +229,11 @@ function HomePage({words,reviews,decks,lastBackup,onNavigate}:{words:Word[];revi
     </dl>
 
     <div className="home-row">
+      {cont&&contName&&<button type="button" className="nudge home-wide home-continue" data-home="continue" data-action={cont.action} onClick={()=>go(contPath)}>
+        <span className="nudge-icon mint">{cont.action==='review'?<Layers3 size={20}/>:cont.action==='add'?<Plus size={20}/>:cont.kind==='deck'?<Layers3 size={20}/>:<FolderIcon size={20}/>}</span>
+        <span><small className="eyebrow">{H.continueTitle}</small><b dir="auto" className="home-term">{contName}</b><small>{cont.action==='review'?H.continueReview(cont.due):cont.action==='add'?H.continueAdd:H.continueOpen(cont.kind)}</small></span>
+        <Fwd size={18}/>
+      </button>}
       {lastAdded&&<button type="button" className="nudge home-card" data-home="last-added" onClick={()=>onNavigate('words')}>
         <span className="nudge-icon mint"><BookOpen size={20}/></span>
         <span><small className="eyebrow">{H.lastAddedTitle}</small><b {...termProps(lastAdded)} className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meanings.join('؛ ')}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
@@ -341,7 +353,7 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
     try{
       word=await addWord({contentType:kind,deckId:target,term,meanings:qa?meanings.slice(0,1):meanings,example:!qa&&showExample?example:'',note:qa&&showExample?example:'',translation:'',tag:'',
         ...(override&&override.content!==deck?.contentLanguage?{contentLanguage:override.content}:{}),...(override&&override.meaning!==deck?.meaningLanguage?{meaningLanguage:override.meaning}:{})});
-      try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);writeAddMode(target,mode);
+      try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);writeAddMode(target,mode);rememberContinue('deck',target);
     }catch(err){setError(getError(err));setLoading(false);return;}
     // Ready for the next card: same deck and languages, empty boxes (#26 point 8).
     setTerm('');setMeanings(['']);setExample('');setShowExample(false);setTried(false);
@@ -425,10 +437,11 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
   const revealRef=useRef<HTMLButtonElement>(null),gradesRef=useRef<HTMLDivElement>(null);
   const review=useCallback(async(g:Grade)=>{
     if(!active||busy)return;setBusy(true);setMsg('');
-    try{const next=await reviewWord(active.id,g);setLast({term:active.term,next});setQueue(v=>v.slice(1));setDone(n=>n+1);setRevealed(false);await onReviewed();}
+    try{const next=await reviewWord(active.id,g);if(scope.kind!=='all')rememberContinue(scope.kind,scope.id); // #27: a graded card in a deck/folder review
+      setLast({term:active.term,next});setQueue(v=>v.slice(1));setDone(n=>n+1);setRevealed(false);await onReviewed();}
     catch(e){setMsg(getError(e));setQueue(v=>v.slice(1));setRevealed(false);}
     finally{setBusy(false);}
-  },[active,busy,onReviewed]);
+  },[active,busy,onReviewed,scope]);
   useEffect(()=>{
     const onKey=(e:KeyboardEvent)=>{
       const t=e.target as HTMLElement;if(t.closest('input,textarea,select,dialog')||e.metaKey||e.ctrlKey||e.altKey)return;
@@ -774,7 +787,7 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
   const [idx,setIdx]=useState(0),[answers,setAnswers]=useState<Answered[]>([]);
   if(!p||!deck)return <NotFound go={go}/>;
   const total=READING_KINDS.reduce((n,k)=>n+avail[k],0),chosen=kinds.filter(k=>avail[k]>0);
-  const start=()=>{setItems(buildReading(p,words,chosen,count));setIdx(0);setAnswers([]);};
+  const start=()=>{setItems(buildReading(p,words,chosen,count));setIdx(0);setAnswers([]);rememberContinue('deck',deckId);};
   const done=items!==null&&idx>=items.length;
   const inProgress=items!==null&&!done&&answers.length>0;
   if(items===null)return <div className="page practice">
@@ -862,7 +875,7 @@ function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;
   if(!p||!deck)return <NotFound go={go}/>;
   const chosen=kinds.filter(k=>avail[k]>0),canListen=voice==='ok';
   const done=items!==null&&idx>=items.length,inProgress=items!==null&&!done&&answers.length>0;
-  const start=()=>{player.stop();setItems(buildListening(p,chosen,count));setIdx(0);setAnswers([]);setShowText(false);};
+  const start=()=>{player.stop();setItems(buildListening(p,chosen,count));setIdx(0);setAnswers([]);setShowText(false);rememberContinue('deck',deckId);};
   const playerBar=<div className="listen-player" role="group" aria-label={L.player}>
     <button type="button" className="btn btn-ink listen-play" disabled={!canListen} onClick={()=>player.toggle(p.body)} aria-label={player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}>
       {player.status==='playing'?<Pause size={18} aria-hidden="true"/>:<Play size={18} aria-hidden="true"/>}<span>{player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}</span></button>
@@ -1584,7 +1597,7 @@ export default function App(){
   let content:ReactNode;
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label={T.loading}><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
   else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>{T.fatalTitle}</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>{T.tryAgain}</button></div>;
-  else content=page==='home'?<HomePage words={words} reviews={reviews} decks={lib.decks} lastBackup={lastBackup} onNavigate={navigate}/>
+  else content=page==='home'?<HomePage words={words} reviews={reviews} lib={lib} lastBackup={lastBackup} onNavigate={navigate} go={go}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
     :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} passages={passages} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
