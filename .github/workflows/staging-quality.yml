@@ -13,7 +13,7 @@ permissions:
 jobs:
   test-staging:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20 # e2e (Chromium + WebKit) alone takes ~11 min; 12 cancelled green runs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,8 +24,17 @@ jobs:
         run: |
           node -e "const c=JSON.parse(require('fs').readFileSync('./wrangler.jsonc','utf8')); if(c.name!=='wordloop-staging'||c.workers_dev!==true||c.preview_urls!==false||c.d1_databases?.[0]?.database_name!=='wordloop-push-staging'||c.d1_databases?.[0]?.database_id==='87f5d0d3-10ae-437e-b2c4-6e8dd9820b1c')process.exit(1)"
       - run: npm ci
+      # Runtime dependencies only. `--omit=optional` skips the packages the lockfile marks optional/devOptional in the
+      # production tree: `vite` (an OPTIONAL peer of @codefusion-cc/web-push, for its build plugin) with its subtree and
+      # native build binaries. None of them is bundled into the Worker or the app. Still audited: web-push,
+      # workers-crypto, srs-kit, lucide-react, react, react-dom, scheduler, ts-fsrs.
+      # Owner-approved 2026-11-17 for GHSA-fc5q-39xc-vjpf (picomatch <= 4.0.7, no patched release).
+      # Revert to `npm audit --omit=dev --audit-level=high` once picomatch ships a fix.
       - name: Audit deployed dependencies for high/critical advisories
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --omit=optional --audit-level=high
+      - name: Full audit incl. build tools (informational, does not block)
+        continue-on-error: true
+        run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm test
       - run: npm run build -- --mode staging
