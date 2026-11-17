@@ -1,7 +1,9 @@
-import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word} from './data';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
+import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
+import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
+import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
@@ -20,6 +22,41 @@ const navItems:{id:Page;icon:typeof Home}[]=[
 function hashParts(){const [h,...rest]=window.location.hash.replace(/^#\/?/,'').split('/');return {page:(PAGES.includes(h as Page)?h:'home') as Page,sub:PAGES.includes(h as Page)?rest.join('/'):''};}
 function readHash():Page{return hashParts().page;}
 function readSub():string{return hashParts().sub;}
+/**
+ * #42 — in-app trail of routes visited in this session (newest last), so «رجوع» can use the real history when it is
+ * known to stay inside the app, and a parent route otherwise. history.back() is never called blindly: in an installed
+ * PWA it can leave the app, or land on the Cloudflare Access page.
+ */
+const TRAIL_KEY='wordloop-trail';
+let trail:string[]=(()=>{try{const t=JSON.parse(sessionStorage.getItem(TRAIL_KEY)||'[]');return Array.isArray(t)?t.filter((x):x is string=>typeof x==='string').slice(-30):[];}catch{return [];}})();
+let replacingRoute=false;
+const currentRoute=()=>window.location.hash.replace(/^#\/?/,'');
+/** Called on every route change: a step back pops the trail, a replace swaps its top, anything else pushes. */
+function recordRoute(){
+  const r=currentRoute();
+  if(replacingRoute){replacingRoute=false;trail[Math.max(0,trail.length-1)]=r;}
+  else if(trail.length>=2&&trail[trail.length-2]===r)trail.pop();
+  else if(trail[trail.length-1]!==r)trail.push(r);
+  trail=trail.slice(-30);
+  try{sessionStorage.setItem(TRAIL_KEY,JSON.stringify(trail));}catch{/* private mode: the trail lasts for this page only */}
+}
+const previousRoute=():string|null=>trail.length>=2?trail[trail.length-2]:null;
+/** Go to `target` as a step back: the real Back when the previous in-app entry is that route, otherwise replace (no history loops). */
+function stepBackTo(target:string){
+  if(previousRoute()===target&&history.length>1){history.back();return;}
+  replacingRoute=true;window.location.replace('#/'+target);
+}
+/** #42: a form with typed, unsaved text marks itself data-unsaved="true"; leaving asks first. */
+const hasUnsaved=()=>!!document.querySelector('[data-unsaved="true"]');
+let askLeave:(proceed:()=>void)=>void=proceed=>proceed();
+/** Set when the learner chose «الخروج بدون حفظ»: the route change that follows is not questioned again. */
+let leaveConfirmedAt=0;
+const confirmLeave=()=>{leaveConfirmedAt=Date.now();};
+/** Run `proceed` now, or after the learner confirms leaving unsaved text. */
+function guardLeave(proceed:()=>void){if(hasUnsaved())askLeave(()=>{confirmLeave();proceed();});else proceed();}
+recordRoute();
+/** "Back" arrow: points right in Arabic (RTL), left in English (LTR). */
+function BackArrow({size=20}:{size?:number}){return T.dir==='rtl'?<ArrowRight size={size} aria-hidden="true"/>:<ArrowLeft size={size} aria-hidden="true"/>;}
 /** "Forward" arrow: points left in Arabic (RTL), right in English (LTR). */
 function Fwd({size=20}:{size?:number}){return T.dir==='rtl'?<ArrowLeft size={size} aria-hidden="true"/>:<ArrowRight size={size} aria-hidden="true"/>;}
 
@@ -102,7 +139,7 @@ function Wash({tone='full'}:{tone?:'full'|'soft'|'cool'|'warm'}){return <div cla
  * One listen button (#20: اسمع → افهم → كرّر). Tap = natural speed; tap again while it plays = stop. After the first
  * listen a light «أبطأ» replay appears next to it (`slower={false}` where space is tight). No voice/speed settings.
  */
-function SpeakButton({text,label,lang,className='icon-btn',slower=true}:{text:string;label:string;lang:string;className?:string;slower?:boolean}){
+function SpeakButton({text,label,lang,className='icon-btn',slower=true,showLabel=false}:{text:string;label:string;lang:string;className?:string;slower?:boolean;showLabel?:boolean}){
   const [playing,setPlaying]=useState<null|'normal'|'slow'>(null),[heard,setHeard]=useState(false);
   const run=useRef(0);
   useEffect(()=>{setHeard(false);},[text,lang]);
@@ -115,7 +152,7 @@ function SpeakButton({text,label,lang,className='icon-btn',slower=true}:{text:st
     if(ok){setPlaying(mode);setHeard(true);}else run.current=id;
   }
   const main=<button type="button" className={className+(playing==='normal'?' is-playing':'')} aria-label={playing==='normal'?T.speech.stop:label} title={playing==='normal'?T.speech.stop:label} onClick={()=>play('normal')} disabled={!text.trim()}>
-    {playing==='normal'?<Square size={16} strokeWidth={2.2}/>:<Volume2 size={19} strokeWidth={1.8}/>}</button>;
+    {playing==='normal'?<Square size={16} strokeWidth={2.2}/>:<Volume2 size={19} strokeWidth={1.8}/>}{showLabel&&<span>{playing==='normal'?T.speech.stop:label}</span>}</button>;
   if(!slower)return main;
   return <span className="speak-group">{main}{heard&&<button type="button" className={'slow-btn'+(playing==='slow'?' is-playing':'')} aria-label={playing==='slow'?T.speech.stop:T.speech.slowerLabel(text)} onClick={()=>play('slow')}>
     {playing==='slow'?<Square size={13} strokeWidth={2.4}/>:<Snail size={15} strokeWidth={1.9}/>}<span>{T.speech.slower}</span></button>}</span>;
@@ -250,6 +287,16 @@ function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,des
   </div>;
 }
 
+/** #42: the Add form's unsaved text, kept on this device only (localStorage), never in IndexedDB or the cloud. */
+const ADD_DRAFT='wordloop-add-draft';
+type AddDraft={deckParam:string;term:string;meanings:string[];example:string};
+function readAddDraft(deckParam:string):AddDraft|null{
+  try{const d=JSON.parse(localStorage.getItem(ADD_DRAFT)||'null');
+    if(d&&d.deckParam===deckParam&&typeof d.term==='string'&&Array.isArray(d.meanings)&&d.meanings.length&&d.meanings.every((m:unknown)=>typeof m==='string')&&typeof d.example==='string')return {...d,meanings:d.meanings.slice(0,MAX_MEANINGS)};
+  }catch{/* unreadable draft: start empty */}
+  return null;
+}
+function writeAddDraft(d:AddDraft|null){try{if(d)localStorage.setItem(ADD_DRAFT,JSON.stringify(d));else localStorage.removeItem(ADD_DRAFT);}catch{/* private mode */}}
 function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
   const A=T.add,F=T.addForm;
   const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
@@ -258,7 +305,12 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   const [override,setOverride]=useState<{content:string;meaning:string}|null>(null),[langOpen,setLangOpen]=useState(false);
   const content=override?.content??deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,meaningLang=override?.meaning??deck?.meaningLanguage??DEFAULT_MEANING_LANGUAGE;
   const [lastDeck,setLastDeck]=useState<string|null>(null);
-  const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>(['']),[example,setExample]=useState(''),[showExample,setShowExample]=useState(false);
+  // #42: typed text survives Back, a refresh or iOS closing the PWA in the background; cleared on save or when leaving the page.
+  const [draft]=useState(()=>readAddDraft(deckParam));
+  const [term,setTerm]=useState(draft?.term??''),[meanings,setMeanings]=useState<string[]>(draft?.meanings??['']),[example,setExample]=useState(draft?.example??''),[showExample,setShowExample]=useState(!!draft?.example);
+  const unsaved=!!(term.trim()||meanings.some(m=>m.trim())||example.trim());
+  useEffect(()=>{writeAddDraft(unsaved?{deckParam,term,meanings,example}:null);},[unsaved,deckParam,term,meanings,example]);
+  useEffect(()=>()=>{if(!document.hidden)writeAddDraft(null);},[]);
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
   const termRef=useRef<HTMLTextAreaElement|null>(null),meaningRefs=useRef<(HTMLTextAreaElement|null)[]>([]),focusMeaning=useRef<number|null>(null),exampleRef=useRef<HTMLTextAreaElement|null>(null);
   const kind=inferContentType(term),limit=TERM_LIMIT[kind];
@@ -294,7 +346,7 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   const termHint=tried&&!term.trim()?F.missingTerm:tooLong?F.tooLong(limit):duplicate?F.duplicate:'';
   return <div className="page add-page">
     <PageHead title={F.title} lead={F.lead}/>
-    <form className="word-form add-form" onSubmit={submit} noValidate>
+    <form className="word-form add-form" onSubmit={submit} data-unsaved={unsaved&&!loading?'true':undefined} noValidate>
       <div className="add-target">
         <DeckPicker lib={lib} value={deckId} onChange={id=>{setDeckId(id);setOverride(null);}}/>
         <button type="button" className="lang-pair" aria-expanded={langOpen} aria-controls="lang-override" onClick={()=>setLangOpen(o=>!o)}>
@@ -436,10 +488,16 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 
 /* ───────────── Library (#16): «مكتبتي» — folders → decks → cards ───────────── */
 type Library={folders:Folder[];decks:Deck[]};
-type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string};
+type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
+  |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
-  const [k,id]=sub.split('/');
+  const [k,id,t,pid,e]=sub.split('/');
+  // #21: `d/<deck>/texts` · `d/<deck>/texts/new` · `d/<deck>/texts/<id>` · `d/<deck>/texts/<id>/edit`
+  if(k==='d'&&id&&t==='texts'){const deckId=decodeURIComponent(id);
+    if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
+    if(e==='read'||e==='listen')return {kind:'practice',mode:e,deckId,id:decodeURIComponent(pid)}; // #22 / #23
+    return e==='edit'?{kind:'passageEdit',deckId,id:decodeURIComponent(pid)}:{kind:'passage',deckId,id:decodeURIComponent(pid)};}
   if(k==='f'&&id)return {kind:'folder',id:decodeURIComponent(id)};
   if(k==='d'&&id)return {kind:'deck',id:decodeURIComponent(id)};
   return {kind:'root',tab:k==='all'?'all':k==='due'?'due':'folders'};
@@ -455,23 +513,25 @@ const langCode=(tag:string)=>tag.split('-')[0].toUpperCase();
 const deckIdOf=(w:Word,lib:Library)=>lib.decks.some(d=>d.id===w.deckId)?w.deckId:DEFAULT_DECK_ID;
 const ZERO={decks:0,cards:0,due:0};
 
-function LibraryPage({words,reviews,lib,sub,onChanged,notify,go}:{words:Word[];reviews:Review[];lib:Library;sub:string;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words:Word[];reviews:Review[];lib:Library;passages:Passage[];sub:string;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
   const view=parseLibrary(sub);
   // The default folder always exists once loaded, so no folders = IndexedDB not read yet: render nothing rather than a false «not found» or an empty grid.
   const counts=useMemo(()=>libraryCounts(words,lib.decks),[words,lib.decks]);
   if(!lib.folders.length)return <div className="page library" aria-busy="true"><PageHead title={T.lib.title}/></div>;
-  const shared={words,reviews,lib,counts,onChanged,notify,go};
+  const shared={words,reviews,lib,passages,counts,onChanged,notify,go};
+  if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
+  if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
+  if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
+  if(view.kind==='practice')return <ListeningPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} go={go}/>;
+  if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
   if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
   return <LibraryRoot tab={view.tab} {...shared}/>;
 }
-type LibShared={words:Word[];reviews:Review[];lib:Library;counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
+type LibShared={words:Word[];reviews:Review[];lib:Library;passages:Passage[];counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
 
 function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:string)=>void;placeholder:string;label:string}){
   return <label className="search"><Search size={19}/><span className="visually-hidden">{label}</span><input type="search" dir="auto" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} enterKeyHint="search"/>{value&&<button type="button" className="icon-btn ghost" aria-label={T.library.clearSearch} onClick={()=>onChange('')}><X size={17}/></button>}</label>;
-}
-function Crumbs({items,go}:{items:{label:string;path:string}[];go:(path:string)=>void}){
-  return <nav className="crumbs" aria-label={T.lib.crumbs}><ol>{items.map(i=><li key={i.path}><button type="button" dir="auto" onClick={()=>go(i.path)}>{i.label}</button></li>)}</ol></nav>;
 }
 
 function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{tab:'folders'|'all'|'due'}){
@@ -579,7 +639,6 @@ function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&
   async function rename(name:string){await renameFolder(id,name);await onChanged();notify(L.saved);setSheet(null);}
   async function remove(){setConfirmDelete(false);try{await deleteFolder(id);await onChanged();notify(L.deleted(folderName(folder!)));go('words');}catch(e){notify(getError(e),'error');}}
   return <div className="page library head-inline">
-    <Crumbs items={[{label:L.title,path:'words'}]} go={go}/>
     <PageHead title={folderName(folder)} lead={`${L.decksCount(c.decks)} · ${L.cardsCount(c.cards)}`}>
       <div className="head-actions">
         <button type="button" className="icon-btn" aria-label={L.folderSettings} title={L.folderSettings} onClick={()=>setSheet('settings')}><MoreHorizontal size={20}/></button>
@@ -597,20 +656,19 @@ function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&
   </div>;
 }
 
-function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{id:string}){
+function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:LibShared&{id:string}){
   const L=T.lib;
   const [q,setQ]=useState(''),[settings,setSettings]=useState(false),[confirmDelete,setConfirmDelete]=useState(false);
   const deck=lib.decks.find(d=>d.id===id);
   const cards=useMemo(()=>words.filter(w=>!w.archived&&deckIdOf(w,lib)===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[words,lib,id]);
   if(!deck)return <NotFound go={go}/>;
-  const folder=lib.folders.find(f=>f.id===deck.folderId);
   const s=q.trim().toLocaleLowerCase(),list=cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)));
   const hasAny=words.some(w=>deckIdOf(w,lib)===id); // archived cards still belong to the deck
-  const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:'';
+  const textCount=passages.filter(p=>p.deckId===id).length;
+  const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:textCount?T.texts.deckHasTexts:'';
   async function save(v:DeckForm){await updateDeck(id,v);await onChanged();notify(L.saved);setSettings(false);}
   async function remove(){setConfirmDelete(false);try{await deleteDeck(id);await onChanged();notify(L.deleted(deckName(deck!)));go(folderPath(deck!.folderId));}catch(e){notify(getError(e),'error');}}
   return <div className="page library">
-    <Crumbs items={[{label:L.title,path:'words'},...(folder?[{label:folderName(folder),path:folderPath(folder.id)}]:[])]} go={go}/>
     <PageHead title={deckName(deck)} lead={(c=>c?`${L.cardsCount(cards.length)} · ${L.dueCount(c)}`:L.cardsCount(cards.length))(counts.deck.get(id)?.due??0)}>
       <div className="head-actions">
         <span className="lang-chip" dir="ltr" title={`${deck.contentLanguage} → ${deck.meaningLanguage}`}>{langCode(deck.contentLanguage)} → {langCode(deck.meaningLanguage)}</span>
@@ -619,6 +677,7 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
     </PageHead>
     <ScopePanel scope={{kind:'deck',id}} words={words} reviews={reviews} lib={lib} go={go}/>
     <div className="deck-actions"><button type="button" className={'btn '+(counts.deck.get(id)?.due?'btn-quiet':'btn-ink')} onClick={()=>go('add/'+encodeURIComponent(id))}><Plus size={18}/>{L.addCard}</button></div>
+    <TextsRow deckId={id} count={textCount} go={go}/>
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
@@ -626,6 +685,340 @@ function DeckView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{i
     <DeckSheet open={settings} title={L.deckSettings} lib={lib} deck={deck} submit={L.save} onSubmit={save} onClose={()=>setSettings(false)}
       extra={<DangerZone label={L.deleteDeck} blocked={blocked} onDelete={()=>{setSettings(false);setConfirmDelete(true);}}/>}/>
     <ConfirmDialog open={confirmDelete} title={L.deleteDeckTitle(deckName(deck))} body={L.deleteEmptyBody} confirm={L.deleteYes} cancel={L.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirmDelete(false)}/>
+  </div>;
+}
+
+/* ───────────── Passages (#21): texts inside a deck, read and listened to (Practice #22/#23 builds on them) ───────────── */
+const textsPath=(deckId:string)=>deckPath(deckId)+'/texts',passagePath=(deckId:string,id:string)=>textsPath(deckId)+'/'+encodeURIComponent(id);
+/** The compact entry in a deck page: one row, so the #16 deck layout stays about cards. */
+function TextsRow({deckId,count,go}:{deckId:string;count:number;go:(path:string)=>void}){
+  const Tx=T.texts;
+  return <button type="button" className="deck-row texts-row" onClick={()=>go(textsPath(deckId))}>
+    <span className="folder-icon sm" aria-hidden="true"><FileText size={19} strokeWidth={1.8}/></span>
+    <span className="deck-text"><b>{Tx.title}</b><small>{count?Tx.count(count):Tx.none}</small></span><Fwd size={18}/>
+  </button>;
+}
+function TextsView({deckId,lib,passages,go}:{deckId:string;lib:Library;passages:Passage[];go:(path:string)=>void}){
+  const Tx=T.texts,deck=lib.decks.find(d=>d.id===deckId);
+  if(!deck)return <NotFound go={go}/>;
+  const list=passages.filter(p=>p.deckId===deckId);
+  return <div className="page library head-inline">
+    <PageHead title={Tx.title} lead={Tx.lead}>
+      <div className="head-actions"><button type="button" className="btn btn-ink head-add" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18} aria-hidden="true"/>{Tx.add}</button></div>
+    </PageHead>
+    {list.length?<ul className="deck-list">{list.map(p=><li key={p.id}><button type="button" className="deck-row" onClick={()=>go(passagePath(deckId,p.id))}>
+        <span className="folder-icon sm" aria-hidden="true"><FileText size={19} strokeWidth={1.8}/></span>
+        <span className="deck-text"><b dir="auto">{p.title}</b><small dir={dirOf(p.contentLanguage)} lang={p.contentLanguage} className="passage-snippet">{p.body.replace(/\s+/g,' ').slice(0,90)}</small></span>
+        <span className="lang-chip" dir="ltr">{langCode(p.contentLanguage)}</span><Fwd size={18}/>
+      </button></li>)}</ul>
+      :<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{Tx.emptyTitle}</h2><p>{Tx.emptyBody}</p>
+        <button type="button" className="btn btn-ink" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18}/>{Tx.add}</button></div>}
+  </div>;
+}
+
+/** Read and listen to one passage: the whole text in its own language, one listen button (with «أبطأ»), optional translation and facts. */
+function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string;id:string;lib:Library;passages:Passage[];onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const Tx=T.texts,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const [showTr,setShowTr]=useState(false),[confirm,setConfirm]=useState(false);
+  if(!p||!deck)return <NotFound go={go}/>;
+  async function remove(){setConfirm(false);try{await deletePassage(p!.id);await onChanged();notify(Tx.deleted(p!.title));go(textsPath(deckId));}catch(e){notify(getError(e),'error');}}
+  return <div className="page library passage-page">
+    <PageHead title={p.title}>
+      <div className="head-actions"><span className="lang-chip" dir="ltr" title={p.contentLanguage}>{langCode(p.contentLanguage)}</span></div>
+    </PageHead>
+    <div className="passage-actions">
+      <SpeakButton text={p.body} lang={p.contentLanguage} label={Tx.listen} className="btn btn-ink passage-listen" showLabel/>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/read')}><BookOpen size={16}/>{T.practice.readAction}</button>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/listen')}><Headphones size={16}/>{T.listening.action}</button>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{Tx.edit}</button>
+      <button type="button" className="btn btn-quiet sm danger-text" onClick={()=>setConfirm(true)}><Trash2 size={16}/>{Tx.delete}</button>
+    </div>
+    <article className="passage-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article>
+    {p.translation&&<div className="passage-extra">
+      <button type="button" className="link-btn" aria-expanded={showTr} onClick={()=>setShowTr(v=>!v)}>{showTr?Tx.hideTranslation:Tx.showTranslation}</button>
+      {showTr&&<p className="passage-translation" dir="auto">{p.translation}</p>}
+    </div>}
+    {p.questions.length>0&&<details className="learn-details passage-facts"><summary>{Tx.factsTitle(p.questions.length)}</summary>
+      <ol className="fact-list">{p.questions.map(q=><li key={q.id}><b dir="auto">{q.question}</b><span dir="auto">{q.answer}{q.alternatives.length>0&&<small> · {q.alternatives.join('، ')}</small>}</span>{q.quote&&<q dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{q.quote}</q>}</li>)}</ol>
+    </details>}
+    <p className="passage-note">{Tx.localNote}</p>
+    <ConfirmDialog open={confirm} title={Tx.deleteTitle(p.title)} body={Tx.deleteBody} confirm={Tx.deleteYes} cancel={Tx.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirm(false)}/>
+  </div>;
+}
+
+/* ───────────── Reading Practice (#22): questions only from saved data; never touches FSRS ───────────── */
+const READING_KINDS:ReadingKind[]=['cloze','meaning','comprehension'];
+const COUNTS=[5,10,0] as const;
+function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:string;lib:Library;passages:Passage[];words:Word[];go:(path:string)=>void}){
+  const P=T.practice,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const avail=useMemo(()=>p?readingAvailability(p,words):{cloze:0,meaning:0,comprehension:0},[p,words]);
+  const [kinds,setKinds]=useState<ReadingKind[]>(READING_KINDS);
+  const [count,setCount]=useState<number>(5),[items,setItems]=useState<PracticeItem[]|null>(null);
+  const [idx,setIdx]=useState(0),[answers,setAnswers]=useState<Answered[]>([]);
+  if(!p||!deck)return <NotFound go={go}/>;
+  const total=READING_KINDS.reduce((n,k)=>n+avail[k],0),chosen=kinds.filter(k=>avail[k]>0);
+  const start=()=>{setItems(buildReading(p,words,chosen,count));setIdx(0);setAnswers([]);};
+  const done=items!==null&&idx>=items.length;
+  const inProgress=items!==null&&!done&&answers.length>0;
+  if(items===null)return <div className="page practice">
+    <PageHead title={P.readTitle} lead={p.title}/>
+    {total===0?<div className="practice-empty"><h2>{P.notEnoughTitle}</h2><p>{P.notEnoughBody}</p>
+        <div className="btn-row"><button type="button" className="btn btn-ink" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{P.addQuestions}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>go('add/'+encodeURIComponent(deckId))}><Plus size={16}/>{P.addCards}</button></div></div>
+    :<div className="practice-setup">
+      <fieldset className="practice-field"><legend>{P.activities}</legend>
+        <div className="chips">{READING_KINDS.map(k=><button type="button" key={k} className={'chip'+(chosen.includes(k)?' on':'')} aria-pressed={chosen.includes(k)} disabled={!avail[k]}
+          onClick={()=>setKinds(ks=>ks.includes(k)?ks.filter(x=>x!==k):[...ks,k])}>{P.kind[k]} <span className="chip-n">{avail[k]}</span></button>)}</div>
+        {READING_KINDS.some(k=>!avail[k])&&<ul className="practice-why">{READING_KINDS.filter(k=>!avail[k]).map(k=><li key={k}>{P.why[k]}</li>)}</ul>}
+      </fieldset>
+      <fieldset className="practice-field"><legend>{P.howMany}</legend>
+        <div className="chips">{COUNTS.map(n=><button type="button" key={n} className={'chip'+(count===n?' on':'')} aria-pressed={count===n} onClick={()=>setCount(n)}>{n?String(n):P.all}</button>)}</div>
+      </fieldset>
+      <p className="practice-note">{P.noFsrs}</p>
+      <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
+    </div>}
+  </div>;
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
+  const item=items[idx];
+  return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
+    <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
+      <div className="progress" role="progressbar" aria-label={P.progress} aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={idx}><span style={{inlineSize:`${Math.max(4,100*idx/items.length)}%`}}/></div></div>
+    {/* The cloze sentence comes from the text, so the text stays folded during a cloze question. */}
+    <details key={item.kind==='cloze'?'c':'t'} className="learn-details practice-text" open={item.kind!=='cloze'}><summary>{P.theText}</summary>
+      <article className="passage-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article></details>
+    <PracticeQuestion key={item.id} item={item} lang={p.contentLanguage} meaningLang={deck.meaningLanguage} last={idx===items.length-1}
+      onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>setIdx(i=>i+1)}/>
+  </div>;
+}
+
+function PracticeResult({items,answers,onAgain,onBack}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void}){
+  const P=T.practice,sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
+  return <div className="page practice"><section className="finish">
+    <div className="finish-orb" aria-hidden="true"><Wash/></div>
+    <h1>{P.result(sc.right,sc.total)}</h1>
+    {sc.almost>0&&<p className="lead">{P.almostCount(sc.almost)}</p>}
+    <p className="finish-note">{P.noFsrs}</p>
+    {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
+      <span><b dir="auto">{it.kind==='dictation'?T.listening.kind.dictation:promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
+    <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={onAgain}>{P.again}</button>
+      <button type="button" className="btn btn-quiet" onClick={onBack}>{P.backToText}</button></div>
+  </section></div>;
+}
+
+/* ───────────── Listening Practice (#23): the same passage, spoken on the device in its own language ───────────── */
+type VoiceState='ok'|'none'|'unsupported';
+/** Whether this device can speak `lang` (local voices only, #19/#20). An empty list = not known yet → the browser picks by `lang`. */
+function useVoiceState(lang:string):VoiceState{
+  const get=():VoiceState=>{if(!canSpeak)return 'unsupported';const v=window.speechSynthesis.getVoices();return !v.length||pickVoice(v,lang)?'ok':'none';};
+  const [state,setState]=useState<VoiceState>(get);
+  useEffect(()=>{if(!canSpeak)return;const on=()=>setState(get());on();window.speechSynthesis.addEventListener?.('voiceschanged',on);return ()=>window.speechSynthesis.removeEventListener?.('voiceschanged',on);},[lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  return state;
+}
+/** Play / pause / replay, normal or slower. Stops when the screen goes away. */
+function usePlayer(lang:string){
+  const [status,setStatus]=useState<'idle'|'playing'|'paused'>('idle'),[slow,setSlow]=useState(false);
+  const run=useRef(0);
+  useEffect(()=>()=>{run.current++;if(canSpeak)window.speechSynthesis.cancel();},[]);
+  function play(text:string,opts:{slow?:boolean}={}){
+    const id=++run.current;
+    const ok=speak(text,lang,{slow:opts.slow??slow,onEnd:()=>{if(run.current===id)setStatus('idle');}});
+    setStatus(ok?'playing':'idle');return ok;
+  }
+  function toggle(text:string){
+    const synth=window.speechSynthesis;
+    if(status==='playing'){synth.pause();setStatus('paused');return;}
+    if(status==='paused'){synth.resume();setStatus('playing');return;}
+    play(text);
+  }
+  function stop(){run.current++;window.speechSynthesis.cancel();setStatus('idle');}
+  return {status,slow,setSlow,play,toggle,stop};
+}
+
+const LISTENING_KINDS:ListeningKind[]=['dictation','comprehension'];
+function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;lib:Library;passages:Passage[];go:(path:string)=>void}){
+  const P=T.practice,L=T.listening,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const lang=p?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,voice=useVoiceState(lang),player=usePlayer(lang);
+  const avail=useMemo(()=>p?listeningAvailability(p):{dictation:0,comprehension:0},[p]);
+  const [kinds,setKinds]=useState<ListeningKind[]>(LISTENING_KINDS),[count,setCount]=useState<number>(5);
+  const [items,setItems]=useState<PracticeItem[]|null>(null),[idx,setIdx]=useState(0),[answers,setAnswers]=useState<Answered[]>([]);
+  const [showText,setShowText]=useState(false);
+  if(!p||!deck)return <NotFound go={go}/>;
+  const chosen=kinds.filter(k=>avail[k]>0),canListen=voice==='ok';
+  const done=items!==null&&idx>=items.length,inProgress=items!==null&&!done&&answers.length>0;
+  const start=()=>{player.stop();setItems(buildListening(p,chosen,count));setIdx(0);setAnswers([]);setShowText(false);};
+  const playerBar=<div className="listen-player" role="group" aria-label={L.player}>
+    <button type="button" className="btn btn-ink listen-play" disabled={!canListen} onClick={()=>player.toggle(p.body)} aria-label={player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}>
+      {player.status==='playing'?<Pause size={18} aria-hidden="true"/>:<Play size={18} aria-hidden="true"/>}<span>{player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}</span></button>
+    <button type="button" className="btn btn-quiet sm" disabled={!canListen} onClick={()=>player.play(p.body)}><RotateCcw size={16} aria-hidden="true"/>{L.replay}</button>
+    <button type="button" className={'chip'+(player.slow?' on':'')} aria-pressed={player.slow} disabled={!canListen} onClick={()=>player.setSlow(v=>!v)}>{L.slower}</button>
+    <button type="button" className="btn btn-quiet sm" aria-expanded={showText} onClick={()=>setShowText(v=>!v)}>{showText?<EyeOff size={16} aria-hidden="true"/>:<Eye size={16} aria-hidden="true"/>}{showText?L.hideText:L.showText}</button>
+  </div>;
+  const textBox=showText&&<article className="passage-body listen-text" dir={dirOf(lang)} lang={lang}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article>;
+  const noVoice=!canListen&&<div className="practice-empty listen-novoice" role="status"><h2>{voice==='unsupported'?L.unsupportedTitle:L.noVoiceTitle(langName(lang))}</h2><p>{voice==='unsupported'?L.unsupportedBody:L.noVoiceBody(langName(lang))}</p></div>;
+  if(items===null)return <div className="page practice">
+    <PageHead title={L.title} lead={p.title}/>
+    {noVoice}{playerBar}{textBox}
+    {canListen&&<div className="practice-setup">
+      <fieldset className="practice-field"><legend>{P.activities}</legend>
+        <div className="chips">{LISTENING_KINDS.map(k=><button type="button" key={k} className={'chip'+(chosen.includes(k)?' on':'')} aria-pressed={chosen.includes(k)} disabled={!avail[k]}
+          onClick={()=>setKinds(ks=>ks.includes(k)?ks.filter(x=>x!==k):[...ks,k])}>{L.kind[k]} <span className="chip-n">{avail[k]}</span></button>)}</div>
+        {!avail.comprehension&&<ul className="practice-why"><li>{L.whyComprehension}</li></ul>}
+      </fieldset>
+      <fieldset className="practice-field"><legend>{P.howMany}</legend>
+        <div className="chips">{COUNTS.map(n=><button type="button" key={n} className={'chip'+(count===n?' on':'')} aria-pressed={count===n} onClick={()=>setCount(n)}>{n?String(n):P.all}</button>)}</div>
+      </fieldset>
+      <p className="practice-note">{L.privacy} {P.noFsrs}</p>
+      <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
+    </div>}
+  </div>;
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
+  const item=items[idx];
+  return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
+    <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
+      <div className="progress" role="progressbar" aria-label={P.progress} aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={idx}><span style={{inlineSize:`${Math.max(4,100*idx/items.length)}%`}}/></div></div>
+    {noVoice}
+    {item.kind==='dictation'
+      ?<DictationQuestion key={item.id} item={item} lang={lang} player={player} canListen={canListen} last={idx===items.length-1}
+          onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>{player.stop();setIdx(i=>i+1);}}/>
+      :<>{playerBar}{textBox}
+        <PracticeQuestion key={item.id} item={item} lang={lang} meaningLang={deck.meaningLanguage} last={idx===items.length-1}
+          onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>{player.stop();setIdx(i=>i+1);}}/></>}
+  </div>;
+}
+
+function DictationQuestion({item,lang,player,canListen,last,onAnswer,onNext}:{item:DictationItem;lang:string;player:ReturnType<typeof usePlayer>;canListen:boolean;last:boolean;onAnswer:(v:Answered['verdict'])=>void;onNext:()=>void}){
+  const P=T.practice,L=T.listening,[input,setInput]=useState(''),[result,setResult]=useState<ReturnType<typeof compareDictation>|null>(null),[revealed,setRevealed]=useState(false);
+  const nextRef=useRef<HTMLButtonElement|null>(null);
+  useEffect(()=>{if(result||revealed)nextRef.current?.focus({preventScroll:true});},[result,revealed]);
+  const check=(e:FormEvent)=>{e.preventDefault();if(result||revealed||!input.trim())return;const r=compareDictation(input,item.text,lang);setResult(r);onAnswer(r.verdict);};
+  const reveal=()=>{setRevealed(true);onAnswer('revealed');};
+  const answered=!!result||revealed;
+  return <section className="practice-q">
+    <span className="kind-badge">{L.kind.dictation}</span>
+    <p className="practice-prompt question">{L.dictationPrompt}</p>
+    <div className="listen-player" role="group" aria-label={L.player}>
+      <button type="button" className="btn btn-ink listen-play" disabled={!canListen} onClick={()=>player.play(item.text,{slow:false})}><Play size={18} aria-hidden="true"/><span>{L.playSentence}</span></button>
+      <button type="button" className="btn btn-quiet sm" disabled={!canListen} onClick={()=>player.play(item.text,{slow:true})}>{L.slower}</button>
+    </div>
+    {!answered&&<form className="practice-answer field" onSubmit={check} noValidate>
+      <label className="visually-hidden" htmlFor="practice-input">{L.typeWhatYouHear}</label>
+      <textarea id="practice-input" rows={2} dir={dirOf(lang)} lang={lang} value={input} onChange={e=>setInput(e.target.value)} placeholder={L.typeWhatYouHear}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} enterKeyHint="done" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();e.currentTarget.form?.requestSubmit();}}}/>
+      <div className="btn-row"><button type="submit" className="btn btn-ink" disabled={!input.trim()}>{P.check}</button>
+        <button type="button" className="btn btn-quiet" onClick={reveal}>{P.reveal}</button></div>
+    </form>}
+    {result&&<>
+      <p className={'practice-feedback '+(result.verdict==='correct'?'good':result.verdict==='accent'?'close':'bad')} role="status"><b>{result.verdict==='correct'?P.correct:result.verdict==='accent'?L.accentNote:L.wordsNote}</b></p>
+      <p className="dictation-marks" dir={dirOf(lang)} lang={lang}>{result.words.map((w,i)=><span key={i} className={'dw '+w.status} title={w.status==='ok'?undefined:L.mark[w.status]}>
+        {w.status==='wrong'&&w.typed&&<del>{w.typed}</del>}{w.status!=='ok'&&<span className="visually-hidden">{L.mark[w.status]}: </span>}{w.word}</span>)}
+        {result.extra.map((x,i)=><span key={'x'+i} className="dw extra"><span className="visually-hidden">{L.mark.extra}: </span><del>{x}</del></span>)}</p>
+      <ul className="dictation-legend"><li><span className="dw accent">á</span>{L.mark.accent}</li><li><span className="dw wrong">a</span>{L.mark.wrong}</li><li><span className="dw missing">a</span>{L.mark.missing}</li></ul>
+    </>}
+    {revealed&&<p className="practice-feedback bad" role="status"><b>{P.answerIs}</b> <span dir={dirOf(lang)} lang={lang}>{item.text}</span></p>}
+    {answered&&<button ref={nextRef} type="button" className="btn btn-ink practice-next" onClick={onNext}>{last?P.seeResult:P.next}</button>}
+  </section>;
+}
+
+const promptOf=(it:PracticeItem)=>it.kind==='cloze'?it.parts.join('____'):it.kind==='meaning'?it.term:it.kind==='comprehension'?it.question:it.text;
+const answerOf=(it:PracticeItem)=>it.kind==='dictation'?it.text:it.answer;
+
+function PracticeQuestion({item,lang,meaningLang,last,onAnswer,onNext}:{item:PracticeItem;lang:string;meaningLang:string;last:boolean;onAnswer:(v:Answered['verdict'])=>void;onNext:()=>void}){
+  const P=T.practice,[input,setInput]=useState(''),[result,setResult]=useState<Answered['verdict']|null>(null),[expected,setExpected]=useState(''),[picked,setPicked]=useState(-1);
+  const [shown,setShown]=useState(false);
+  const nextRef=useRef<HTMLButtonElement|null>(null);
+  useEffect(()=>{if(result)nextRef.current?.focus({preventScroll:true});},[result]);
+  if(item.kind==='dictation')return null;
+  const finish=(v:Answered['verdict'],exp:string)=>{setResult(v);setExpected(exp);onAnswer(v);};
+  const check=(e:FormEvent)=>{e.preventDefault();if(result||item.kind==='meaning')return;
+    const r=checkAnswer(input,item.accepted,item.kind==='cloze'?lang:'und');finish(r.verdict,r.verdict==='wrong'?item.answer:r.expected);};
+  const typed=item.kind==='cloze'||item.kind==='comprehension';
+  const inputLang=item.kind==='cloze'?lang:undefined;
+  return <section className="practice-q">
+    <span className="kind-badge">{P.kind[item.kind]}</span>
+    {item.kind==='cloze'&&<><p className="practice-prompt" dir={dirOf(lang)} lang={lang}>{item.parts.map((part,i)=><span key={i}>{part}{i<item.parts.length-1&&<span className={'blank'+(result?' filled':'')}>{result?item.answer:<span className="visually-hidden">{P.blank}</span>}</span>}</span>)}</p>
+      <p className="practice-hint"><small>{P.hint}</small> <span dir={dirOf(meaningLang)} lang={meaningLang}>{item.hint}</span></p></>}
+    {item.kind==='comprehension'&&<p className="practice-prompt question" dir="auto">{item.question}</p>}
+    {item.kind==='meaning'&&<><p className="practice-prompt term-prompt" dir={dirOf(lang)} lang={lang}>{item.term}</p>
+      {item.options?<div className="practice-options" role="group" aria-label={P.chooseMeaning}>{item.options.map((o,i)=>{
+          const cls=result?(i===item.correct?' right':i===picked?' wrong':''):'';
+          return <button type="button" key={i} className={'practice-option'+cls} disabled={!!result} dir={dirOf(meaningLang)} lang={meaningLang}
+            onClick={()=>{setPicked(i);finish(i===item.correct?'correct':'wrong',item.answer);}}>{o}</button>;})}</div>
+      :!shown?<button type="button" className="btn btn-ink reveal" onClick={()=>setShown(true)}>{P.showMeaning}</button>
+      :<div className="answer"><strong dir={dirOf(meaningLang)} lang={meaningLang}>{item.answer}</strong>
+        {!result&&<div className="btn-row"><button type="button" className="btn btn-save" onClick={()=>finish('knew','')}><Check size={16}/>{P.knew}</button>
+          <button type="button" className="btn btn-quiet" onClick={()=>finish('missed','')}>{P.missed}</button></div>}</div>}</>}
+    {typed&&!result&&<form className="practice-answer field" onSubmit={check} noValidate>
+      <label className="visually-hidden" htmlFor="practice-input">{P.yourAnswer}</label>
+      <input id="practice-input" dir={inputLang?dirOf(inputLang):'auto'} lang={inputLang} value={input} onChange={e=>setInput(e.target.value)} placeholder={P.yourAnswer}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} enterKeyHint="done"/>
+      <div className="btn-row"><button type="submit" className="btn btn-ink" disabled={!input.trim()}>{P.check}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>finish('revealed',item.answer)}>{P.reveal}</button></div>
+    </form>}
+    {result&&<Feedback verdict={result} expected={expected} lang={item.kind==='cloze'?lang:item.kind==='meaning'?meaningLang:undefined}/>}
+    {result&&item.kind==='comprehension'&&item.quote&&<p className="practice-source"><small>{P.source}</small> <q dir={dirOf(lang)} lang={lang}>{item.quote}</q></p>}
+    {result&&<button ref={nextRef} type="button" className="btn btn-ink practice-next" onClick={onNext}>{last?P.seeResult:P.next}</button>}
+  </section>;
+}
+/** One calm line: what happened, and the right form when it helps. */
+function Feedback({verdict,expected,lang}:{verdict:Answered['verdict'];expected:string;lang?:string}){
+  const P=T.practice,good=verdict==='correct'||verdict==='knew';
+  const text=verdict==='correct'?P.correct:verdict==='knew'?P.knewIt:verdict==='accent'?P.almost:verdict==='revealed'?P.answerIs:verdict==='missed'?P.nextTime:P.notQuite;
+  return <p className={'practice-feedback '+(good?'good':verdict==='accent'?'close':'bad')} role="status">
+    <b>{text}</b>{!good&&expected&&<> <span dir={lang?dirOf(lang):'auto'} lang={lang}>{expected}</span></>}</p>;
+}
+
+type FactDraft={key:string;id?:string;question:string;answer:string;alternatives:string;quote:string};
+const newFact=():FactDraft=>({key:crypto.randomUUID(),question:'',answer:'',alternatives:'',quote:''});
+/** Create or edit a passage. Facts are optional: comprehension practice (#22) only ever asks these, never invented ones. */
+function PassageEditor({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string;id:string|null;lib:Library;passages:Passage[];onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void}){
+  const Tx=T.texts,deck=lib.decks.find(d=>d.id===deckId),old=id?passages.find(p=>p.id===id&&p.deckId===deckId):undefined;
+  const [title,setTitle]=useState(old?.title??''),[body,setBody]=useState(old?.body??''),[lang,setLang]=useState(old?.contentLanguage??deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE);
+  const [translation,setTranslation]=useState(old?.translation??''),[showTr,setShowTr]=useState(!!old?.translation);
+  const [facts,setFacts]=useState<FactDraft[]>(()=>old?.questions.map(q=>({key:q.id,id:q.id,question:q.question,answer:q.answer,alternatives:q.alternatives.join('، '),quote:q.quote}))??[]);
+  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const bodyRef=useRef<HTMLTextAreaElement|null>(null);
+  // #42: the editor counts as «changed» once anything differs from what it opened with; leaving then asks first.
+  const snapshot=()=>JSON.stringify([title,body,lang,showTr?translation:'',facts.map(({key:_k,...f})=>f)]);
+  const [initial]=useState(snapshot);
+  const changed=snapshot()!==initial;
+  useLayoutEffect(()=>{const el=bodyRef.current;if(el){el.style.height='auto';el.style.height=Math.max(160,el.scrollHeight)+'px';}},[body]);
+  if(!deck||(id&&!old))return <NotFound go={go}/>;
+  const setFact=(i:number,patch:Partial<FactDraft>)=>setFacts(fs=>fs.map((f,j)=>j===i?{...f,...patch}:f));
+  async function submit(e:FormEvent){
+    e.preventDefault();if(busy)return;setError('');setBusy(true);
+    const questions=facts.filter(f=>f.question.trim()||f.answer.trim()||f.quote.trim()).map(f=>({id:f.id,question:f.question,answer:f.answer,quote:f.quote,alternatives:f.alternatives.split(/[,،\n]/).map(a=>a.trim()).filter(Boolean)}));
+    try{
+      const input={deckId,title,body,contentLanguage:lang,translation:showTr?translation:'',questions};
+      const saved=old?await updatePassage(old.id,input):await createPassage(input);
+      await onChanged();notify(Tx.saved(saved.title));go(passagePath(deckId,saved.id));
+    }catch(err){setError(getError(err));}finally{setBusy(false);}
+  }
+  return <div className="page library passage-editor">
+    <PageHead title={old?Tx.editTitle:Tx.newTitle} lead={Tx.editorLead}/>
+    <form className="add-form" onSubmit={e=>void submit(e)} data-unsaved={changed&&!busy?'true':undefined} noValidate>
+      <div className="field"><label htmlFor="passage-title">{Tx.titleLabel}</label><input id="passage-title" dir="auto" maxLength={PASSAGE_LIMITS.title} value={title} onChange={e=>setTitle(e.target.value)} placeholder={Tx.titlePh} autoFocus={!old}/></div>
+      <div className="field"><label htmlFor="passage-lang">{Tx.langLabel}</label><LanguageSelect id="passage-lang" value={lang} onChange={setLang}/></div>
+      <div className="field"><label htmlFor="passage-body">{Tx.bodyLabel}</label>
+        <textarea ref={bodyRef} id="passage-body" className="passage-input" dir={dirOf(lang)} lang={lang} maxLength={PASSAGE_LIMITS.body} value={body} onChange={e=>setBody(e.target.value)} placeholder={Tx.bodyPh(lang)} spellCheck={false}/>
+        <small className="field-hint">{Tx.bodyHint(body.length,PASSAGE_LIMITS.body)}</small></div>
+      {showTr?<div className="field"><label htmlFor="passage-translation">{Tx.translationLabel}</label>
+          <div className="with-remove"><textarea id="passage-translation" dir="auto" rows={3} maxLength={PASSAGE_LIMITS.translation} value={translation} onChange={e=>setTranslation(e.target.value)}/>
+          <button type="button" className="icon-btn ghost" aria-label={Tx.removeTranslation} title={Tx.removeTranslation} onClick={()=>{setTranslation('');setShowTr(false);}}><X size={18}/></button></div></div>
+        :<div className="add-more-row"><button type="button" className="add-more" onClick={()=>setShowTr(true)}><Plus size={16}/>{Tx.addTranslation}</button></div>}
+      <fieldset className="facts-fields"><legend>{Tx.factsLegend}</legend><p className="field-hint">{Tx.factsHint}</p>
+        {facts.map((f,i)=><div key={f.key} className="fact-card">
+          <div className="fact-head"><b>{Tx.factN(i+1)}</b><button type="button" className="icon-btn ghost" aria-label={Tx.removeFact(i+1)} title={Tx.removeFact(i+1)} onClick={()=>setFacts(fs=>fs.filter((_,j)=>j!==i))}><X size={18}/></button></div>
+          <div className="field"><label htmlFor={'fq-'+i}>{Tx.question}</label><input id={'fq-'+i} dir="auto" maxLength={PASSAGE_LIMITS.question} value={f.question} onChange={e=>setFact(i,{question:e.target.value})} placeholder={Tx.questionPh}/></div>
+          <div className="field"><label htmlFor={'fa-'+i}>{Tx.answer}</label><input id={'fa-'+i} dir="auto" maxLength={PASSAGE_LIMITS.answer} value={f.answer} onChange={e=>setFact(i,{answer:e.target.value})} placeholder={Tx.answerPh}/></div>
+          <div className="field"><label htmlFor={'fl-'+i}>{Tx.alternatives}</label><input id={'fl-'+i} dir="auto" value={f.alternatives} onChange={e=>setFact(i,{alternatives:e.target.value})}/></div>
+          <div className="field"><label htmlFor={'fs-'+i}>{Tx.quote}</label><input id={'fs-'+i} dir={dirOf(lang)} lang={lang} maxLength={PASSAGE_LIMITS.quote} value={f.quote} onChange={e=>setFact(i,{quote:e.target.value})}/></div>
+        </div>)}
+        {facts.length<PASSAGE_LIMITS.questions&&<div className="add-more-row"><button type="button" className="add-more" onClick={()=>setFacts(fs=>[...fs,newFact()])}><Plus size={16}/>{Tx.addFact}</button></div>}
+      </fieldset>
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      <div className="form-foot"><button type="submit" className="btn btn-save" disabled={busy}>{busy?Tx.saving:Tx.save}</button>
+        <button type="button" className="btn btn-quiet" onClick={()=>go(old?passagePath(deckId,old.id):textsPath(deckId))}>{Tx.cancel}</button></div>
+    </form>
   </div>;
 }
 
@@ -697,13 +1090,16 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
   const C=T.card,open=!!word;
   const [term,setTerm]=useState(''),[meanings,setMeanings]=useState<string[]>([]),[example,setExample]=useState(''),[translation,setTranslation]=useState(''),[note,setNote]=useState('');
   const {busy,error,run}=useSheetAction(open);
-  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}},[word]);
+  // #42: «changed» is judged only once the fields hold this card's text — never in the first render, before they are filled.
+  const [loadedId,setLoadedId]=useState<string|null>(null);
+  useEffect(()=>{if(word){setTerm(word.term);setMeanings([...word.meanings]);setExample(word.example);setTranslation(word.translation);setNote(word.note);}setLoadedId(word?.id??null);},[word]);
   if(!word)return <FormSheet open={false} title="" onClose={onClose} onSubmit={()=>undefined} submit="" busy error=""><span/></FormSheet>;
   const f=T.kindForm[word.contentType],has={example:!!f.example||!!word.example,translation:!!f.translation||!!word.translation,note:!!f.note||!!word.note};
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
-  return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}>
-    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" dir={dirOf(lang)} lang={lang} autoFocus maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
-    {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} dir="auto" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
+  return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}
+    dirty={loadedId===word.id&&(term!==word.term||meanings.join('\n')!==word.meanings.join('\n')||example!==word.example||translation!==word.translation||note!==word.note)}>
+    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={dirOf(lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
+    {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} name={'edit-meaning-'+i} dir="auto" autoComplete="off" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
     {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
     {has.translation&&<div className="field"><label htmlFor="edit-translation">{f.translation?.label||C.translation}</label><textarea id="edit-translation" dir="auto" maxLength={400} value={translation} onChange={e=>setTranslation(e.target.value)}/></div>}
     {has.note&&<div className="field"><label htmlFor="edit-note">{f.note?.label||T.library.noteFallback}</label><textarea id="edit-note" dir="auto" maxLength={NOTE_LIMIT} value={note} onChange={e=>setNote(e.target.value)}/></div>}
@@ -712,15 +1108,52 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
 }
 
 /* ── Sheets (native <dialog>: focus trap, Esc, backdrop) ── */
-function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode}){
+const isTouch=()=>window.matchMedia?.('(pointer:coarse)').matches??false;
+/** #43: after the on-screen keyboard settles, keep the focused field inside the part of the sheet the user can see. */
+function keepFieldVisible(e:ReactFocusEvent){
+  const el=e.target as HTMLElement;if(!el.matches('input,textarea,select')||!isTouch())return;
+  setTimeout(()=>{if(document.activeElement===el)el.scrollIntoView({block:'nearest',inline:'nearest'});},320);
+}
+/**
+ * #43: publishes the on-screen keyboard height (--kb) and the visible height (--vvh) as CSS variables.
+ * iOS (Safari and the installed PWA) does not shrink the layout viewport for the keyboard, so a bottom sheet
+ * anchored to the layout bottom ends up behind it; the sheet CSS lifts itself by --kb and caps its height to --vvh.
+ */
+function useKeyboardInset(){
+  useEffect(()=>{
+    const vv=window.visualViewport;if(!vv)return;
+    const root=document.documentElement;let raf=0;
+    const set=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{
+      const kb=Math.max(0,Math.round(window.innerHeight-vv.height-vv.offsetTop));
+      root.style.setProperty('--kb',(kb>60?kb:0)+'px');root.style.setProperty('--vvh',Math.round(vv.height)+'px');
+      root.classList.toggle('kb-open',kb>60);
+    });};
+    set();vv.addEventListener('resize',set);vv.addEventListener('scroll',set);window.addEventListener('orientationchange',set);document.addEventListener('visibilitychange',set);
+    return()=>{cancelAnimationFrame(raf);vv.removeEventListener('resize',set);vv.removeEventListener('scroll',set);window.removeEventListener('orientationchange',set);document.removeEventListener('visibilitychange',set);};
+  },[]);
+}
+function FormSheet({open,title,onClose,onSubmit,submit,busy,error,children,extra,dirty=false}:{open:boolean;title:string;onClose:()=>void;onSubmit:()=>void;submit:string;busy:boolean;error:string;children:ReactNode;extra?:ReactNode;dirty?:boolean}){
   const ref=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{const d=ref.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
-  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby={ref.current?undefined:'fs-title'}>
-    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} noValidate>
-      <h2 id="fs-title">{title}</h2>
+  /** #42: Cancel, Esc and Back never drop typed text silently. */
+  const cancel=()=>{if(dirty)askLeave(onClose);else onClose();};
+  useEffect(()=>{
+    const d=ref.current;if(!d)return;
+    if(open&&!d.open){
+      // #43: on a phone, focusing the field inside showModal() raises the keyboard over the sheet before it is even seen.
+      // Touch: focus the title (the sheet is read first, the field is one tap away). Mouse/keyboard: focus the first field.
+      const target=isTouch()?d.querySelector<HTMLElement>('h2'):d.querySelector<HTMLElement>('input,textarea,select');
+      d.querySelectorAll('[autofocus]').forEach(e=>e.removeAttribute('autofocus'));
+      target?.setAttribute('autofocus','');
+      d.showModal();target?.focus({preventScroll:true});d.scrollTop=0;
+    }
+    if(!open&&d.open)d.close();
+  },[open]);
+  return <dialog ref={ref} className="sheet form-sheet" onCancel={e=>{e.preventDefault();cancel();}} aria-labelledby="fs-title">
+    {open&&<form onSubmit={e=>{e.preventDefault();onSubmit();}} onFocus={keepFieldVisible} data-unsaved={dirty&&!busy?'true':undefined} noValidate>
+      <h2 id="fs-title" tabIndex={-1}>{title}</h2>
       <div className="sheet-fields">{children}</div>
       {error&&<p className="inline-error" role="alert">{error}</p>}
-      <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={onClose}>{T.lib.cancel}</button></div>
+      <div className="sheet-actions"><button type="submit" className="btn btn-ink" disabled={busy}>{submit}</button><button type="button" className="btn btn-quiet" onClick={cancel}>{T.lib.cancel}</button></div>
       {extra}
     </form>}
   </dialog>;
@@ -734,8 +1167,8 @@ function useSheetAction(open:boolean){
 function NameSheet({open,title,label,placeholder,initial='',submit,onSubmit,onClose,extra}:{open:boolean;title:string;label:string;placeholder:string;initial?:string;submit:string;onSubmit:(name:string)=>Promise<void>;onClose:()=>void;extra?:ReactNode}){
   const [name,setName]=useState(initial),{busy,error,run}=useSheetAction(open);
   useEffect(()=>{if(open)setName(initial);},[open,initial]);
-  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra}>
-    <div className="field"><label htmlFor="sheet-name">{label}</label><input id="sheet-name" dir="auto" autoFocus maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(name))} submit={submit} busy={busy} error={error} extra={extra} dirty={name.trim()!==initial.trim()}>
+    <div className="field"><label htmlFor="folder-title">{label}</label><input id="folder-title" name="folder-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)}/></div>
   </FormSheet>;
 }
 type DeckForm={name:string;folderId:string;contentLanguage:string;meaningLanguage:string};
@@ -749,8 +1182,8 @@ function DeckSheet({open,title,lib,deck,submit,onSubmit,onClose,extra}:{open:boo
   const [v,setV]=useState<DeckForm>(blank),{busy,error,run}=useSheetAction(open);
   useEffect(()=>{if(open)setV(blank());},[open]); // eslint-disable-line react-hooks/exhaustive-deps
   const set=(k:keyof DeckForm)=>(x:string)=>setV(o=>({...o,[k]:x}));
-  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra}>
-    <div className="field"><label htmlFor="deck-name">{L.nameLabel}</label><input id="deck-name" dir="auto" autoFocus maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
+  return <FormSheet open={open} title={title} onClose={onClose} onSubmit={()=>void run(()=>onSubmit(v))} submit={submit} busy={busy} error={error} extra={extra} dirty={JSON.stringify(v)!==JSON.stringify(blank())}>
+    <div className="field"><label htmlFor="deck-title">{L.nameLabel}</label><input id="deck-title" name="deck-title" dir="auto" autoComplete="off" autoCorrect="off" enterKeyHint="done" maxLength={60} placeholder={L.deckNamePh} value={v.name} onChange={e=>set('name')(e.target.value)}/></div>
     {deck&&<div className="field"><label htmlFor="deck-folder">{L.folderLabel}</label><select id="deck-folder" className="select" value={v.folderId} onChange={e=>set('folderId')(e.target.value)}>{lib.folders.map(f=><option key={f.id} value={f.id}>{folderName(f)}</option>)}</select></div>}
     <div className="field"><label htmlFor="deck-content-lang">{L.contentLang}</label><LanguageSelect id="deck-content-lang" value={v.contentLanguage} onChange={set('contentLanguage')}/><p className="hint">{L.langHint}</p></div>
     <div className="field"><label htmlFor="deck-meaning-lang">{L.meaningLang}</label><LanguageSelect id="deck-meaning-lang" value={v.meaningLanguage} onChange={set('meaningLanguage')}/></div>
@@ -991,25 +1424,109 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
   </dialog>;
 }
 
+/* ───────────── Back (#42) ───────────── */
+type BackTo={target:string;label:string};
+/** Human name of an in-app route, for «رجوع إلى …». */
+function routeLabel(route:string,lib:Library,passages:readonly Passage[]=[]):string{
+  const [h,...rest]=route.split('/'),page=(PAGES.includes(h as Page)?h:'home') as Page,sub=rest.join('/');
+  if(page==='words'){
+    const v=parseLibrary(sub);
+    if(v.kind==='folder'){const f=lib.folders.find(x=>x.id===v.id);if(f)return folderName(f);}
+    if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);if(d)return deckName(d);}
+    if(v.kind==='texts')return T.texts.title;
+    if(v.kind==='passage'){const p=passages.find(x=>x.id===v.id);if(p)return p.title;}
+  }
+  return T.nav[page];
+}
+/**
+ * Where «رجوع» leads from each screen: a clear parent when there is one (folder → library, deck → its folder,
+ * add-to-deck → that deck, scoped review → its folder/deck); otherwise the previous in-app screen, or Home.
+ * Top-level tabs (Home, Library, Progress) have no Back — the tab bar is their navigation.
+ */
+function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]):BackTo|null{
+  const to=(target:string):BackTo=>({target,label:routeLabel(target,lib,passages)});
+  const previousOr=(fallback:string)=>{const p=previousRoute();return to(p!==null&&p!==currentRoute()?p:fallback);};
+  if(page==='words'){
+    const v=parseLibrary(sub);
+    if(v.kind==='folder')return to('words');
+    // #21: texts → their deck; a text → the deck's texts; the editor → the text (or the list for a new one).
+    if(v.kind==='texts')return to(deckPath(v.deckId));
+    if(v.kind==='passage')return to(textsPath(v.deckId));
+    if(v.kind==='practice')return to(passagePath(v.deckId,v.id));
+    if(v.kind==='passageEdit')return to(v.id&&passages.some(p=>p.id===v.id)?passagePath(v.deckId,v.id):textsPath(v.deckId));
+    if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);return to(d&&lib.folders.some(f=>f.id===d.folderId)?folderPath(d.folderId):'words');}
+    return null;
+  }
+  if(page==='add'){const id=decodeURIComponent(sub);return id&&lib.decks.some(d=>d.id===id)?to(deckPath(id)):previousOr('');}
+  if(page==='review'){
+    const [k,raw]=sub.split('/'),id=raw?decodeURIComponent(raw):'';
+    if(k==='d'&&lib.decks.some(d=>d.id===id))return to(deckPath(id));
+    if(k==='f'&&lib.folders.some(f=>f.id===id))return to(folderPath(id));
+    return previousOr('');
+  }
+  if(page==='settings')return previousOr('');
+  return null;
+}
+function BackBar({back}:{back:BackTo}){
+  const label=T.backTo(back.label);
+  return <nav className="backbar" aria-label={T.backNav}>
+    <button type="button" className="back-btn" aria-label={label} onClick={()=>guardLeave(()=>stepBackTo(back.target))}>
+      <BackArrow size={20}/><span className="back-word">{T.back}</span><span className="back-dest" dir="auto">{back.label}</span>
+    </button>
+  </nav>;
+}
+
+/* ───────────── App update (#41) ───────────── */
+/** A calm card above the tab bar when a new version is ready. One action; «لاحقًا» hides it until the next launch. */
+function UpdatePrompt(){
+  const U=T.update;
+  const [status,setStatus]=useState<UpdateStatus>(updateStatus);
+  useEffect(()=>onUpdateStatus(setStatus),[]);
+  if(status==='idle')return null;
+  const now=()=>guardLeave(applyUpdate); // unsaved text first asks (#42); nothing reloads by itself
+  return <section className={'update-card'+(status==='failed'?' failed':'')} role="status" aria-live="polite" aria-labelledby="upd-title">
+    <span className="update-icon" aria-hidden="true"><RotateCcw size={18}/></span>
+    <div className="update-text">
+      <b id="upd-title">{status==='elsewhere'?U.elsewhereTitle:U.title}</b>
+      <small>{status==='failed'?U.failed:status==='elsewhere'?U.elsewhereBody:status==='updating'?U.updating:U.body}</small>
+    </div>
+    <div className="update-actions">
+      <button type="button" className="btn btn-ink sm" onClick={now} disabled={status==='updating'} aria-busy={status==='updating'||undefined}>
+        {status==='failed'?U.retry:status==='elsewhere'?U.reload:U.now}</button>
+      {status!=='updating'&&<button type="button" className="btn btn-quiet sm" onClick={dismissUpdate}>{U.later}</button>}
+    </div>
+  </section>;
+}
+
 /* ───────────── Shell ───────────── */
 export default function App(){
   const [locale,setLocaleState]=useState<Locale>(storedLocale);
   T=dictionaries[locale];
-  const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const [page,setPage]=useState<Page>(readHash),[sub,setSub]=useState(readSub),[lib,setLib]=useState<Library>({folders:[],decks:[]}),[words,setWords]=useState<Word[]>([]),[reviews,setReviews]=useState<Review[]>([]),[passages,setPassages]=useState<Passage[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');
   const [online,setOnline]=useState(()=>navigator.onLine),[toast,setToast]=useState<{id:number;text:string;tone:'ok'|'error'}|null>(null),[lastBackup,setLastBackup]=useState<string|null>(null),[installPrompt,setInstallPrompt]=useState<InstallPrompt|null>(null);
   const first=useRef(true);
+  useKeyboardInset();
   const latest=useRef(0),[loadedOnce,setLoadedOnce]=useState(false);
   const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
     // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.
     const ticket=++latest.current;
-    try{const [w,r,l]=await Promise.all([listWords(),listReviews(),listLibrary()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
+    try{const [w,r,l,p]=await Promise.all([listWords(),listReviews(),listLibrary(),listPassages()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setPassages(p);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
     catch(e){if(ticket===latest.current)setError(getError(e));return null;}
     finally{if(ticket===latest.current)setLoading(false);}
   },[]);
   useEffect(()=>{
     void fetchLocal();void lastBackupDate().then(setLastBackup).catch(()=>null);
     // #4: iOS PWAs often resume without a window "focus" event, so also refresh on visibility/pageshow and on writes from other tabs.
-    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>{setPage(readHash());setSub(readSub());},on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
+    const focus=()=>{void fetchLocal();},visible=()=>{if(document.visibilityState==='visible')void fetchLocal();},hash=()=>{
+      // #42: Back gesture, browser Back or a link left a form with typed text: put the route back and ask first.
+      const next=currentRoute(),here=trail[trail.length-1];
+      if(here!==undefined&&next!==here&&hasUnsaved()&&Date.now()-leaveConfirmedAt>1500){
+        history.pushState(null,'','#/'+here);
+        askLeave(()=>{confirmLeave();if(previousRoute()===next)history.back();else{replacingRoute=true;window.location.replace('#/'+next);}});
+        return;
+      }
+      recordRoute();setPage(readHash());setSub(readSub());
+    },on=()=>{setOnline(true);void fetchLocal();},off=()=>setOnline(false);
     const stopListening=onOtherTabChange(()=>{void fetchLocal();});
     const bip=(e:Event)=>{e.preventDefault();setInstallPrompt(e as InstallPrompt);};
     window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',focus);window.addEventListener('hashchange',hash);window.addEventListener('online',on);window.addEventListener('offline',off);window.addEventListener('beforeinstallprompt',bip);
@@ -1030,8 +1547,12 @@ export default function App(){
   const notify=useCallback<Notify>((text,tone='ok')=>setToast({id:Date.now(),text,tone}),[]);
   useEffect(()=>{speechNotice=text=>notify(text,'error');},[notify]);
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});void syncPush(words).catch(console.warn); /* #30: notification language follows the interface */},[locale,words]);
-  const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}window.location.hash=to==='home'?'/':'/'+to;};
-  const go=useCallback((path:string)=>{window.location.hash='/'+path;},[]);
+  const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}guardLeave(()=>{window.location.hash=to==='home'?'/':'/'+to;});};
+  const go=useCallback((path:string)=>{guardLeave(()=>{window.location.hash='/'+path;});},[]);
+  // #42: one «unsaved changes» question for every way out (Back button, tabs, Back gesture, Cancel on a sheet).
+  const [leave,setLeave]=useState<{proceed:()=>void}|null>(null);
+  useEffect(()=>{askLeave=proceed=>setLeave({proceed});return()=>{askLeave=proceed=>proceed();};},[]);
+  const back=loading?null:backFor(page,sub,lib,passages);
   // #9 (contextual +): inside a deck, + adds a card to that deck directly, with no intermediate menu.
   const ctxView=page==='words'?parseLibrary(sub):null,ctxDeck=ctxView?.kind==='deck'&&lib.decks.some(d=>d.id===ctxView.id)?ctxView.id:null;
   const onAdd=(e:{currentTarget:HTMLElement})=>{if(ctxDeck)go('add/'+encodeURIComponent(ctxDeck));else openQuick(e);};
@@ -1049,7 +1570,7 @@ export default function App(){
   else content=page==='home'?<HomePage words={words} reviews={reviews} decks={lib.decks} lastBackup={lastBackup} onNavigate={navigate}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
-    :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
+    :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} passages={passages} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>
     :page==='stats'?<StatsPage words={words} reviews={reviews} onNavigate={navigate}/>
     :<SettingsPage words={words} online={online} lastBackup={lastBackup} setLastBackup={setLastBackup} installPrompt={installPrompt} onInstalled={()=>setInstallPrompt(null)} onRestored={fetchLocal} notify={notify} locale={locale} onLocale={changeLocale}/>;
 
@@ -1075,6 +1596,7 @@ export default function App(){
       {!online&&<p className="offline-note" role="status"><WifiOff size={15}/>{T.offlineNote}</p>}
       <main id="main" className="content" key={page}>
         {error&&loadedOnce&&<div className="banner" role="alert"><span>{error}</span><button type="button" className="icon-btn ghost" onClick={()=>setError('')} aria-label={T.close}><X size={16}/></button></div>}
+        {back&&<BackBar back={back}/>}
         {content}
       </main>
     </div>
@@ -1085,7 +1607,10 @@ export default function App(){
         return <button key={id} type="button" className={'tab'+(page===id?' on':'')} aria-current={page===id?'page':undefined} onClick={()=>navigate(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{T.nav[id]}</span></button>;
       })}
     </nav>
+    <ConfirmDialog open={!!leave} title={T.leave.title} body={T.leave.body} confirm={T.leave.yes} cancel={T.leave.stay}
+      onConfirm={()=>{const l=leave;setLeave(null);l?.proceed();}} onCancel={()=>setLeave(null)}/>
     <QuickActions open={quickOpen} onClose={closeQuick} due={due} nextDue={nextDue} returnFocus={quickReturn}/>
+    <UpdatePrompt/>
     <div className="toast-zone" aria-live="polite">{toast&&<div key={toast.id} className={'toast '+toast.tone} role={toast.tone==='error'?'alert':'status'}><span>{toast.text}</span><button type="button" className="icon-btn ghost" aria-label={T.closeToast} onClick={()=>setToast(null)}><X size={16}/></button></div>}</div>
   </div>;
 }

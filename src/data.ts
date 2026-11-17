@@ -21,7 +21,16 @@ export type Folder={id:string;name:string;createdAt:string;updatedAt:string};
 /** #15: a deck belongs to exactly one folder and holds cards of any kind. Languages are BCP-47 and independent of the UI locale. */
 export type Deck={id:string;folderId:string;name:string;contentLanguage:string;meaningLanguage:string;createdAt:string;updatedAt:string};
 /** Backup v3 (#15) adds folders, decks and each card's deckId. v1 and v2 files still import (into the default deck). */
-export type Backup={app:'wordloop';version:3;exportedAt:string;folders:Folder[];decks:Deck[];words:Word[];reviews:Review[]};
+/**
+ * #21 Learning Passage: a text inside a deck, read and listened to in Practice (#22/#23). One passage serves both.
+ * `questions` are learner-provided facts (question + trusted answer, optional accepted alternatives and an optional
+ * quote that must appear in the text): comprehension is only ever asked from these, never invented from free text.
+ */
+export type PassageQuestion={id:string;question:string;answer:string;alternatives:string[];quote:string};
+export type Passage={id:string;deckId:string;title:string;body:string;contentLanguage:string;translation:string;questions:PassageQuestion[];createdAt:string;updatedAt:string};
+export type PassageInput={deckId:string;title:string;body:string;contentLanguage?:string;translation?:string;questions?:{id?:string;question:string;answer:string;alternatives?:string[];quote?:string}[]};
+export const PASSAGE_LIMITS={title:80,body:5000,translation:5000,questions:30,question:300,answer:200,alternatives:5,quote:500} as const;
+export type Backup={app:'wordloop';version:4;exportedAt:string;folders:Folder[];decks:Deck[];words:Word[];reviews:Review[];passages:Passage[]};
 export const isContentType=(v:unknown):v is ContentType=>CONTENT_TYPES.includes(v as ContentType);
 /**
  * #15: fixed, well-known ids for the default folder and deck, so every device and every imported v1/v2 backup maps
@@ -102,6 +111,16 @@ async function transaction(stores:string|string[],mode:IDBTransactionMode):Promi
 /** Test-only: drop the cached connection so a fresh fake IndexedDB can be used. */
 export function resetConnectionForTests(){dbPromise=null;}
 async function getAll<T>(store:'words'|'reviews'):Promise<T[]>{return request((await transaction(store,'readonly')).objectStore(store).getAll()) as Promise<T[]>;}
+/**
+ * The one FSRS-7 scheduler configuration (unchanged values; previously repeated in addWord and reviewWord).
+ * Created once, before any transaction, so a review can read, schedule and write inside a single IndexedDB transaction.
+ */
+let schedulerPromise:ReturnType<typeof DefaultScheduler>|null=null;
+function scheduler(){return schedulerPromise??=DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});}
+/** Stored (JSON) FSRS state → the card object ts-fsrs expects (real Date objects); ts-fsrs validates the rest at runtime. */
+function toCard(raw:Record<string,unknown>):never{
+  return {...raw,dueAt:new Date(String(raw.dueAt)),lastReviewAt:raw.lastReviewAt?new Date(String(raw.lastReviewAt)):null} as never;
+}
 function settled(tx:IDBTransaction):Promise<void>{return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('تعذّر حفظ التغيير'));tx.onabort=()=>reject(tx.error||new Error('لم يكتمل الحفظ'));});}
 
 /* #4: other tabs/windows of the app refresh after any committed local write. Only a ping is sent, never word data. */
@@ -124,6 +143,11 @@ type LibraryRecord=({key:string;type:'folder'}&Folder)|({key:string;type:'deck'}
 const folderKey=(id:string)=>`folder:${id}`,deckKey=(id:string)=>`deck:${id}`;
 /** Exact key ranges for each kind, so nothing else in meta (e.g. `lastBackup`) is ever read or cleared as library data. */
 const LIBRARY_RANGES=()=>[IDBKeyRange.bound('deck:','deck:￿'),IDBKeyRange.bound('folder:','folder:￿')];
+const passageKey=(id:string)=>`passage:${id}`;
+const PASSAGE_RANGE=()=>IDBKeyRange.bound('passage:','passage:￿');
+const asPassage=({id,deckId,title,body,contentLanguage,translation,questions,createdAt,updatedAt}:Passage):Passage=>({id,deckId,title,body,contentLanguage,translation,
+  questions:questions.map(({id,question,answer,alternatives,quote})=>({id,question,answer,alternatives:[...alternatives],quote})),createdAt,updatedAt});
+async function readPassages(store:IDBObjectStore):Promise<Passage[]>{return (await request(store.getAll(PASSAGE_RANGE())) as Passage[]).map(asPassage);}
 function defaultFolder(at:string):Folder{return {id:DEFAULT_FOLDER_ID,name:DEFAULT_FOLDER_NAME,createdAt:at,updatedAt:at};}
 function defaultDeck(at:string):Deck{return {id:DEFAULT_DECK_ID,folderId:DEFAULT_FOLDER_ID,name:DEFAULT_DECK_NAME,contentLanguage:DEFAULT_CONTENT_LANGUAGE,meaningLanguage:DEFAULT_MEANING_LANGUAGE,createdAt:at,updatedAt:at};}
 const asFolder=({id,name,createdAt,updatedAt}:Folder):Folder=>({id,name,createdAt,updatedAt});
@@ -204,6 +228,7 @@ export async function deleteDeck(id:string):Promise<void>{
     if(!decks.some(d=>d.id===id))throw Error('لم نجد الحزمة');
     const words=(await request(tx.objectStore('words').getAll()) as StoredWord[]).map(normalizeWord);
     if(words.some(w=>w.deckId===id))throw Error('الحزمة فيها بطاقات، انقلها أولًا');
+    if((await readPassages(meta)).some(p=>p.deckId===id))throw Error('الحزمة فيها نصوص، احذفها أولًا');
     meta.delete(deckKey(id));
   });
 }
@@ -272,8 +297,7 @@ export async function addWord(data:NewCard):Promise<Word>{
   for(const k of ['contentLanguage','meaningLanguage'] as const){const v=data[k];if(v===undefined)continue;const c=canonicalLanguage(v);if(!c)throw Error('رمز اللغة غير صحيح');langs[k]=c;}
   if(deckId!==DEFAULT_DECK_ID&&!(await listLibrary()).decks.some(d=>d.id===deckId))throw Error('لم نجد الحزمة');
   const now=new Date(),id=crypto.randomUUID();
-  const scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
-  const fsrs=scheduler.newCard({cardId:id,now});
+  const fsrs=(await scheduler()).newCard({cardId:id,now});
   const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0,...langs};
   const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(word);await end;
   announceChange();return word;
@@ -304,39 +328,66 @@ export async function editWord(id:string,patch:CardEdit):Promise<Word>{
   }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
   await end;announceChange();return next;
 }
-export async function archiveWord(id:string):Promise<void>{const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');const w=await request<StoredWord|undefined>(store.get(id));if(!w){tx.abort();throw Error('لم نجد الكلمة');}store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});await end;announceChange();}
+export async function archiveWord(id:string):Promise<void>{
+  const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');
+  try{
+    const w=await request<StoredWord|undefined>(store.get(id));if(!w)throw Error('لم نجد الكلمة');
+    store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1: the abort is awaited, never an unhandled rejection
+  await end;announceChange();
+}
+/**
+ * Grade a due card. Reading the card, scheduling it and writing both stores happen in ONE readwrite transaction
+ * (audit M2): no other write — an edit, a move, a restore in another tab — can land between the read and the write,
+ * so a schedule is never computed from a stale card. The FSRS-7 configuration and results are unchanged.
+ */
 export async function reviewWord(id:string,grade:Grade):Promise<string>{
-  const readTx=await transaction('words','readonly');const stored=await request<StoredWord|undefined>(readTx.objectStore('words').get(id));const old=stored&&normalizeWord(stored);
-  if(!old||old.archived)throw Error('لم نجد الكلمة');
-  if(new Date(old.dueAt).getTime()>Date.now()+1000)throw Error('لم يحن وقت مراجعة هذه الكلمة');
-  const now=new Date(),scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
-  const raw=old.fsrsState;
-  const card={...raw,dueAt:new Date(String(raw.dueAt)),lastReviewAt:raw.lastReviewAt?new Date(String(raw.lastReviewAt)):null};
-  const result=scheduler.review({card:card as Parameters<typeof scheduler.review>[0]['card'],grade:ratings[grade],now});
-  const nextAt=result.card.dueAt.toISOString();
-  // Two stores committed in one atomic local transaction.
+  const fsrs=await scheduler(); // resolved before the transaction: nothing async but IndexedDB requests runs inside it
   const tx=await transaction(['words','reviews'],'readwrite'),end=settled(tx),store=tx.objectStore('words');
-  const existing=await request<StoredWord|undefined>(store.get(id));
-  if(!existing||existing.revision!==old.revision){tx.abort();throw Error('تغيرت هذه الكلمة في تبويب آخر، حدّث الصفحة');}
-  // Built on the record read inside this transaction, so a concurrent deck move (which keeps revision) is not undone.
-  store.put({...normalizeWord(existing),fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1});
-  tx.objectStore('reviews').put({id:crypto.randomUUID(),wordId:id,grade,reviewedAt:now.toISOString(),nextDueAt:nextAt} satisfies Review);
+  let nextAt:string;
+  try{
+    const stored=await request<StoredWord|undefined>(store.get(id));const old=stored&&normalizeWord(stored);
+    if(!old||old.archived)throw Error('لم نجد الكلمة');
+    if(new Date(old.dueAt).getTime()>Date.now()+1000)throw Error('لم يحن وقت مراجعة هذه الكلمة');
+    const now=new Date();
+    const result=fsrs.review({card:toCard(old.fsrsState),grade:ratings[grade],now});
+    nextAt=result.card.dueAt.toISOString();
+    // Built on the record read inside this transaction, so a concurrent deck move or edit is never undone.
+    store.put({...old,fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1});
+    tx.objectStore('reviews').put({id:crypto.randomUUID(),wordId:id,grade,reviewedAt:now.toISOString(),nextDueAt:nextAt} satisfies Review);
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1
   await end;announceChange();return nextAt;
 }
 function text(v:unknown,max:number):v is string{return typeof v==='string'&&v.length<=max;}
+const nonNegative=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+const count=(v:unknown)=>typeof v==='number'&&Number.isInteger(v)&&v>=0;
+/**
+ * Audit M1: an imported card must carry an FSRS-7 state the scheduler can grade — finite memory state
+ * (stability, stabilityFast, difficulty), a known state, whole-number counters and real dates. Otherwise the card
+ * would restore fine and then fail on every review, forever. (restoreBackup also dry-runs each one through the scheduler.)
+ */
+function validFsrsState(v:unknown,dueAt:string):boolean{
+  if(!v||typeof v!=='object'||Array.isArray(v))return false;
+  const s=v as Record<string,unknown>;
+  return text(s.dueAt,64)&&Number.isFinite(Date.parse(s.dueAt))&&s.dueAt===dueAt
+    &&nonNegative(s.stability)&&nonNegative(s.stabilityFast)&&nonNegative(s.difficulty)
+    &&[0,1,2,3].includes(s.state as number)&&count(s.reps)&&count(s.lapses)
+    &&(s.lastReviewAt===null||s.lastReviewAt===undefined||(text(s.lastReviewAt,64)&&Number.isFinite(Date.parse(s.lastReviewAt))))
+    &&(s.cardId===undefined||text(s.cardId,80))&&(s.scheduleStatus===undefined||text(s.scheduleStatus,20));
+}
 /** v1 cards have no kind (read as vocabulary); v2+ cards must carry a known kind; v3 cards must name a deck. */
-function validWord(w:unknown,version:1|2|3):w is StoredWord{
+function validWord(w:unknown,version:1|2|3|4):w is StoredWord{
   if(!w||typeof w!=='object')return false;
   const x=w as Partial<StoredWord>;
   if(version>=2?!isContentType(x.contentType):x.contentType!==undefined&&!isContentType(x.contentType))return false;
-  if(version===3&&!(text(x.deckId,80)&&x.deckId.length>0))return false;
+  if(version>=3&&!(text(x.deckId,80)&&x.deckId.length>0))return false;
   // #26: an optional meanings list must be well-formed; the legacy single meaning stays required in every version.
   if(x.meanings!==undefined&&!storedMeanings(x.meanings))return false;
   if(x.contentLanguage!==undefined&&!canonicalLanguage(x.contentLanguage))return false;
   if(x.meaningLanguage!==undefined&&!canonicalLanguage(x.meaningLanguage))return false;
   if(x.note!==undefined&&!text(x.note,NOTE_LIMIT))return false;
   const kind=isContentType(x.contentType)?x.contentType:'vocabulary';
-  return text(x.id,80)&&text(x.term,TERM_LIMIT[kind])&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&typeof x.fsrsState==='object'&&!!x.fsrsState&&!Array.isArray(x.fsrsState)&&text((x.fsrsState as Record<string,unknown>).dueAt,64)&&Number.isFinite(Date.parse(String((x.fsrsState as Record<string,unknown>).dueAt)))&&x.dueAt===(x.fsrsState as Record<string,unknown>).dueAt;
+  return text(x.id,80)&&text(x.term,TERM_LIMIT[kind])&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&validFsrsState(x.fsrsState,x.dueAt);
 }
 function validReview(r:unknown):r is Review{
   if(!r||typeof r!=='object')return false;
@@ -352,6 +403,34 @@ function validDeck(d:unknown):d is Deck{
   if(!d||typeof d!=='object')return false;const x=d as Partial<Deck>;
   return text(x.id,80)&&x.id.length>0&&text(x.folderId,80)&&text(x.name,NAME_LIMIT)&&x.name.trim().length>0&&!!canonicalLanguage(x.contentLanguage)&&!!canonicalLanguage(x.meaningLanguage)&&validStamp(x.createdAt)&&validStamp(x.updatedAt);
 }
+/** A trimmed, single-spaced comparison key for checking that a quote really appears in the passage. */
+const flat=(v:string)=>v.normalize('NFC').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+/** Cleans and checks a passage (from the form). Throws a learner-readable message. */
+function cleanPassage(input:PassageInput,deck:Deck,base?:Passage):Passage{
+  const L=PASSAGE_LIMITS,clean=(v:unknown,max:number,required=false)=>{const t=String(v??'').trim();if(required&&!t)throw Error('اكتب عنوانًا ونصًا أولًا');if(t.length>max)throw Error('أحد النصوص أطول من اللازم');return t;};
+  const title=clean(input.title,L.title,true).replace(/\s+/g,' '),body=clean(input.body,L.body,true).replace(/\r\n?/g,'\n');
+  const contentLanguage=input.contentLanguage===undefined?(base?.contentLanguage??deck.contentLanguage):languageOrThrow(input.contentLanguage);
+  const translation=clean(input.translation,L.translation);
+  const raw=input.questions??base?.questions??[];
+  if(raw.length>L.questions)throw Error('عدد الأسئلة أكثر من المسموح');
+  const questions=raw.map((q,i)=>{
+    const question=clean(q.question,L.question),answer=clean(q.answer,L.answer),quote=clean(q.quote,L.quote);
+    if(!question||!answer)throw Error(`السؤال ${i+1}: اكتب السؤال وإجابته`);
+    const alternatives=[...new Set((q.alternatives??[]).map(a=>clean(a,L.answer)).filter(a=>a&&flat(a)!==flat(answer)))];
+    if(alternatives.length>L.alternatives)throw Error('عدد الإجابات البديلة أكثر من المسموح');
+    if(quote&&!flat(body).includes(flat(quote)))throw Error(`السؤال ${i+1}: المقتطف لازم يكون من النص نفسه`);
+    return {id:typeof q.id==='string'&&q.id?q.id:crypto.randomUUID(),question,answer,alternatives,quote};
+  });
+  const at=new Date().toISOString();
+  return {id:base?.id??crypto.randomUUID(),deckId:deck.id,title,body,contentLanguage,translation,questions,createdAt:base?.createdAt??at,updatedAt:at};
+}
+function validPassage(p:unknown):p is Passage{
+  if(!p||typeof p!=='object')return false;const x=p as Partial<Passage>,L=PASSAGE_LIMITS;
+  return text(x.id,80)&&x.id.length>0&&text(x.deckId,80)&&text(x.title,L.title)&&x.title.trim().length>0&&text(x.body,L.body)&&x.body.trim().length>0&&!!canonicalLanguage(x.contentLanguage)
+    &&text(x.translation,L.translation)&&validStamp(x.createdAt)&&validStamp(x.updatedAt)&&Array.isArray(x.questions)&&x.questions.length<=L.questions
+    &&x.questions.every(q=>!!q&&typeof q==='object'&&text(q.id,80)&&q.id.length>0&&text(q.question,L.question)&&q.question.trim().length>0&&text(q.answer,L.answer)&&q.answer.trim().length>0
+      &&Array.isArray(q.alternatives)&&q.alternatives.length<=L.alternatives&&q.alternatives.every(a=>text(a,L.answer))&&text(q.quote,L.quote)&&(!q.quote||flat(x.body as string).includes(flat(q.quote))));
+}
 /**
  * Validates a backup file completely before anything local is touched. v1/v2 files predate folders, so their cards
  * go to the default deck; v3 must be internally consistent (every deck in a known folder, every card in a known deck).
@@ -359,15 +438,17 @@ function validDeck(d:unknown):d is Deck{
  */
 export function validateBackup(data:unknown):Backup{
   if(!data||typeof data!=='object')throw Error('هذا الملف ليس نسخة WordLoop');
-  const v=data as {app?:unknown;version?:unknown;exportedAt?:unknown;words?:unknown;reviews?:unknown;folders?:unknown;decks?:unknown};
-  if(v.app!=='wordloop'||(v.version!==1&&v.version!==2&&v.version!==3)||!Array.isArray(v.words)||!Array.isArray(v.reviews))throw Error('صيغة الملف غير مدعومة');
-  if(v.version===3&&(!Array.isArray(v.folders)||!Array.isArray(v.decks)))throw Error('صيغة الملف غير مدعومة');
+  const v=data as {app?:unknown;version?:unknown;exportedAt?:unknown;words?:unknown;reviews?:unknown;folders?:unknown;decks?:unknown;passages?:unknown};
+  if(v.app!=='wordloop'||(v.version!==1&&v.version!==2&&v.version!==3&&v.version!==4)||!Array.isArray(v.words)||!Array.isArray(v.reviews))throw Error('صيغة الملف غير مدعومة');
+  if(v.version>=3&&(!Array.isArray(v.folders)||!Array.isArray(v.decks)))throw Error('صيغة الملف غير مدعومة');
+  if(v.version===4&&!Array.isArray(v.passages))throw Error('صيغة الملف غير مدعومة');
+  if(Array.isArray(v.passages)&&v.passages.length>5000)throw Error('هذا الملف أكبر من الحد المسموح');
   if(v.words.length>50000||v.reviews.length>500000||(Array.isArray(v.folders)&&v.folders.length>1000)||(Array.isArray(v.decks)&&v.decks.length>5000))throw Error('هذا الملف أكبر من الحد المسموح');
   const version=v.version;
   if(!v.words.every(w=>validWord(w,version))||!v.reviews.every(validReview))throw Error('بعض البيانات في الملف غير صحيحة');
   const at=validStamp(v.exportedAt)?v.exportedAt:new Date().toISOString();
   let folders:Folder[],decks:Deck[],words:Word[];
-  if(version===3){
+  if(version>=3){
     if(!(v.folders as unknown[]).every(validFolder)||!(v.decks as unknown[]).every(validDeck))throw Error('بعض البيانات في الملف غير صحيحة');
     // Only known fields are kept, with canonical language tags. The default folder/deck are added if a file lacks them.
     folders=(v.folders as Folder[]).map(asFolder);
@@ -386,25 +467,37 @@ export function validateBackup(data:unknown):Backup{
     words=(v.words as StoredWord[]).map(w=>({...normalizeWord(w),deckId:DEFAULT_DECK_ID}));
   }
   const reviews=v.reviews as Review[];
+  // #21: passages exist from v4; older files simply have none.
+  if(version===4&&!(v.passages as unknown[]).every(validPassage))throw Error('بعض البيانات في الملف غير صحيحة');
+  const passages=version===4?(v.passages as Passage[]).map(p=>({...asPassage(p),contentLanguage:canonicalLanguage(p.contentLanguage)!})):[];
   const folderIds=new Set(folders.map(f=>f.id)),deckIds=new Set(decks.map(d=>d.id)),wordIds=new Set(words.map(w=>w.id)),reviewIds=new Set(reviews.map(r=>r.id));
   if(wordIds.size!==words.length||reviewIds.size!==reviews.length||reviews.some(r=>!wordIds.has(r.wordId)))throw Error('توجد بيانات مكررة أو مراجعات بلا كلمات');
   if(folderIds.size!==folders.length||deckIds.size!==decks.length||decks.some(d=>!folderIds.has(d.folderId))||words.some(w=>!deckIds.has(w.deckId)))throw Error('بعض البيانات في الملف غير صحيحة');
-  return {app:'wordloop',version:3,exportedAt:at,folders,decks,words,reviews};
+  if(new Set(passages.map(p=>p.id)).size!==passages.length||passages.some(p=>!deckIds.has(p.deckId)))throw Error('بعض البيانات في الملف غير صحيحة');
+  return {app:'wordloop',version:4,exportedAt:at,folders,decks,words,reviews,passages};
 }
 export async function buildBackup():Promise<Backup>{
   const {folders,decks}=await listLibrary();
-  return {app:'wordloop',version:3,exportedAt:new Date().toISOString(),folders,decks,words:await listWords(),reviews:await listReviews()};
+  return {app:'wordloop',version:4,exportedAt:new Date().toISOString(),folders,decks,words:await listWords(),reviews:await listReviews(),passages:await listPassages()};
 }
-/** Replaces cards, reviews, folders and decks in one transaction. Other meta (the last-backup date) is kept. */
+/** Replaces cards, reviews, folders, decks and passages in one transaction. Other meta (the last-backup date) is kept. */
 export async function restoreBackup(backup:unknown):Promise<void>{
-  const safe=validateBackup(backup),tx=await transaction(['words','reviews','meta'],'readwrite'),end=settled(tx);
+  const safe=validateBackup(backup),fsrs=await scheduler();
+  // M1: dry-run every card through the real scheduler (nothing is stored) before anything is cleared.
+  for(const w of safe.words){
+    const last=w.fsrsState.lastReviewAt?Date.parse(String(w.fsrsState.lastReviewAt)):0;
+    const at=new Date(Math.max(Date.now(),Date.parse(w.dueAt),last)); // a moment the card could really be graded
+    try{fsrs.review({card:toCard(w.fsrsState),grade:Rating.Good,now:at});}catch{throw Error('بعض البيانات في الملف غير صحيحة');}
+  }
+  const tx=await transaction(['words','reviews','meta'],'readwrite'),end=settled(tx);
   const words=tx.objectStore('words'),reviews=tx.objectStore('reviews'),meta=tx.objectStore('meta');
   // Any synchronous failure must abort, or the browser would commit the clear() on its own.
   try{
-    words.clear();reviews.clear();for(const r of LIBRARY_RANGES())meta.delete(r);
+    words.clear();reviews.clear();for(const r of LIBRARY_RANGES())meta.delete(r);meta.delete(PASSAGE_RANGE());
     for(const f of safe.folders)meta.put({key:folderKey(f.id),type:'folder',...f});
     for(const d of safe.decks)meta.put({key:deckKey(d.id),type:'deck',...d});
     for(const w of safe.words)words.put(w);for(const r of safe.reviews)reviews.put(r);
+    for(const p of safe.passages)meta.put({key:passageKey(p.id),type:'passage',...p});
   }
   catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
   await end;announceChange();
@@ -463,4 +556,32 @@ export function scopedSummary(words:Word[],reviews:Review[],decks:readonly Deck[
   if(scope.kind==='all')return summary(words,reviews,now);
   const mine=words.filter(w=>inScope(w,scope,decks)),ids=new Set(mine.map(w=>w.id));
   return summary(mine,reviews.filter(r=>ids.has(r.wordId)),now);
+}
+
+/* #21: Learning Passages — stored in `meta` as `passage:<id>` (IndexedDB stays v1, like folders/decks). Never sent anywhere. */
+/** All passages, or one deck's, newest first. */
+export async function listPassages(deckId?:string):Promise<Passage[]>{
+  const store=(await transaction('meta','readonly')).objectStore('meta');
+  return (await readPassages(store)).filter(p=>!deckId||p.deckId===deckId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+}
+export async function getPassage(id:string):Promise<Passage|undefined>{return (await listPassages()).find(p=>p.id===id);}
+export async function createPassage(input:PassageInput):Promise<Passage>{
+  return libraryChange(['meta'],async(meta,{decks})=>{
+    const deck=decks.find(d=>d.id===input.deckId);if(!deck)throw Error('لم نجد الحزمة');
+    const p=cleanPassage(input,deck);meta.add({key:passageKey(p.id),type:'passage',...p});return p;
+  });
+}
+/** Edits a passage (title/body/language/translation/questions, or moves it to another deck). Cards and FSRS are untouched. */
+export async function updatePassage(id:string,patch:Partial<PassageInput>):Promise<Passage>{
+  return libraryChange(['meta'],async(meta,{decks})=>{
+    const old=(await readPassages(meta)).find(p=>p.id===id);if(!old)throw Error('لم نجد النص');
+    const deck=decks.find(d=>d.id===(patch.deckId??old.deckId));if(!deck)throw Error('لم نجد الحزمة');
+    const next=cleanPassage({deckId:deck.id,title:patch.title??old.title,body:patch.body??old.body,contentLanguage:patch.contentLanguage??old.contentLanguage,
+      translation:patch.translation??old.translation,questions:patch.questions??old.questions},deck,old);
+    meta.put({key:passageKey(id),type:'passage',...next});return next;
+  });
+}
+/** Deletes one passage (the learner's own text, after confirmation). Nothing else references it. */
+export async function deletePassage(id:string):Promise<void>{
+  await libraryChange(['meta'],async meta=>{if(!await request(meta.get(passageKey(id))))throw Error('لم نجد النص');meta.delete(passageKey(id));});
 }

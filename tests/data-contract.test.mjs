@@ -8,7 +8,7 @@ function word(id='w-1',overrides={}){
     id,term:'overlook',meaning:'يغفل عن',example:'I overlooked a detail.',
     translation:'فاتتني تفصيلة.',tag:'عام',
     createdAt:now,updatedAt:now,dueAt:now,
-    fsrsState:{cardId:id,dueAt:now},
+    fsrsState:{cardId:id,dueAt:now,stability:0,stabilityFast:0,difficulty:0,state:0,scheduleStatus:'new',lastReviewAt:null,reps:0,lapses:0,scheduledDays:0,learningStep:0}, // the FSRS-7 shape the app stores for a new card
     archived:false,revision:0,...overrides,
   };
 }
@@ -16,9 +16,9 @@ function backup(words=[word()],reviews=[]){
   return {app:'wordloop',version:1,exportedAt:now,words,reviews};
 }
 
-test('accepts a well-formed v1 backup and returns it as v3: vocabulary (#5) in the default folder/deck (#15)',()=>{
+test('accepts a well-formed v1 backup and returns it as v4: vocabulary (#5) in the default folder/deck (#15), no passages (#21)',()=>{
   const payload=backup();
-  assert.deepEqual(validateBackup(payload),{...payload,version:3,
+  assert.deepEqual(validateBackup(payload),{...payload,version:4,passages:[],
     folders:[{id:DEFAULT_FOLDER_ID,name:'غير مصنفة',createdAt:now,updatedAt:now}],
     decks:[{id:DEFAULT_DECK_ID,folderId:DEFAULT_FOLDER_ID,name:'بطاقاتي',contentLanguage:'en-US',meaningLanguage:'ar-SA',createdAt:now,updatedAt:now}],
     words:payload.words.map(w=>({...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]}))});
@@ -41,7 +41,7 @@ test('daily summary counts only active words, due cards, and Riyadh-local review
   const later='2026-11-13T17:00:00.000Z';
   const words=[
     word('w-1'),
-    word('w-2',{dueAt:later,fsrsState:{cardId:'w-2',dueAt:later}}),
+    word('w-2',{dueAt:later,fsrsState:{cardId:'w-2',dueAt:later,stability:0,stabilityFast:0,difficulty:0,state:0,scheduleStatus:'new',lastReviewAt:null,reps:0,lapses:0,scheduledDays:0,learningStep:0}}),
     word('w-3',{archived:true}),
   ];
   const reviews=[{id:'r-1',wordId:'w-1',grade:'good',reviewedAt:earlier,nextDueAt:later}];

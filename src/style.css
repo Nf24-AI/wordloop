@@ -384,7 +384,9 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
   .chip{flex:none}
   .legend{grid-template-columns:repeat(2,minmax(0,1fr))}
   .page-head .btn{display:none}
-  .sheet{margin:auto auto 0;inline-size:100%;max-inline-size:100%;border-radius:24px 24px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom))}
+  /* #43: a bottom sheet sits on top of the on-screen keyboard (--kb, from visualViewport) and never grows taller than what is visible. */
+  .sheet{margin:auto auto var(--kb,0px);inline-size:100%;max-inline-size:100%;max-block-size:calc(var(--vvh,100dvh) - env(safe-area-inset-top) - 8px);border-radius:24px 24px 0 0;padding:24px 20px calc(24px + env(safe-area-inset-bottom))}
+  .kb-open .sheet{padding-block-end:16px;border-radius:24px}
   .sheet-actions .btn{flex:1}
   .card{min-block-size:320px}
 }
@@ -593,3 +595,115 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .example-line>span{flex:1;min-inline-size:0}
 .example-line .speak-group{flex:none}
 .example-speak{inline-size:40px;block-size:40px}
+
+/* #21: Learning Passages — one compact row in the deck, a calm reading page, a simple editor */
+.texts-row{margin-block:4px 14px}
+.passage-snippet{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-inline-size:100%}
+.passage-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block:4px 18px}
+.passage-body{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:clamp(18px,4vw,30px);font-size:clamp(18px,2.2vw,21px);line-height:1.8;color:var(--ink);max-inline-size:720px}
+.passage-body p{margin:0}.passage-body p+p{margin-block-start:.9em}
+.passage-extra{margin-block:14px}
+.passage-translation{margin:10px 0 0;padding:14px 18px;border-inline-start:3px solid var(--sea);background:var(--cream);border-radius:var(--r-sm);line-height:1.8;max-inline-size:720px}
+.passage-facts{margin-block:14px;max-inline-size:720px}
+.fact-list{margin:10px 0 0;padding-inline-start:22px;display:grid;gap:12px}
+.fact-list li{display:grid;gap:3px}
+.fact-list q{font-size:14px;color:var(--muted)}
+.passage-note{font-size:13.5px;color:var(--muted);margin-block:18px 0}
+.danger-text{color:#a3402a}
+.field-hint{display:block;font-size:13px;color:var(--muted);margin-block-start:6px}
+.passage-input{min-block-size:160px;font-size:18px;line-height:1.75;resize:vertical}
+.with-remove{display:flex;align-items:flex-start;gap:6px}.with-remove textarea{flex:1;min-inline-size:0}
+.facts-fields{border:0;padding:0;margin:6px 0 0;display:grid;gap:12px;min-inline-size:0}
+.facts-fields legend{font-weight:700;font-size:16px;padding:0;margin-block-end:2px}
+.facts-fields>.field-hint{margin:0}
+.fact-card{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+.fact-head{display:flex;align-items:center;justify-content:space-between}
+.passage-extra .link-btn{white-space:nowrap}
+/* ───────── #43: sheets with fields stay usable with the on-screen keyboard ───────── */
+.sheet{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.sheet h2:focus{outline:none}
+.sheet h2:focus-visible{outline:2px solid var(--teal);outline-offset:4px;border-radius:6px}
+.form-sheet .field input,.form-sheet .field textarea,.form-sheet .select{scroll-margin-block:16px 96px}
+@media(max-width:899px){
+  /* Save / Cancel stay reachable at the bottom of the visible sheet while its fields scroll. */
+  .form-sheet .sheet-actions{position:sticky;inset-block-end:calc(-24px - env(safe-area-inset-bottom));z-index:1;margin-inline:-20px;padding:12px 20px;background:var(--surface);box-shadow:0 -1px 0 var(--line)}
+  .form-sheet .sheet-actions:last-child{margin-block-end:calc(-24px - env(safe-area-inset-bottom));padding-block-end:calc(24px + env(safe-area-inset-bottom))}
+  .kb-open .form-sheet .sheet-actions{inset-block-end:-16px}
+  .kb-open .form-sheet .sheet-actions:last-child{margin-block-end:-16px;padding-block-end:16px}
+  .form-sheet .danger-zone{margin-block-start:20px}
+}
+
+/* ───────── #42: one clear Back on every branched screen ───────── */
+.backbar{margin-block:-6px 6px}
+.back-btn{display:inline-flex;align-items:center;gap:6px;min-block-size:44px;min-inline-size:44px;max-inline-size:100%;margin-inline-start:-10px;padding-inline:10px 14px;border:0;border-radius:14px;background:none;color:var(--teal);font:inherit;font-size:15px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.back-btn:hover{background:#2f7d6812}
+.back-btn:active{background:#2f7d681f}
+.back-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.back-btn svg{flex:none}
+.back-dest{min-inline-size:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:600}
+.back-dest::before{content:"·";margin-inline-end:6px;color:var(--line-2)}
+
+/* ───────── #41: «تحديث الآن» ───────── */
+.update-card{position:fixed;z-index:55;inset-inline:12px;inset-block-end:calc(84px + env(safe-area-inset-bottom));margin-inline:auto;max-inline-size:440px;display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;padding:14px 16px;border-radius:var(--r-lg,20px);background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 18px 40px -18px #1a1a1240;animation:rise .3s var(--ease) both}
+.update-icon{display:grid;place-items:center;inline-size:36px;block-size:36px;border-radius:12px;background:#2f7d681a;color:var(--teal)}
+.update-card.failed .update-icon{background:#d6513f1a;color:#b5402f}
+.update-text{display:grid;gap:2px;min-inline-size:0}
+.update-text b{font-size:15px}
+.update-text small{color:var(--muted);font-size:13.5px;line-height:1.6}
+.update-actions{grid-column:1/-1;display:flex;gap:8px}
+.update-actions .btn{flex:1;min-block-size:44px}
+@media(min-width:1024px){.update-card{inset-inline:auto 24px;inset-block-end:24px}}
+@media(prefers-reduced-motion:reduce){.update-card{animation:none}}
+
+/* ───────── #22 Reading Practice: one calm question at a time ───────── */
+.practice{max-inline-size:680px}
+.practice-setup{display:grid;gap:18px}
+.practice-field{border:0;padding:0;margin:0;display:grid;gap:10px}
+.practice-field legend{font-weight:600;font-size:15px;margin-block-end:10px}
+.practice-why{display:grid;gap:4px;font-size:14px;color:var(--muted);line-height:1.6;padding:0;list-style:none}
+.practice-note{font-size:14px;color:var(--teal-deep)}
+.practice-start{justify-self:start}
+.practice-empty{display:grid;gap:10px;padding:clamp(18px,4vw,28px);border-radius:var(--r-lg);background:#fbfaf6;border:1px solid var(--line)}
+.practice-empty h2{font-size:19px;font-weight:700}
+.practice-empty p{color:var(--ink-2);line-height:1.7}
+.practice-text{margin-block:14px}
+.practice-q{display:grid;gap:14px;padding:clamp(18px,4vw,30px);border-radius:var(--r-xl);border:1px solid var(--line);background:var(--surface);margin-block-start:14px;animation:rise .3s var(--ease) both}
+.practice-q .kind-badge{justify-self:start}
+.practice-prompt{font:400 clamp(20px,1rem + 1.4vw,26px)/1.6 var(--en);color:var(--ink);overflow-wrap:anywhere}
+.practice-prompt.question{font-family:inherit;font-weight:600;font-size:clamp(18px,1rem + .8vw,22px)}
+.practice-prompt.term-prompt{font-size:clamp(32px,7vw,52px);line-height:1.15;text-align:center}
+.blank{display:inline-block;min-inline-size:4.5em;border-block-end:2px solid var(--teal);margin-inline:2px;text-align:center}
+.blank.filled{color:var(--teal-deep);font-weight:600}
+.practice-hint,.practice-source{font-size:15px;color:var(--ink-2);line-height:1.6;overflow-wrap:anywhere}
+.practice-hint small,.practice-source small{color:var(--muted)}
+.practice-answer{display:grid;gap:10px}
+.practice-answer input{inline-size:100%;min-block-size:48px;font-size:17px}
+.practice-options{display:grid;gap:10px}
+.practice-option{min-block-size:52px;padding:10px 16px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:var(--surface);font-size:17px;text-align:start;color:var(--ink);transition:background-color .15s,border-color .15s}
+@media(hover:hover){.practice-option:not(:disabled):hover{border-color:var(--teal)}}
+.practice-option.right{background:#e6f2ee;border-color:var(--teal);color:var(--teal-deep);font-weight:600}
+.practice-option.wrong{background:#f8e9e3;border-color:#c2603f;color:#8f3f24}
+.practice-option:disabled{cursor:default}
+.practice-feedback{font-size:16px;line-height:1.6;overflow-wrap:anywhere}
+.practice-feedback.good b{color:var(--teal-deep)}
+.practice-feedback.close b{color:#9a6a12}
+.practice-feedback.bad b{color:#8f3f24}
+.practice-next{justify-self:start}
+.practice-missed{text-align:start;inline-size:100%;max-inline-size:560px}
+@media(prefers-reduced-motion:reduce){.practice-q{animation:none}}
+
+/* ───────── #23 Listening Practice ───────── */
+.listen-player{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block:12px}
+.listen-play{min-inline-size:132px}
+.listen-text{margin-block:6px 14px}
+.listen-novoice{margin-block:12px}
+.practice-answer textarea{min-block-size:76px;font-size:17px}
+.dictation-marks{display:flex;flex-wrap:wrap;gap:6px 8px;font:400 clamp(19px,1rem + 1vw,23px)/1.7 var(--en)}
+.dw{display:inline-flex;gap:4px;align-items:baseline;padding:0 3px;border-radius:6px}
+.dw.accent{background:#fbf0d6;color:#7a5410}
+.dw.wrong{background:#f8e9e3;color:#8f3f24}
+.dw.missing{color:#8f3f24;border-block-end:2px dashed #c2603f;border-radius:0}
+.dw.extra{color:var(--muted)}
+.dw del{color:var(--muted);text-decoration-thickness:1.5px}
+.dictation-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);list-style:none;padding:0}
+.dictation-legend li{display:inline-flex;gap:6px;align-items:center}

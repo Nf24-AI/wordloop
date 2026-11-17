@@ -19,7 +19,7 @@ const at='2026-11-10T09:00:00.000Z';
 function legacyWord(i,overrides={}){
   const id=`legacy-${i}`,dueAt=new Date(Date.parse(at)+i*3600_000).toISOString();
   return {id,term:`word${i}`,meaning:`معنى ${i}`,example:'',translation:'',tag:'عام',createdAt:at,updatedAt:at,dueAt,
-    fsrsState:{cardId:id,dueAt,stability:1.5+i,difficulty:5,state:2,reps:3,lapses:0,lastReviewAt:at,learningSteps:0},archived:i%7===0,revision:i%4,...overrides};
+    fsrsState:{cardId:id,dueAt,stability:1.5+i,stabilityFast:1.2+i,difficulty:5,state:2,scheduleStatus:'review',reps:3,lapses:0,lastReviewAt:at,scheduledDays:2,learningStep:0},archived:i%7===0,revision:i%4,...overrides};
 }
 function legacyReview(i,wordId){return {id:`r-${i}`,wordId,grade:['again','hard','good','easy'][i%4],reviewedAt:at,nextDueAt:at};}
 
@@ -92,7 +92,7 @@ test('DATA-01: a v1 backup imports as vocabulary with ids, due dates, FSRS state
   const w=legacyWord(3),r=legacyReview(1,w.id);
   const v1={app:'wordloop',version:1,exportedAt:at,words:[w],reviews:[r]};
   const safe=validateBackup(JSON.parse(JSON.stringify(v1)));
-  assert.equal(safe.version,3); // #15: always returned in the current format
+  assert.equal(safe.version,4); // always returned in the current format (v4 since #21)
   assert.deepEqual(safe.words[0],{...w,contentType:'vocabulary',note:'',deckId:DEFAULT_DECK_ID,meanings:[w.meaning]});
   await restoreBackup(safe);
   const [got]=await listWords();
@@ -106,7 +106,7 @@ test('DATA-02: an export (now v3, #15) round-trips into a fresh database with ev
   const [first]=await listWords();await reviewWord(first.id,'again');
   const file=JSON.stringify(await buildBackup());
   const before={words:await listWords(),reviews:await listReviews()};
-  assert.equal(JSON.parse(file).version,3);
+  assert.equal(JSON.parse(file).version,4);
   globalThis.indexedDB=new IDBFactory();resetConnectionForTests(); // "another device"
   await restoreBackup(validateBackup(JSON.parse(file)));
   assert.deepEqual(await listWords(),before.words);
@@ -117,7 +117,7 @@ test('DATA-03: invalid backups are rejected before anything local is replaced',a
   await addWord(card('vocabulary','keepme'));
   const good=await buildBackup();
   const bad=[
-    ['unknown version',{...good,version:4}],
+    ['unknown version',{...good,version:5}],
     ['v2 card without kind',{...good,words:good.words.map(({contentType,...w})=>w)}],
     ['unknown kind',{...good,words:good.words.map(w=>({...w,contentType:'proverb'}))}],
     ['v1 with a bad kind',{...good,version:1,words:good.words.map(w=>({...w,contentType:'proverb'}))}],

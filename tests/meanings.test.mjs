@@ -16,7 +16,7 @@ async function raw(store,mode,fn){
 const getAllRaw=store=>raw(store,'readonly',s=>new Promise(r=>{s.getAll().onsuccess=e=>r(e.target.result);}));
 const schedule=w=>({id:w.id,createdAt:w.createdAt,dueAt:w.dueAt,fsrsState:w.fsrsState,revision:w.revision,deckId:w.deckId,contentType:w.contentType,archived:w.archived});
 const at='2026-11-10T09:00:00.000Z';
-const legacy=(id,meaning)=>({id,term:id,meaning,example:'Ex.',translation:'مثال',tag:'عام',createdAt:at,updatedAt:at,dueAt:at,fsrsState:{cardId:id,dueAt:at,stability:3},archived:false,revision:2});
+const legacy=(id,meaning)=>({id,term:id,meaning,example:'Ex.',translation:'مثال',tag:'عام',createdAt:at,updatedAt:at,dueAt:at,fsrsState:{cardId:id,dueAt:at,stability:3,stabilityFast:2.5,difficulty:5,state:2,scheduleStatus:'review',lastReviewAt:'2026-11-01T09:00:00.000Z',reps:2,lapses:0,scheduledDays:3,learningStep:0},archived:false,revision:2});
 
 test('MIG-11: a legacy single meaning becomes meanings[0] exactly; stored cards are not rewritten; meaning mirrors meanings[0]',async()=>{
   const cards=[legacy('show','يُظهر'),legacy('spaces','  معنى بمسافات  '),{...legacy('kind','نوع'),contentType:'idiom',note:'ن'}];
