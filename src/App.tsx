@@ -4,7 +4,7 @@ import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,c
 import {pickVoice,RATE} from './voice';
 import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
-import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
+import {disablePush,enablePush,markPracticed,practiceReminders,pushState,pushSupported,setPracticeAvailable,setPracticeReminders,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 
 /* ───────────── Language (#6) ─────────────
@@ -792,6 +792,7 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
 }
 
 function PracticeResult({items,answers,onAgain,onBack}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void}){
+  useEffect(()=>{markPracticed();},[]); // #30: practised today → no practice nudge today (only the day is synced)
   const P=T.practice,sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
   return <div className="page practice"><section className="finish">
     <div className="finish-orb" aria-hidden="true"><Wash/></div>
@@ -1275,6 +1276,7 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
   const input=useRef<HTMLInputElement>(null);
   const [push,setPush]=useState<string>('checking'),[busy,setBusy]=useState(false),[persisted,setPersisted]=useState<'yes'|'no'|'unsupported'|'checking'>('checking');
   const [permission,setPermission]=useState<string>(typeof Notification!=='undefined'?Notification.permission:'unsupported');
+  const [practiceOn,setPracticeOn]=useState(practiceReminders);
   const supported=pushSupported();
   const standalone=typeof window!=='undefined'&&(window.matchMedia('(display-mode: standalone)').matches||(navigator as Navigator&{standalone?:boolean}).standalone===true);
   const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -1352,6 +1354,7 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
           {push==='enabled'?<><button type="button" className="btn btn-ink" disabled={busy||!online} onClick={()=>void notifications('test')}><Send size={17}/>{St.testPush}</button><button type="button" className="btn btn-quiet" disabled={busy} onClick={()=>void notifications('disable')}><BellOff size={17}/>{St.disablePush}</button></>
             :<button type="button" className="btn btn-ink" disabled={busy||!supported||!online||permission==='denied'||push==='checking'} onClick={()=>void notifications('enable')}><Bell size={17}/>{busy?St.enabling:St.enablePush}</button>}
         </div>
+        {push==='enabled'&&<label className="check-row"><input type="checkbox" checked={practiceOn} disabled={busy} onChange={e=>{const on=e.target.checked;setPracticeOn(on);void setPracticeReminders(on).catch(console.warn);}}/><span><b>{St.practiceReminder}</b><small>{St.practiceReminderHelp}</small></span></label>}
         <p className="fine">{St.pushFine}</p>
       </section>
 
@@ -1510,7 +1513,7 @@ export default function App(){
   const fetchLocal=useCallback(async():Promise<Word[]|null>=>{
     // #4: overlapping refreshes (focus, resume, other tab, after save) must not let an older read overwrite a newer one.
     const ticket=++latest.current;
-    try{const [w,r,l,p]=await Promise.all([listWords(),listReviews(),listLibrary(),listPassages()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setPassages(p);setError('');setLoadedOnce(true);void syncPush(w).catch(console.warn);}return w;}
+    try{const [w,r,l,p]=await Promise.all([listWords(),listReviews(),listLibrary(),listPassages()]);if(ticket===latest.current){setWords(w);setReviews(r);setLib(l);setPassages(p);setError('');setLoadedOnce(true);setPracticeAvailable(p.length>0);void syncPush(w).catch(console.warn);}return w;}
     catch(e){if(ticket===latest.current)setError(getError(e));return null;}
     finally{if(ticket===latest.current)setLoading(false);}
   },[]);

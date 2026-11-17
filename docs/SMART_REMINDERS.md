@@ -13,7 +13,9 @@ The idea is «نذكّرك عندما يفيدك التذكير، لا لمجر�
 | Quiet hours | 00:00–09:00 **device-local**. A night-time due is sent after 09:00 with the calm «later» copy |
 | Daily cap / cooldown | 3 per local day, ≥ 3 h apart. Extra dues wait; FSRS `dueAt` is never changed |
 | Failures | Transient: the claim is released and the next run retries. `gone`: the subscription is deleted |
-| Practice nudges | **Not sent yet.** Practice (#21–#23) doesn't exist, so a nudge would lead nowhere. They come with Practice: at most 1 a day, never instead of a due review |
+| Practice nudges | At most **1 a day**, only in the local windows 10–12, 18–20, 21–23, only when **nothing is due** (a due review — even one already notified — always wins), only if the device has at least one Learning Passage and the learner kept «اقتراح تمرين خفيف» on, and never on a day the learner already finished a practice session. Same cap and cooldown as reviews. Opens «مكتبتي». Needs migration 0003; without it the Worker sends due reminders only |
+| Starvation | Devices still in their 3 h cooldown are filtered in SQL; candidates are ordered least-recently-notified first, so a large waiting set can't push new due events out of the 500-row batch |
+| Schema safety | `/api/push/sync` tries the newest columns first and falls back (0003 → 0002 → original) on `no such column`, so deploying before a migration never breaks enabling notifications |
 
 The copy follows the verbal identity in #30. It lives in `worker/reminders.ts` → `MESSAGES` and is tested.
 
@@ -21,6 +23,7 @@ The copy follows the verbal identity in #30. It lives in `worker/reminders.ts` �
 |---|---|---|
 | Due | «حان وقت المراجعة» — «كلماتك جاهزة للمراجعة. كم دقيقة وتكمل!» | Time to review — Your words are ready. A few minutes and you’re done! |
 | Later (waited for quiet hours, cooldown or cap) | «مراجعتك جاهزة» — «عندك كلمات للمراجعة. نبدأ؟» | Your review is ready — You have words to review. Shall we start? |
+| Practice | «تمرين خفيف؟» — «ثلاث دقائق قراءة أو استماع تكفي اليوم.» | Quick practice? — Three minutes of reading or listening is enough today. |
 
 The copy has no word text, no counts and no emoji. The notification language follows the app's interface language, which is synced with the subscription. It is not the learning language.
 
@@ -38,6 +41,9 @@ New columns:
 | `last_sent_at` | Time of the last reminder |
 | `sent_day` | Local day the counter refers to |
 | `sent_count` | Reminders sent that day |
+| `practice_ok` (0003) | 1 if practice suggestions are on **and** the device has a text to practise |
+| `last_practice_day` (0003) | Device-local date (YYYY-MM-DD) of the last finished practice session — no scores, no content |
+| `practice_sent_day` (0003) | Local day a practice nudge was sent (max 1/day) |
 
 There are **no** terms, meanings, examples, reviews or FSRS state. A test asserts the schema has no such columns. Settings → Privacy explains these fields. Several devices each hold their own anonymous row, and each is reminded independently.
 
@@ -47,10 +53,13 @@ There are **no** terms, meanings, examples, reviews or FSRS state. A test assert
    ```
    npx wrangler d1 execute wordloop-push-staging --remote --file=worker/migrations/0002_smart_reminders.sql
    ```
-   Check the result with `PRAGMA table_info(push_devices)`. It should list `time_zone`, `locale`, `notified_due_at`, `last_sent_at`, `sent_day` and `sent_count`.
+   ```
+   npx wrangler d1 execute wordloop-push-staging --remote --file=worker/migrations/0003_practice_reminders.sql
+   ```
+   Check the result with `npx wrangler d1 execute wordloop-push-staging --remote --command "PRAGMA table_info(push_devices)"`. It should list `time_zone`, `locale`, `notified_due_at`, `last_sent_at`, `sent_day`, `sent_count`, `practice_ok`, `last_practice_day`, `practice_sent_day`. Never run these against `wordloop-push` (Production).
 2. **Merge the PR into `staging`.** Workers Builds deploys `wordloop-staging` with the new Cron and code.
-   - If the code is deployed **before** step 1, the 15-minute job and `/api/push/sync` fail with "no such column".
-   - No data is lost. Apply step 1 and they recover.
+   - Deployed **before** step 1: `/api/push/sync` still works (it falls back to the older columns); the 15-minute job logs an error and sends nothing until 0002 is applied; without 0003 it sends due reminders only.
+   - No data is lost either way.
 3. **UAT on an iPhone PWA:**
    - Add a card and let it become due. A reminder should arrive within about 15 min.
    - Review it. No repeat should arrive.
@@ -58,7 +67,9 @@ There are **no** terms, meanings, examples, reviews or FSRS state. A test assert
    - Cap: no more than 3 a day.
    - Copy in AR and EN.
 
-**Rollback:** revert the PR, which restores `0 17 * * *` and the old `daily()`. The new columns can stay, because the old code ignores them and `last_sent_day` was kept.
+**Rollback:** revert the PR, which restores `0 17 * * *` and the old `daily()`. The new columns (0002 and 0003) can stay, because the old code ignores them and `last_sent_day` was kept. No `DROP COLUMN` is needed.
+
+**Known limits (documented, accepted for UAT):** a review done offline reaches the server only on the next online sync, so a reminder may arrive for cards already reviewed offline; each device of the same learner is reminded independently (devices don't know about each other); a learner who ignores a due reminder gets no repeat for the same due event until the app syncs a new one (owner decision pending in PR #40).
 
 **Cost (estimate, verify in the dashboard):**
 - **Cron:** 96 invocations/day.

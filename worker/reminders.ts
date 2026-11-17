@@ -69,7 +69,7 @@ export const MESSAGES:Record<'ar'|'en',Record<Kind,{title:string;body:string}>>=
     practice:{title:'Quick practice?',body:'Three minutes of reading or listening is enough today.'}},
 };
 /** Where a tap lands: reviews open Home (Review is one tap away); practice opens the library to pick a text. */
-export const URLS:Record<Kind,string>={due:'/',later:'/',practice:'/#/library'};
+export const URLS:Record<Kind,string>={due:'/',later:'/',practice:'/#/words'};
 export const messageFor=(locale:unknown,kind:Kind):Message=>({...MESSAGES[safeLocale(locale)][kind],url:URLS[kind]});
 
 /** Devices that may get something now. Devices still in their cooldown are filtered in SQL so a large waiting set can't
