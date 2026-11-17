@@ -598,7 +598,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 
 /* #21: Learning Passages — one compact row in the deck, a calm reading page, a simple editor */
 .texts-row{margin-block:4px 14px}
-.texts-row+.practice-row{margin-block-start:-4px}
+.practice-row{margin-block:-4px 14px}
 /* #61: Practice hub — deck → text → read / listen. Touch targets ≥44px. */
 .hub-heading{font-size:15px;font-weight:700;color:var(--muted);margin:18px 0 10px}
 .deck-row.hub-muted{background:transparent;border-style:dashed}

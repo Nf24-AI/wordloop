@@ -815,7 +815,7 @@ function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:Lib
       {/* #24: only with the build flag AND a configured generator — neither exists in shipped builds. */}
       {aiLessonsAvailable()&&cards.length>0&&<button type="button" className="btn btn-quiet" onClick={()=>go(deckPath(id)+'/lesson')}><Sparkles size={18} aria-hidden="true"/>{T.lesson.entry}</button>}</div>
     <TextsRow deckId={id} count={textCount} go={go}/>
-    {textCount>0&&<button type="button" className="deck-row texts-row practice-row" onClick={()=>go(HUB+'/'+encodeURIComponent(id))}>
+    {textCount>0&&<button type="button" className="deck-row practice-row" onClick={()=>go(HUB+'/'+encodeURIComponent(id))}>
       <span className="folder-icon sm" aria-hidden="true"><Headphones size={19} strokeWidth={1.8}/></span>
       <span className="deck-text"><b>{T.hub.entry}</b><small>{T.hub.lead}</small></span><Fwd size={18}/></button>}
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
