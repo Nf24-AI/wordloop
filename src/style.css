@@ -744,6 +744,15 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .bulk-fields input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 4px #2f7d6826}
 .bulk-note{color:var(--muted);font-size:13px}
 .bulk-row.is-error .bulk-note{color:var(--danger,#b3261e)}
+
+/* #24: AI lesson (flagged off) */
+.lesson-cards{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-block-size:320px;overflow:auto}
+.lesson-card{display:flex;align-items:center;gap:10px;min-block-size:44px;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.lesson-card small{color:var(--muted)}
+.lesson-payload{max-block-size:260px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-size:13px;white-space:pre-wrap;word-break:break-word}
+.lesson-agree{display:flex;align-items:flex-start;gap:10px;margin-block:12px;min-block-size:44px}
+.lesson-wait{display:grid;gap:12px;justify-items:start}
+.lesson-questions{list-style:none;padding:0;display:grid;gap:12px}
 /* #30: practice-suggestion switch under the reminder buttons */
 .check-row{display:flex;gap:12px;align-items:flex-start;margin-block-start:16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;min-block-size:44px}
 .check-row input{inline-size:20px;block-size:20px;margin-block-start:2px;flex:none;accent-color:var(--ink-btn)}
