@@ -73,7 +73,8 @@ export function sentences(body:string):string[]{
 const escapeRe=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 /** Whole-word, case-insensitive occurrences of `term` (letters/digits on either side mean «not this word»). */
 function wordRe(term:string){return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(term.trim()).replace(/\s+/g,'\\s+')}(?![\\p{L}\\p{N}])`,'giu');}
-const usable=(w:Word)=>!w.archived&&normalize(w.term).length>=2&&w.term.trim().length<=60;
+/** #18: a Q&A card is a question, not a word of the text, so it never feeds cloze or meaning items. */
+const usable=(w:Word)=>!w.archived&&w.contentType!=='question_answer'&&normalize(w.term).length>=2&&w.term.trim().length<=60;
 /** Deck cards whose term occurs in the passage text. */
 export function cardsInPassage(p:Passage,cards:readonly Word[]):Word[]{
   return cards.filter(w=>w.deckId===p.deckId&&usable(w)&&wordRe(w.term).test(p.body));
