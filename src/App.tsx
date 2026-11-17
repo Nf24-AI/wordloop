@@ -1,8 +1,8 @@
 import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText} from 'lucide-react';
+import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
 import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
-import {buildReading,checkAnswer,readingAvailability,score,type Answered,type PracticeItem,type ReadingKind} from './practice';
+import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,pushState,pushSupported,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
@@ -522,7 +522,7 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
-  if(view.kind==='practice')return <NotFound go={go}/>;
+  if(view.kind==='practice')return <ListeningPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
   if(view.kind==='deck')return <DeckView key={view.id} id={view.id} {...shared}/>;
@@ -729,6 +729,7 @@ function PassageView({deckId,id,lib,passages,onChanged,notify,go}:{deckId:string
     <div className="passage-actions">
       <SpeakButton text={p.body} lang={p.contentLanguage} label={Tx.listen} className="btn btn-ink passage-listen" showLabel/>
       <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/read')}><BookOpen size={16}/>{T.practice.readAction}</button>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/listen')}><Headphones size={16}/>{T.listening.action}</button>
       <button type="button" className="btn btn-quiet sm" onClick={()=>go(passagePath(deckId,p.id)+'/edit')}><Pencil size={16}/>{Tx.edit}</button>
       <button type="button" className="btn btn-quiet sm danger-text" onClick={()=>setConfirm(true)}><Trash2 size={16}/>{Tx.delete}</button>
     </div>
@@ -777,19 +778,7 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
       <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
     </div>}
   </div>;
-  if(done){
-    const sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
-    return <div className="page practice"><section className="finish">
-      <div className="finish-orb" aria-hidden="true"><Wash/></div>
-      <h1>{P.result(sc.right,sc.total)}</h1>
-      {sc.almost>0&&<p className="lead">{P.almostCount(sc.almost)}</p>}
-      <p className="finish-note">{P.noFsrs}</p>
-      {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
-        <span><b dir="auto">{promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
-      <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={()=>setItems(null)}>{P.again}</button>
-        <button type="button" className="btn btn-quiet" onClick={()=>go(passagePath(deckId,p.id))}>{P.backToText}</button></div>
-    </section></div>;
-  }
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
   const item=items[idx];
   return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
     <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
@@ -801,6 +790,135 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
       onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>setIdx(i=>i+1)}/>
   </div>;
 }
+
+function PracticeResult({items,answers,onAgain,onBack}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void}){
+  const P=T.practice,sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
+  return <div className="page practice"><section className="finish">
+    <div className="finish-orb" aria-hidden="true"><Wash/></div>
+    <h1>{P.result(sc.right,sc.total)}</h1>
+    {sc.almost>0&&<p className="lead">{P.almostCount(sc.almost)}</p>}
+    <p className="finish-note">{P.noFsrs}</p>
+    {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
+      <span><b dir="auto">{it.kind==='dictation'?T.listening.kind.dictation:promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
+    <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={onAgain}>{P.again}</button>
+      <button type="button" className="btn btn-quiet" onClick={onBack}>{P.backToText}</button></div>
+  </section></div>;
+}
+
+/* ───────────── Listening Practice (#23): the same passage, spoken on the device in its own language ───────────── */
+type VoiceState='ok'|'none'|'unsupported';
+/** Whether this device can speak `lang` (local voices only, #19/#20). An empty list = not known yet → the browser picks by `lang`. */
+function useVoiceState(lang:string):VoiceState{
+  const get=():VoiceState=>{if(!canSpeak)return 'unsupported';const v=window.speechSynthesis.getVoices();return !v.length||pickVoice(v,lang)?'ok':'none';};
+  const [state,setState]=useState<VoiceState>(get);
+  useEffect(()=>{if(!canSpeak)return;const on=()=>setState(get());on();window.speechSynthesis.addEventListener?.('voiceschanged',on);return ()=>window.speechSynthesis.removeEventListener?.('voiceschanged',on);},[lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  return state;
+}
+/** Play / pause / replay, normal or slower. Stops when the screen goes away. */
+function usePlayer(lang:string){
+  const [status,setStatus]=useState<'idle'|'playing'|'paused'>('idle'),[slow,setSlow]=useState(false);
+  const run=useRef(0);
+  useEffect(()=>()=>{run.current++;if(canSpeak)window.speechSynthesis.cancel();},[]);
+  function play(text:string,opts:{slow?:boolean}={}){
+    const id=++run.current;
+    const ok=speak(text,lang,{slow:opts.slow??slow,onEnd:()=>{if(run.current===id)setStatus('idle');}});
+    setStatus(ok?'playing':'idle');return ok;
+  }
+  function toggle(text:string){
+    const synth=window.speechSynthesis;
+    if(status==='playing'){synth.pause();setStatus('paused');return;}
+    if(status==='paused'){synth.resume();setStatus('playing');return;}
+    play(text);
+  }
+  function stop(){run.current++;window.speechSynthesis.cancel();setStatus('idle');}
+  return {status,slow,setSlow,play,toggle,stop};
+}
+
+const LISTENING_KINDS:ListeningKind[]=['dictation','comprehension'];
+function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;lib:Library;passages:Passage[];go:(path:string)=>void}){
+  const P=T.practice,L=T.listening,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const lang=p?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,voice=useVoiceState(lang),player=usePlayer(lang);
+  const avail=useMemo(()=>p?listeningAvailability(p):{dictation:0,comprehension:0},[p]);
+  const [kinds,setKinds]=useState<ListeningKind[]>(LISTENING_KINDS),[count,setCount]=useState<number>(5);
+  const [items,setItems]=useState<PracticeItem[]|null>(null),[idx,setIdx]=useState(0),[answers,setAnswers]=useState<Answered[]>([]);
+  const [showText,setShowText]=useState(false);
+  if(!p||!deck)return <NotFound go={go}/>;
+  const chosen=kinds.filter(k=>avail[k]>0),canListen=voice==='ok';
+  const done=items!==null&&idx>=items.length,inProgress=items!==null&&!done&&answers.length>0;
+  const start=()=>{player.stop();setItems(buildListening(p,chosen,count));setIdx(0);setAnswers([]);setShowText(false);};
+  const playerBar=<div className="listen-player" role="group" aria-label={L.player}>
+    <button type="button" className="btn btn-ink listen-play" disabled={!canListen} onClick={()=>player.toggle(p.body)} aria-label={player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}>
+      {player.status==='playing'?<Pause size={18} aria-hidden="true"/>:<Play size={18} aria-hidden="true"/>}<span>{player.status==='playing'?L.pause:player.status==='paused'?L.resume:L.play}</span></button>
+    <button type="button" className="btn btn-quiet sm" disabled={!canListen} onClick={()=>player.play(p.body)}><RotateCcw size={16} aria-hidden="true"/>{L.replay}</button>
+    <button type="button" className={'chip'+(player.slow?' on':'')} aria-pressed={player.slow} disabled={!canListen} onClick={()=>player.setSlow(v=>!v)}>{L.slower}</button>
+    <button type="button" className="btn btn-quiet sm" aria-expanded={showText} onClick={()=>setShowText(v=>!v)}>{showText?<EyeOff size={16} aria-hidden="true"/>:<Eye size={16} aria-hidden="true"/>}{showText?L.hideText:L.showText}</button>
+  </div>;
+  const textBox=showText&&<article className="passage-body listen-text" dir={dirOf(lang)} lang={lang}>{p.body.split(/\n+/).map((para,i)=><p key={i}>{para}</p>)}</article>;
+  const noVoice=!canListen&&<div className="practice-empty listen-novoice" role="status"><h2>{voice==='unsupported'?L.unsupportedTitle:L.noVoiceTitle(langName(lang))}</h2><p>{voice==='unsupported'?L.unsupportedBody:L.noVoiceBody(langName(lang))}</p></div>;
+  if(items===null)return <div className="page practice">
+    <PageHead title={L.title} lead={p.title}/>
+    {noVoice}{playerBar}{textBox}
+    {canListen&&<div className="practice-setup">
+      <fieldset className="practice-field"><legend>{P.activities}</legend>
+        <div className="chips">{LISTENING_KINDS.map(k=><button type="button" key={k} className={'chip'+(chosen.includes(k)?' on':'')} aria-pressed={chosen.includes(k)} disabled={!avail[k]}
+          onClick={()=>setKinds(ks=>ks.includes(k)?ks.filter(x=>x!==k):[...ks,k])}>{L.kind[k]} <span className="chip-n">{avail[k]}</span></button>)}</div>
+        {!avail.comprehension&&<ul className="practice-why"><li>{L.whyComprehension}</li></ul>}
+      </fieldset>
+      <fieldset className="practice-field"><legend>{P.howMany}</legend>
+        <div className="chips">{COUNTS.map(n=><button type="button" key={n} className={'chip'+(count===n?' on':'')} aria-pressed={count===n} onClick={()=>setCount(n)}>{n?String(n):P.all}</button>)}</div>
+      </fieldset>
+      <p className="practice-note">{L.privacy} {P.noFsrs}</p>
+      <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
+    </div>}
+  </div>;
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
+  const item=items[idx];
+  return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
+    <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
+      <div className="progress" role="progressbar" aria-label={P.progress} aria-valuemin={0} aria-valuemax={items.length} aria-valuenow={idx}><span style={{inlineSize:`${Math.max(4,100*idx/items.length)}%`}}/></div></div>
+    {noVoice}
+    {item.kind==='dictation'
+      ?<DictationQuestion key={item.id} item={item} lang={lang} player={player} canListen={canListen} last={idx===items.length-1}
+          onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>{player.stop();setIdx(i=>i+1);}}/>
+      :<>{playerBar}{textBox}
+        <PracticeQuestion key={item.id} item={item} lang={lang} meaningLang={deck.meaningLanguage} last={idx===items.length-1}
+          onAnswer={v=>setAnswers(a=>[...a.filter(x=>x.id!==item.id),{id:item.id,verdict:v}])} onNext={()=>{player.stop();setIdx(i=>i+1);}}/></>}
+  </div>;
+}
+
+function DictationQuestion({item,lang,player,canListen,last,onAnswer,onNext}:{item:DictationItem;lang:string;player:ReturnType<typeof usePlayer>;canListen:boolean;last:boolean;onAnswer:(v:Answered['verdict'])=>void;onNext:()=>void}){
+  const P=T.practice,L=T.listening,[input,setInput]=useState(''),[result,setResult]=useState<ReturnType<typeof compareDictation>|null>(null),[revealed,setRevealed]=useState(false);
+  const nextRef=useRef<HTMLButtonElement|null>(null);
+  useEffect(()=>{if(result||revealed)nextRef.current?.focus({preventScroll:true});},[result,revealed]);
+  const check=(e:FormEvent)=>{e.preventDefault();if(result||revealed||!input.trim())return;const r=compareDictation(input,item.text,lang);setResult(r);onAnswer(r.verdict);};
+  const reveal=()=>{setRevealed(true);onAnswer('revealed');};
+  const answered=!!result||revealed;
+  return <section className="practice-q">
+    <span className="kind-badge">{L.kind.dictation}</span>
+    <p className="practice-prompt question">{L.dictationPrompt}</p>
+    <div className="listen-player" role="group" aria-label={L.player}>
+      <button type="button" className="btn btn-ink listen-play" disabled={!canListen} onClick={()=>player.play(item.text,{slow:false})}><Play size={18} aria-hidden="true"/><span>{L.playSentence}</span></button>
+      <button type="button" className="btn btn-quiet sm" disabled={!canListen} onClick={()=>player.play(item.text,{slow:true})}>{L.slower}</button>
+    </div>
+    {!answered&&<form className="practice-answer field" onSubmit={check} noValidate>
+      <label className="visually-hidden" htmlFor="practice-input">{L.typeWhatYouHear}</label>
+      <textarea id="practice-input" rows={2} dir={dirOf(lang)} lang={lang} value={input} onChange={e=>setInput(e.target.value)} placeholder={L.typeWhatYouHear}
+        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} enterKeyHint="done" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();e.currentTarget.form?.requestSubmit();}}}/>
+      <div className="btn-row"><button type="submit" className="btn btn-ink" disabled={!input.trim()}>{P.check}</button>
+        <button type="button" className="btn btn-quiet" onClick={reveal}>{P.reveal}</button></div>
+    </form>}
+    {result&&<>
+      <p className={'practice-feedback '+(result.verdict==='correct'?'good':result.verdict==='accent'?'close':'bad')} role="status"><b>{result.verdict==='correct'?P.correct:result.verdict==='accent'?L.accentNote:L.wordsNote}</b></p>
+      <p className="dictation-marks" dir={dirOf(lang)} lang={lang}>{result.words.map((w,i)=><span key={i} className={'dw '+w.status} title={w.status==='ok'?undefined:L.mark[w.status]}>
+        {w.status==='wrong'&&w.typed&&<del>{w.typed}</del>}{w.status!=='ok'&&<span className="visually-hidden">{L.mark[w.status]}: </span>}{w.word}</span>)}
+        {result.extra.map((x,i)=><span key={'x'+i} className="dw extra"><span className="visually-hidden">{L.mark.extra}: </span><del>{x}</del></span>)}</p>
+      <ul className="dictation-legend"><li><span className="dw accent">á</span>{L.mark.accent}</li><li><span className="dw wrong">a</span>{L.mark.wrong}</li><li><span className="dw missing">a</span>{L.mark.missing}</li></ul>
+    </>}
+    {revealed&&<p className="practice-feedback bad" role="status"><b>{P.answerIs}</b> <span dir={dirOf(lang)} lang={lang}>{item.text}</span></p>}
+    {answered&&<button ref={nextRef} type="button" className="btn btn-ink practice-next" onClick={onNext}>{last?P.seeResult:P.next}</button>}
+  </section>;
+}
+
 const promptOf=(it:PracticeItem)=>it.kind==='cloze'?it.parts.join('____'):it.kind==='meaning'?it.term:it.kind==='comprehension'?it.question:it.text;
 const answerOf=(it:PracticeItem)=>it.kind==='dictation'?it.text:it.answer;
 

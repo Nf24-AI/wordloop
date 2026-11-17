@@ -691,3 +691,19 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .practice-next{justify-self:start}
 .practice-missed{text-align:start;inline-size:100%;max-inline-size:560px}
 @media(prefers-reduced-motion:reduce){.practice-q{animation:none}}
+
+/* ───────── #23 Listening Practice ───────── */
+.listen-player{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block:12px}
+.listen-play{min-inline-size:132px}
+.listen-text{margin-block:6px 14px}
+.listen-novoice{margin-block:12px}
+.practice-answer textarea{min-block-size:76px;font-size:17px}
+.dictation-marks{display:flex;flex-wrap:wrap;gap:6px 8px;font:400 clamp(19px,1rem + 1vw,23px)/1.7 var(--en)}
+.dw{display:inline-flex;gap:4px;align-items:baseline;padding:0 3px;border-radius:6px}
+.dw.accent{background:#fbf0d6;color:#7a5410}
+.dw.wrong{background:#f8e9e3;color:#8f3f24}
+.dw.missing{color:#8f3f24;border-block-end:2px dashed #c2603f;border-radius:0}
+.dw.extra{color:var(--muted)}
+.dw del{color:var(--muted);text-decoration-thickness:1.5px}
+.dictation-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);list-style:none;padding:0}
+.dictation-legend li{display:inline-flex;gap:6px;align-items:center}
