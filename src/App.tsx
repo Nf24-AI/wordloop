@@ -1,12 +1,13 @@
 import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
-import {addWord,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
+import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
+import {addWord,addWords,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
 import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,markPracticed,practiceReminders,pushState,pushSupported,setPracticeAvailable,setPracticeReminders,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 import {readContinue,rememberContinue,resolveContinue} from './continue';
+import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX_LINES,type BulkRow} from './bulk';
 
 /* ───────────── Language (#6) ─────────────
  * The active dictionary. App sets it from its `locale` state on every render and remounts the tree
@@ -406,7 +407,86 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
         <button disabled={loading} type="submit" className="btn btn-save btn-lg">{!loading&&<Check size={20} aria-hidden="true"/>}{loading?F.saving:F.save}</button>
         {saved&&<button type="button" className="btn btn-quiet" onClick={()=>go(lastDeck?deckPath(lastDeck):'words')}>{A.seeLibrary}</button>}
       </div>
+      {/* #28: a secondary way in, for many words at once. */}
+      {!qa&&<p className="add-alt"><button type="button" className="link-btn" onClick={()=>go(bulkPath(deckId))}><ClipboardPaste size={16} aria-hidden="true"/>{T.bulk.open}</button></p>}
     </form>
+  </div>;
+}
+
+/* ───────────── Bulk Add (#28): paste → editable preview → one save ───────────── */
+const bulkPath=(deckId:string)=>'add/bulk/'+encodeURIComponent(deckId);
+/** The pasted text survives Back, a refresh or iOS closing the PWA (device only); cleared after a confirmed save. */
+const BULK_DRAFT='wordloop-bulk-draft';
+function readBulkDraft():string{try{const d=JSON.parse(localStorage.getItem(BULK_DRAFT)||'null');return d&&typeof d.text==='string'?d.text:'';}catch{return '';}}
+function writeBulkDraft(text:string){try{if(text.trim())localStorage.setItem(BULK_DRAFT,JSON.stringify({text}));else localStorage.removeItem(BULK_DRAFT);}catch{/* private mode */}}
+type UiRow=BulkRow&{meaningText:string};
+function BulkAddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
+  const B=T.bulk;
+  const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
+  const deck=lib.decks.find(d=>d.id===deckId);
+  const lang=deck?.contentLanguage??DEFAULT_CONTENT_LANGUAGE;
+  const [text,setText]=useState(readBulkDraft),[rows,setRows]=useState<UiRow[]|null>(null),[info,setInfo]=useState<{truncated:boolean;skippedHeader:boolean}>({truncated:false,skippedHeader:false});
+  const [saving,setSaving]=useState(false),[error,setError]=useState(''),[unsynced,setUnsynced]=useState(false),[savedTo,setSavedTo]=useState<string|null>(null);
+  const busy=useRef(false);
+  useEffect(()=>{writeBulkDraft(text);},[text]);
+  useEffect(()=>{if(savedTo)go(deckPath(savedTo));},[savedTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const view=useMemo(()=>rows?checkRows(rows,words,deckId):null,[rows,words,deckId]);
+  const counts=view?bulkCounts(view):null,ready=view?view.filter(r=>r.status==='ok'&&r.include):[];
+  const unsaved=!!text.trim()&&!savedTo;
+  function preview(e:FormEvent){e.preventDefault();setError('');setUnsynced(false);const p=parseBulk(text);setRows(p.rows.map(r=>({...r,meaningText:r.meanings.join('; ')})));setInfo({truncated:p.truncated,skippedHeader:p.skippedHeader});}
+  /** Editing a row brings it back in (a fixed duplicate is included again). */
+  const edit=(id:string,patch:Partial<UiRow>)=>{setError('');setRows(rs=>rs&&rs.map(r=>r.id===id?{...r,...patch,include:patch.include??true}:r));};
+  async function save(){
+    if(busy.current||!ready.length)return;
+    busy.current=true;setSaving(true);setError('');setUnsynced(false);
+    try{
+      await addWords(ready.map(r=>({id:r.id,deckId,term:r.term,meanings:r.meanings,example:r.example})));
+      // #4: success only once every saved card is really in the refreshed list.
+      const list=await onSaved();
+      if(list&&ready.every(r=>list.some(w=>w.id===r.id))){
+        try{localStorage.setItem(LAST_DECK,deckId);}catch{/* private mode */}rememberContinue('deck',deckId);
+        notify(B.saved(ready.length,deck?deckName(deck):''));setText('');setRows(null);writeBulkDraft('');setSavedTo(deckId);
+      }else setUnsynced(true);
+    }catch(e){
+      const row=(e as {row?:unknown}).row,line=typeof row==='number'?ready[row]?.line:undefined;
+      setError((line?B.rowError(line):'')+getError(e)+' '+B.nothingSaved);
+    }finally{busy.current=false;setSaving(false);}
+  }
+  return <div className="page add-page bulk-page">
+    <PageHead title={B.title} lead={B.lead}/>
+    <form className="word-form bulk-form" onSubmit={preview} data-unsaved={unsaved&&!saving?'true':undefined} noValidate>
+      <div className="add-target"><DeckPicker lib={lib} value={deckId} onChange={id=>{setDeckId(id);setError('');}}/></div>
+      {!deck&&<p className="hint" role="alert">{B.deckGone}</p>}
+      <div className="field">
+        <label htmlFor="bulk-text">{B.textLabel}</label>
+        <textarea id="bulk-text" className="bulk-text" rows={6} dir="auto" lang={lang} spellCheck={false} autoCapitalize="none" value={text} placeholder={B.textPh}
+          onChange={e=>{setText(e.target.value);setError('');}}/>
+        <p className="hint">{B.formats(BULK_MAX_LINES)}</p>
+      </div>
+      <div className="form-foot"><button type="submit" className="btn btn-ink" disabled={!text.trim()||saving}>{B.preview}</button></div>
+    </form>
+    {view&&counts&&<section className="bulk-preview" aria-labelledby="bulk-preview-title">
+      <h2 id="bulk-preview-title" className="results-title">{B.previewTitle}</h2>
+      <p className="bulk-counts" role="status">{B.counts(counts.ready,counts.errors,counts.duplicates)}</p>
+      {info.skippedHeader&&<p className="hint">{B.header}</p>}
+      {info.truncated&&<p className="hint">{B.truncated(BULK_MAX_LINES)}</p>}
+      {view.length===0?<p className="hint">{B.empty}</p>:<ol className="bulk-list">{view.map(r=>{return <li key={r.id} className={'bulk-row is-'+r.status} data-status={r.status}>
+        <div className="bulk-head"><span className="bulk-line">{B.line(r.line)}</span>
+          <label className="bulk-include"><input type="checkbox" checked={r.include&&r.status==='ok'} disabled={r.status!=='ok'} onChange={e=>edit(r.id,{include:e.target.checked})}/>{B.include}</label></div>
+        <div className="bulk-fields">
+          <input className="bulk-term" aria-label={B.termN(r.line)} dir={r.term.trim()?'auto':T.dir} lang={lang} autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={TERM_LIMIT.sentence} value={r.term} onChange={e=>edit(r.id,{term:e.target.value})}/>
+          <input className="bulk-meanings" aria-label={B.meaningsN(r.line)} dir="auto" autoComplete="off" placeholder={B.meaningsPh} value={r.meaningText} onChange={e=>edit(r.id,{meaningText:e.target.value,meanings:splitMeanings(e.target.value)})}/>
+          {(r.example||r.source.includes('\t'))&&<input className="bulk-example" aria-label={B.exampleN(r.line)} dir={r.example.trim()?'auto':T.dir} lang={lang} maxLength={BULK_EXAMPLE_LIMIT} placeholder={B.examplePh} value={r.example} onChange={e=>edit(r.id,{example:e.target.value})}/>}
+        </div>
+        {r.status!=='ok'&&<small className="bulk-note">{r.status==='error'&&r.problem?B.problem[r.problem]:B.status[r.status]}</small>}
+      </li>;})}</ol>}
+      {error&&<p className="inline-error" role="alert">{error}</p>}
+      {unsynced&&<div className="inline-error soft" role="alert"><p>{B.unsynced}</p><button type="button" className="btn btn-quiet sm" disabled={saving} onClick={()=>void save()}><RotateCcw size={16}/>{B.retry}</button></div>}
+      <div className="form-foot">
+        <button type="button" className="btn btn-save btn-lg" disabled={saving||!ready.length} aria-busy={saving||undefined} onClick={()=>void save()}>{!saving&&<Check size={20} aria-hidden="true"/>}{saving?B.saving:ready.length?B.save(ready.length):B.nothingReady}</button>
+      </div>
+      <p className="passage-note">{B.privacy}</p>
+    </section>}
   </div>;
 }
 
@@ -1544,7 +1624,11 @@ function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]
     if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);return to(d&&lib.folders.some(f=>f.id===d.folderId)?folderPath(d.folderId):'words');}
     return null;
   }
-  if(page==='add'){const id=decodeURIComponent(sub);return id&&lib.decks.some(d=>d.id===id)?to(deckPath(id)):previousOr('');}
+  if(page==='add'){
+    // #28: the bulk page steps back to the single-card Add of the same deck.
+    if(sub==='bulk'||sub.startsWith('bulk/')){const id=decodeURIComponent(sub.slice(5));return to(id&&lib.decks.some(d=>d.id===id)?'add/'+encodeURIComponent(id):'add');}
+    const id=decodeURIComponent(sub);return id&&lib.decks.some(d=>d.id===id)?to(deckPath(id)):previousOr('');
+  }
   if(page==='review'){
     const [k,raw]=sub.split('/'),id=raw?decodeURIComponent(raw):'';
     if(k==='d'&&lib.decks.some(d=>d.id===id))return to(deckPath(id));
@@ -1655,6 +1739,7 @@ export default function App(){
   if(loading)content=<div className="skeleton" aria-busy="true" aria-label={T.loading}><span className="sk sk-hero"/><span className="sk sk-row"/><span className="sk sk-row short"/></div>;
   else if(error&&!loadedOnce)content=<div className="empty fatal" role="alert"><Wash tone="warm"/><CloudOff size={30} strokeWidth={1.6}/><h2>{T.fatalTitle}</h2><p>{error}</p><button type="button" className="btn btn-ink" onClick={()=>{setLoading(true);void fetchLocal();}}><RotateCcw size={17}/>{T.tryAgain}</button></div>;
   else content=page==='home'?<HomePage words={words} reviews={reviews} lib={lib} lastBackup={lastBackup} onNavigate={navigate} go={go}/>
+    :page==='add'&&(sub==='bulk'||sub.startsWith('bulk/'))?<BulkAddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub.slice(5))} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='add'?<AddPage key={sub} words={words} lib={lib} deckParam={decodeURIComponent(sub)} onSaved={fetchLocal} notify={notify} go={go}/>
     :page==='review'?<ReviewPage key={sub} words={words} lib={lib} scope={parseScope(sub,lib)} onReviewed={fetchLocal} onNavigate={navigate} go={go}/>
     :page==='words'?<LibraryPage words={words} reviews={reviews} lib={lib} passages={passages} sub={sub} onChanged={fetchLocal} notify={notify} go={go}/>

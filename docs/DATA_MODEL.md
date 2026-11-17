@@ -31,6 +31,12 @@ Why `meta` and not new object stores: adding stores needs an IndexedDB version b
 - Backups are exported in the stored shape and stay **v4**, so an older build can import a file with Q&A cards. Import also accepts `contentType:'question_answer'` without the marker; any other `cardType` value is refused before anything is replaced.
 - Duplicates are checked only among questions (a question never collides with a word of the four kinds). Q&A cards are excluded from Reading/Listening word exercises (#22/#23).
 
+## Bulk Add (#28)
+- Pasted text is parsed on the device only (`src/bulk.ts`, no AI, no network). Each preview row gets its card id when the preview is built.
+- `addWords(cards)` writes all ready rows in **one** IndexedDB transaction: every card or none. Each card is checked like `addWord` (text, meanings, limits, deck exists, no active duplicate of the same kind, no duplicate within the batch). A refused card aborts the whole save and reports its row.
+- A retry of the same preview is idempotent: a card whose id is already stored with the same text counts as `alreadySaved` and is not written again. Existing cards are never modified.
+- New cards are ordinary FSRS-7 new cards (same shape as a single add); no schema change, backup stays v4.
+
 ## Languages
 - BCP-47 tags, canonicalised with `Intl.getCanonicalLocales` (`en-us` → `en-US`). Invalid tags are refused.
 - Effective language of a card: card override → deck → defaults (`cardLanguages()`). Never inferred from the text and independent of the AR/EN interface language (#19).
