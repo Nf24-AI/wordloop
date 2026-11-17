@@ -13,7 +13,7 @@ permissions:
 jobs:
   test-staging:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20 # e2e (Chromium + WebKit) alone takes ~11 min; 12 cancelled green runs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
