@@ -711,3 +711,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .add-mode{margin-block:2px 4px}
 .add-mode .chip{min-block-size:44px}
 .term.term-question{font:600 clamp(24px,5.4vw,36px)/1.35 var(--ar);unicode-bidi:plaintext}
+/* #30: practice-suggestion switch under the reminder buttons */
+.check-row{display:flex;gap:12px;align-items:flex-start;margin-block-start:16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;min-block-size:44px}
+.check-row input{inline-size:20px;block-size:20px;margin-block-start:2px;flex:none;accent-color:var(--ink-btn)}
+.check-row span{display:grid;gap:3px}.check-row b{font-size:15px}.check-row small{font-size:13px;color:var(--muted);line-height:1.6}
