@@ -171,7 +171,7 @@ function ConfirmDialog({open,title,body,confirm,cancel,onConfirm,onCancel}:{open
 
 /* ───────────── Home ───────────── */
 function HomePage({words,reviews,decks,lastBackup,onNavigate}:{words:Word[];reviews:Review[];decks:readonly Deck[];lastBackup:string|null;onNavigate:(p:Page)=>void}){
-  const termProps=(w:Word)=>{const l=contentLang(w,decks);return {dir:dirOf(l),lang:l};};
+  const termProps=(w:Word)=>{const l=contentLang(w,decks);return {dir:termDir(w,l),lang:l};};
   const H=T.home;
   const stats=summary(words,reviews),now=Date.now();
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
@@ -255,6 +255,8 @@ function initialDeck(lib:Library,fromRoute:string){
 const RTL_LANGS=new Set(['ar','fa','he','ur','ps','yi']);
 const isRtl=(tag:string)=>RTL_LANGS.has(tag.split('-')[0].toLowerCase());
 const dirOf=(tag:string)=>isRtl(tag)?'rtl':'ltr';
+/** #18: a question may be written in any language whatever the deck says, so its direction follows its own text. */
+const termDir=(w:Pick<Word,'contentType'>,lang:string)=>w.contentType==='question_answer'?'auto':dirOf(lang);
 /** #19: the language a card is read and spoken in — card override → its deck → defaults. Never the interface locale. */
 const contentLang=(w:Word,decks:readonly Deck[])=>cardLanguages(w,decks).content;
 /** A sentence/example with its own listen button, in the card's language. */
@@ -273,13 +275,13 @@ const phFor=(map:Record<string,string>,tag:string)=>map[tag.split('-')[0].toLowe
  * One box style for content, every meaning and the optional sentence (#26 points 4–5): the language badge and the
  * listen button sit inside the box; the text direction follows the box language. Enter saves, Shift+Enter adds a line.
  */
-function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,describedBy,boxRef,onRemove,removeLabel}:{id:string;lang:string;label:string;value:string;onChange:(v:string)=>void;placeholder?:string;maxLength:number;invalid?:boolean;describedBy?:string;boxRef?:(el:HTMLTextAreaElement|null)=>void;onRemove?:()=>void;removeLabel?:string}){
+function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,describedBy,boxRef,onRemove,removeLabel,autoDir=false}:{id:string;lang:string;label:string;value:string;onChange:(v:string)=>void;placeholder?:string;maxLength:number;invalid?:boolean;describedBy?:string;boxRef?:(el:HTMLTextAreaElement|null)=>void;onRemove?:()=>void;removeLabel?:string;autoDir?:boolean}){
   const ref=useRef<HTMLTextAreaElement|null>(null);
   useLayoutEffect(()=>{const el=ref.current;if(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}},[value]);
   return <div className={'lang-box'+(invalid?' invalid':'')}>
     <label htmlFor={id} className="visually-hidden">{label} · {langName(lang)}</label>
     <span className="lang-badge" dir="ltr" aria-hidden="true">{langCode(lang)}</span>
-    <textarea ref={el=>{ref.current=el;boxRef?.(el);}} id={id} rows={1} dir={isRtl(lang)?'rtl':'ltr'} lang={lang} autoComplete="off" autoCapitalize="none" spellCheck={false}
+    <textarea ref={el=>{ref.current=el;boxRef?.(el);}} id={id} rows={1} dir={autoDir?(value.trim()?'auto':T.dir):isRtl(lang)?'rtl':'ltr'} lang={lang} autoComplete="off" autoCapitalize="none" spellCheck={false}
       maxLength={maxLength} placeholder={placeholder} value={value} onChange={e=>onChange(e.target.value)} aria-invalid={invalid||undefined} aria-describedby={describedBy}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();e.currentTarget.form?.requestSubmit();}}}/>
     <SpeakButton text={value} lang={lang} label={T.listen(value.trim()||label)} className="icon-btn box-icon" slower={false}/>
@@ -289,16 +291,21 @@ function LangBox({id,lang,label,value,onChange,placeholder,maxLength,invalid,des
 
 /** #42: the Add form's unsaved text, kept on this device only (localStorage), never in IndexedDB or the cloud. */
 const ADD_DRAFT='wordloop-add-draft';
-type AddDraft={deckParam:string;term:string;meanings:string[];example:string};
+type AddMode='word'|'qa';
+type AddDraft={deckParam:string;term:string;meanings:string[];example:string;mode?:AddMode};
 function readAddDraft(deckParam:string):AddDraft|null{
   try{const d=JSON.parse(localStorage.getItem(ADD_DRAFT)||'null');
-    if(d&&d.deckParam===deckParam&&typeof d.term==='string'&&Array.isArray(d.meanings)&&d.meanings.length&&d.meanings.every((m:unknown)=>typeof m==='string')&&typeof d.example==='string')return {...d,meanings:d.meanings.slice(0,MAX_MEANINGS)};
+    if(d&&d.deckParam===deckParam&&typeof d.term==='string'&&Array.isArray(d.meanings)&&d.meanings.length&&d.meanings.every((m:unknown)=>typeof m==='string')&&typeof d.example==='string')return {...d,meanings:d.meanings.slice(0,MAX_MEANINGS),mode:d.mode==='qa'?'qa':'word'};
   }catch{/* unreadable draft: start empty */}
   return null;
 }
 function writeAddDraft(d:AddDraft|null){try{if(d)localStorage.setItem(ADD_DRAFT,JSON.stringify(d));else localStorage.removeItem(ADD_DRAFT);}catch{/* private mode */}}
+/** #18: the Add mode last used in each deck (a networking deck opens on «سؤال وجواب»). Device-local, never synced. */
+const ADD_MODES='wordloop-add-mode';
+function readAddMode(deckId:string):AddMode{try{const m=JSON.parse(localStorage.getItem(ADD_MODES)||'{}');return m&&m[deckId]==='qa'?'qa':'word';}catch{return 'word';}}
+function writeAddMode(deckId:string,mode:AddMode){try{const m=JSON.parse(localStorage.getItem(ADD_MODES)||'{}')||{};if(mode==='qa')m[deckId]='qa';else delete m[deckId];localStorage.setItem(ADD_MODES,JSON.stringify(m));}catch{/* private mode */}}
 function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Library;deckParam:string;onSaved:()=>Promise<Word[]|null>;notify:Notify;go:(path:string)=>void}){
-  const A=T.add,F=T.addForm;
+  const A=T.add,F=T.addForm,Q=T.qa;
   const [deckId,setDeckId]=useState(()=>initialDeck(lib,deckParam));
   const deck=lib.decks.find(d=>d.id===deckId)??lib.decks.find(d=>d.id===DEFAULT_DECK_ID);
   // Languages come from the deck (#15/#16); an optional override applies to the cards saved from this form until reset.
@@ -308,13 +315,16 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
   // #42: typed text survives Back, a refresh or iOS closing the PWA in the background; cleared on save or when leaving the page.
   const [draft]=useState(()=>readAddDraft(deckParam));
   const [term,setTerm]=useState(draft?.term??''),[meanings,setMeanings]=useState<string[]>(draft?.meanings??['']),[example,setExample]=useState(draft?.example??''),[showExample,setShowExample]=useState(!!draft?.example);
+  // #18: «سؤال وجواب» reuses the same boxes: question = term, answer = meaning, explanation (stored as the note) = the optional third box.
+  const [mode,setMode]=useState<AddMode>(()=>draft?.mode??readAddMode(initialDeck(lib,deckParam))),qa=mode==='qa';
   const unsaved=!!(term.trim()||meanings.some(m=>m.trim())||example.trim());
-  useEffect(()=>{writeAddDraft(unsaved?{deckParam,term,meanings,example}:null);},[unsaved,deckParam,term,meanings,example]);
+  useEffect(()=>{writeAddDraft(unsaved?{deckParam,term,meanings,example,mode}:null);},[unsaved,deckParam,term,meanings,example,mode]);
   useEffect(()=>()=>{if(!document.hidden)writeAddDraft(null);},[]);
   const [loading,setLoading]=useState(false),[error,setError]=useState(''),[tried,setTried]=useState(false),[saved,setSaved]=useState<string|null>(null),[unsynced,setUnsynced]=useState<Word|null>(null);
   const termRef=useRef<HTMLTextAreaElement|null>(null),meaningRefs=useRef<(HTMLTextAreaElement|null)[]>([]),focusMeaning=useRef<number|null>(null),exampleRef=useRef<HTMLTextAreaElement|null>(null);
-  const kind=inferContentType(term),limit=TERM_LIMIT[kind];
-  const duplicate=term.trim()?words.find(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(term)):undefined;
+  const kind:ContentType=qa?'question_answer':inferContentType(term),limit=TERM_LIMIT[kind];
+  // A question is only a duplicate of another question; a word only of another word (the kinds never mix, #18).
+  const duplicate=term.trim()?words.find(w=>!w.archived&&(w.contentType==='question_answer')===qa&&normalizeTerm(w.term)===normalizeTerm(term)):undefined;
   const tooLong=term.trim().length>limit,hasMeaning=meanings.some(m=>m.trim());
   useEffect(()=>{if(focusMeaning.current!==null){meaningRefs.current[focusMeaning.current]?.focus();focusMeaning.current=null;}},[meanings.length]);
   useEffect(()=>{if(showExample&&!example)exampleRef.current?.focus();},[showExample]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -329,9 +339,9 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
     const target=lib.decks.some(d=>d.id===deckId)?deckId:DEFAULT_DECK_ID;
     let word:Word;
     try{
-      word=await addWord({contentType:kind,deckId:target,term,meanings,example:showExample?example:'',translation:'',tag:'',
+      word=await addWord({contentType:kind,deckId:target,term,meanings:qa?meanings.slice(0,1):meanings,example:!qa&&showExample?example:'',note:qa&&showExample?example:'',translation:'',tag:'',
         ...(override&&override.content!==deck?.contentLanguage?{contentLanguage:override.content}:{}),...(override&&override.meaning!==deck?.meaningLanguage?{meaningLanguage:override.meaning}:{})});
-      try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);
+      try{localStorage.setItem(LAST_DECK,target);}catch{/* private mode */}setLastDeck(target);writeAddMode(target,mode);
     }catch(err){setError(getError(err));setLoading(false);return;}
     // Ready for the next card: same deck and languages, empty boxes (#26 point 8).
     setTerm('');setMeanings(['']);setExample('');setShowExample(false);setTried(false);
@@ -343,12 +353,15 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
     if(list?.some(w=>w.id===word.id)){setUnsynced(null);setSaved(word.term);notify(F.saved(word.term));}
     else{setSaved(null);setUnsynced(word);}
   }
-  const termHint=tried&&!term.trim()?F.missingTerm:tooLong?F.tooLong(limit):duplicate?F.duplicate:'';
+  const termHint=tried&&!term.trim()?(qa?Q.missingQuestion:F.missingTerm):tooLong?(qa?Q.tooLong(limit):F.tooLong(limit)):duplicate?(qa?Q.duplicate:F.duplicate):'';
+  /** A question has one answer box; extra meaning boxes typed in word mode are folded into it (never dropped silently). */
+  function chooseMode(m:AddMode){if(m===mode)return;setMode(m);touched();if(m==='qa')setMeanings(ms=>{const kept=ms.filter(x=>x.trim());return [kept.join('؛ ')];});}
+  function changeDeck(id:string){setDeckId(id);setOverride(null);if(!unsaved)setMode(readAddMode(id));}
   return <div className="page add-page">
-    <PageHead title={F.title} lead={F.lead}/>
+    <PageHead title={qa?Q.title:F.title} lead={qa?Q.lead:F.lead}/>
     <form className="word-form add-form" onSubmit={submit} data-unsaved={unsaved&&!loading?'true':undefined} noValidate>
       <div className="add-target">
-        <DeckPicker lib={lib} value={deckId} onChange={id=>{setDeckId(id);setOverride(null);}}/>
+        <DeckPicker lib={lib} value={deckId} onChange={changeDeck}/>
         <button type="button" className="lang-pair" aria-expanded={langOpen} aria-controls="lang-override" onClick={()=>setLangOpen(o=>!o)}>
           <span dir="ltr">{langCode(content)} → {langCode(meaningLang)}</span><small>{F.changeLang}</small><ChevronDown size={16} className="chev" aria-hidden="true"/>
         </button>
@@ -358,19 +371,22 @@ function AddPage({words,lib,deckParam,onSaved,notify,go}:{words:Word[];lib:Libra
         <div className="field"><label htmlFor="add-meaning-lang">{F.meaningLangShort}</label><LanguageSelect id="add-meaning-lang" value={meaningLang} onChange={v=>setOverride({content,meaning:v})}/></div>
         <p className="hint">{override?<>{F.overrideNote} <button type="button" className="link-btn" onClick={()=>setOverride(null)}>{F.useDeckLang}</button></>:F.deckLangNote}</p>
       </div>}
-      <LangBox id="term" lang={content} label={F.termLabel} value={term} onChange={v=>{setTerm(v);touched();}} placeholder={phFor(TERM_PH,content)} maxLength={TERM_LIMIT.sentence}
-        invalid={!!termHint} describedBy={termHint?'term-hint':undefined} boxRef={el=>{termRef.current=el;}}/>
+      <div className="chips add-mode" role="group" aria-label={Q.mode}>
+        {(['word','qa'] as AddMode[]).map(m=><button type="button" key={m} className={'chip'+(mode===m?' on':'')} aria-pressed={mode===m} data-mode={m} onClick={()=>chooseMode(m)}>{m==='qa'?Q.modeQa:Q.modeWord}</button>)}
+      </div>
+      <LangBox id="term" lang={content} label={qa?Q.question:F.termLabel} value={term} onChange={v=>{setTerm(v);touched();}} placeholder={qa?Q.questionPh:phFor(TERM_PH,content)} maxLength={TERM_LIMIT.sentence}
+        invalid={!!termHint} describedBy={termHint?'term-hint':undefined} boxRef={el=>{termRef.current=el;}} autoDir={qa}/>
       {termHint&&<p id="term-hint" className="hint box-hint" role="alert">{termHint}</p>}
-      {meanings.map((m,i)=><LangBox key={i} id={i?'meaning-'+i:'meaning'} lang={meaningLang} label={F.meaningLabel(i+1,meanings.length)} value={m} placeholder={i?'':phFor(MEANING_PH,meaningLang)} maxLength={240}
+      {meanings.map((m,i)=><LangBox key={i} id={i?'meaning-'+i:'meaning'} lang={meaningLang} label={qa?Q.answer:F.meaningLabel(i+1,meanings.length)} value={m} placeholder={i?'':qa?Q.answerPh:phFor(MEANING_PH,meaningLang)} maxLength={240} autoDir={qa}
         onChange={v=>{setMeanings(ms=>ms.map((x,j)=>j===i?v:x));touched();}} invalid={tried&&!hasMeaning&&i===0} describedBy={tried&&!hasMeaning&&i===0?'meaning-hint':undefined}
         boxRef={el=>{meaningRefs.current[i]=el;}} onRemove={meanings.length>1?()=>removeMeaning(i):undefined} removeLabel={F.removeMeaning(i+1)}/>)}
-      {tried&&!hasMeaning&&<p id="meaning-hint" className="hint box-hint" role="alert">{F.missingMeaning}</p>}
+      {tried&&!hasMeaning&&<p id="meaning-hint" className="hint box-hint" role="alert">{qa?Q.missingAnswer:F.missingMeaning}</p>}
       <div className="add-more-row">
-        {meanings.length<MAX_MEANINGS&&<button type="button" className="add-more" onClick={addMeaning}><Plus size={18} aria-hidden="true"/>{F.addMeaning}</button>}
-        {!showExample&&<button type="button" className="add-more" onClick={()=>setShowExample(true)}><Plus size={18} aria-hidden="true"/>{F.addExample}</button>}
+        {!qa&&meanings.length<MAX_MEANINGS&&<button type="button" className="add-more" onClick={addMeaning}><Plus size={18} aria-hidden="true"/>{F.addMeaning}</button>}
+        {!showExample&&<button type="button" className="add-more" onClick={()=>setShowExample(true)}><Plus size={18} aria-hidden="true"/>{qa?Q.addExplanation:F.addExample}</button>}
       </div>
-      {showExample&&<LangBox id="example" lang={content} label={F.exampleLabel} value={example} onChange={setExample} placeholder={phFor(EXAMPLE_PH,content)} maxLength={500}
-        boxRef={el=>{exampleRef.current=el;}} onRemove={()=>{setExample('');setShowExample(false);}} removeLabel={F.removeExample}/>}
+      {showExample&&<LangBox id="example" lang={qa?meaningLang:content} label={qa?Q.explanation:F.exampleLabel} value={example} onChange={setExample} placeholder={qa?Q.explanationPh:phFor(EXAMPLE_PH,content)} maxLength={qa?NOTE_LIMIT:500}
+        boxRef={el=>{exampleRef.current=el;}} onRemove={()=>{setExample('');setShowExample(false);}} removeLabel={qa?Q.removeExplanation:F.removeExample} autoDir={qa}/>}
       {error&&<p className="inline-error" role="alert">{error}</p>}
       {unsynced&&<div className="inline-error soft" role="alert"><p>{A.unsynced[0]}<span dir="auto">{unsynced.term}</span>{A.unsynced[1]}</p><button type="button" className="btn btn-quiet sm" disabled={loading} onClick={()=>{setLoading(true);void confirmVisible(unsynced).finally(()=>setLoading(false));}}><RotateCcw size={16}/>{A.refreshList}</button></div>}
       <div className="form-foot">
@@ -460,7 +476,7 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
       </div>
     </section>;
   }
-  const total=done+queue.length,cl=contentLang(active,lib.decks),meaningLang=cardLanguages(active,lib.decks).meaning;
+  const total=done+queue.length,cl=contentLang(active,lib.decks),meaningLang=cardLanguages(active,lib.decks).meaning,isQa=active.contentType==='question_answer';
   return <section className="review" aria-labelledby="review-title">
     <ScopeBar scope={scope} lib={lib} go={go}/>
     <div className="review-top">
@@ -468,13 +484,14 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
       <div className="progress" role="progressbar" aria-label={R.progress} aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-valuetext={R.of(done,total)}><span style={{inlineSize:`${Math.max(4,100*done/total)}%`}}/></div>
       <p className="review-count"><b>{done+1}</b> {R.ofWord} {total}</p>
     </div>
-    <div className="last-line" aria-live="polite">{last?comesBack(last):R.think}</div>
-    <article key={active.id} className={'card'+(revealed?' is-open':'')} aria-live="polite">
+    <div className="last-line" aria-live="polite">{last?comesBack(last):isQa?T.qa.think:R.think}</div>
+    <article key={active.id} className={'card'+(revealed?' is-open':'')+(isQa?' card-qa':'')} aria-live="polite" data-kind={active.contentType}>
       <Wash tone="soft"/>
       <div className="card-top"><span className="card-labels"><span className="kind-badge">{kindLabel(active.contentType)}</span><span className="tag" dir="auto">{tagText(active.tag)}</span></span><SpeakButton text={active.term} lang={cl} label={T.listen(active.term)}/></div>
-      <h2 dir={dirOf(cl)} lang={cl} className={'term'+(active.term.length>40?' term-long':'')}>{active.term}</h2>
-      {active.example&&<ExampleLine text={active.example} lang={cl}/>}
-      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}<strong dir={dirOf(meaningLang)} lang={meaningLang}>{active.meanings.join('؛ ')}</strong>{active.note&&<p className="note" dir="auto">{active.note}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
+      <h2 dir={termDir(active,cl)} lang={cl} className={'term'+(active.term.length>40?' term-long':'')+(isQa?' term-question':'')}>{active.term}</h2>
+      {/* #18: a Q&A card shows only the question until «شوف الإجابة»; anything else could give the answer away. */}
+      {active.example&&!isQa&&<ExampleLine text={active.example} lang={cl}/>}
+      {revealed?<div className="answer">{active.contentType==='idiom'&&<small className="answer-label">{R.idiomMeaning}</small>}{isQa&&<small className="answer-label">{T.qa.answer}</small>}<strong dir={isQa?'auto':dirOf(meaningLang)} lang={meaningLang}>{active.meanings.join('؛ ')}</strong>{active.note&&<p className="note" dir="auto">{isQa&&<b>{T.qa.explanationLabel}: </b>}{active.note}</p>}{isQa&&active.example&&<p className="note" dir="auto">{active.example}</p>}{active.translation&&<p dir="auto">{active.translation}</p>}</div>
         :<button ref={revealRef} type="button" className="btn btn-ink btn-lg reveal" onClick={()=>setRevealed(true)}>{R.reveal}</button>}
     </article>
     {msg&&<p className="inline-error" role="alert">{msg}</p>}
@@ -1039,7 +1056,7 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
   return <>
     <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id),cl=contentLang(w,lib.decks);return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
-        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir={dirOf(cl)} lang={cl}>{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
+        <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir={termDir(w,cl)} lang={cl}>{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
         <ChevronDown size={18} className="chev" aria-hidden="true"/>
       </button>
@@ -1098,7 +1115,7 @@ function EditSheet({word,lang,onSave,onClose}:{word:Word|null;lang:string;onSave
   const submit=()=>run(()=>onSave({term,meanings,...(has.example?{example}:{}),...(has.translation?{translation}:{}),...(has.note?{note}:{})}));
   return <FormSheet open={open} title={C.editTitle(word.term)} onClose={onClose} onSubmit={()=>void submit()} submit={T.lib.save} busy={busy} error={error}
     dirty={loadedId===word.id&&(term!==word.term||meanings.join('\n')!==word.meanings.join('\n')||example!==word.example||translation!==word.translation||note!==word.note)}>
-    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={dirOf(lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
+    <div className="field"><label htmlFor="edit-term">{f.term.label}</label><input id="edit-term" name="edit-term" dir={termDir(word,lang)} lang={lang} autoComplete="off" maxLength={TERM_LIMIT[word.contentType]} value={term} onChange={e=>setTerm(e.target.value)}/></div>
     {meanings.map((m,i)=><div className="field" key={i}><label htmlFor={'edit-meaning-'+i}>{meanings.length>1?C.meaningN(i+1):f.meaning.label}</label><input id={'edit-meaning-'+i} name={'edit-meaning-'+i} dir="auto" autoComplete="off" maxLength={240} value={m} onChange={e=>setMeanings(ms=>ms.map((x,j)=>j===i?e.target.value:x))}/></div>)}
     {has.example&&<div className="field"><label htmlFor="edit-example">{f.example?.label||C.example}</label><textarea id="edit-example" dir={dirOf(lang)} lang={lang} maxLength={500} value={example} onChange={e=>setExample(e.target.value)}/></div>}
     {has.translation&&<div className="field"><label htmlFor="edit-translation">{f.translation?.label||C.translation}</label><textarea id="edit-translation" dir="auto" maxLength={400} value={translation} onChange={e=>setTranslation(e.target.value)}/></div>}

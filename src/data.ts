@@ -2,10 +2,24 @@ import {DefaultScheduler, Rating, type Grade as FsrsGrade} from 'ts-fsrs';
 
 export type Grade='again'|'hard'|'good'|'easy';
 /** #5: the four card kinds. Stored lowercase; UI labels live in the UI layer. */
-export type ContentType='vocabulary'|'phrase'|'sentence'|'idiom';
-export const CONTENT_TYPES:readonly ContentType[]=['vocabulary','phrase','sentence','idiom'];
-/** Maximum length of the English text per kind. Sentences need room; everything else stays short. */
-export const TERM_LIMIT:Record<ContentType,number>={vocabulary:100,phrase:160,sentence:300,idiom:160};
+/**
+ * #18: a fifth kind, `question_answer` (question → answer, optional explanation in `note`), for knowledge decks such as
+ * networking or project management. It is its own kind in the app (own label, review face, duplicate check, filter).
+ *
+ * Rollback safety: on disk a Q&A card is written as a legacy `sentence` plus the additive marker
+ * `cardType:'question_answer'` (see `toStored`). Builds from before #18 coerce an unknown `contentType` to
+ * vocabulary and write that back on the next review, which would lose the kind; with the marker they read a valid
+ * sentence card (question = term, answer = meaning, explanation = note) and keep the marker, because every write
+ * spreads the stored record. Backups use the same stored shape, so a backup from this build still imports into an
+ * older build, Q&A cards included.
+ */
+export type LegacyContentType='vocabulary'|'phrase'|'sentence'|'idiom';
+export type ContentType=LegacyContentType|'question_answer';
+export const LEGACY_CONTENT_TYPES:readonly LegacyContentType[]=['vocabulary','phrase','sentence','idiom'];
+export const CONTENT_TYPES:readonly ContentType[]=[...LEGACY_CONTENT_TYPES,'question_answer'];
+export const QUESTION_ANSWER='question_answer';
+/** Maximum length of the term per kind (for Q&A: the question). Sentences and questions need room; everything else stays short. */
+export const TERM_LIMIT:Record<ContentType,number>={vocabulary:100,phrase:160,sentence:300,idiom:160,question_answer:300};
 export const NOTE_LIMIT=500;
 /** A card as the app uses it. Cards saved before #5 have no `contentType`/`note`; they are read as vocabulary with an empty note. */
 /**
@@ -14,7 +28,7 @@ export const NOTE_LIMIT=500;
  * `contentLanguage`/`meaningLanguage` are optional per-card overrides of the deck languages (#15/#19).
  */
 export type Word={id:string;deckId:string;contentType:ContentType;term:string;meaning:string;meanings:string[];example:string;translation:string;note:string;tag:string;createdAt:string;updatedAt:string;dueAt:string;fsrsState:Record<string,unknown>;archived:boolean;revision:number;contentLanguage?:string;meaningLanguage?:string};
-type StoredWord=Omit<Word,'contentType'|'note'|'deckId'|'meanings'>&{contentType?:ContentType;note?:string;deckId?:string;meanings?:unknown};
+type StoredWord=Omit<Word,'contentType'|'note'|'deckId'|'meanings'>&{contentType?:ContentType;note?:string;deckId?:string;meanings?:unknown;cardType?:unknown};
 export type Review={id:string;wordId:string;grade:Grade;reviewedAt:string;nextDueAt:string};
 /** #15: a folder groups decks (e.g. «الإنجليزية»). */
 export type Folder={id:string;name:string;createdAt:string;updatedAt:string};
@@ -63,7 +77,16 @@ export const DEFAULT_FOLDER_NAME='غير مصنفة',DEFAULT_DECK_NAME='بطاق
  */
 export function normalizeWord(w:StoredWord):Word{
   const meanings=storedMeanings(w.meanings)??[w.meaning];
-  return {...w,meaning:meanings[0],meanings,deckId:typeof w.deckId==='string'&&w.deckId?w.deckId:DEFAULT_DECK_ID,contentType:isContentType(w.contentType)?w.contentType:'vocabulary',note:typeof w.note==='string'?w.note:''};
+  const {cardType,...rest}=w;
+  const contentType:ContentType=cardType===QUESTION_ANSWER?'question_answer':isContentType(w.contentType)?w.contentType:'vocabulary';
+  return {...rest,meaning:meanings[0],meanings,deckId:typeof w.deckId==='string'&&w.deckId?w.deckId:DEFAULT_DECK_ID,contentType,note:typeof w.note==='string'?w.note:''};
+}
+/**
+ * #18: the on-disk shape of a card. Every kind but Q&A is stored as it is used. A Q&A card is stored as a legacy
+ * `sentence` with `cardType:'question_answer'`, so a pre-#18 build still reads (and keeps) it after a rollback.
+ */
+export function toStored(w:Word):StoredWord{
+  return w.contentType==='question_answer'?{...w,contentType:'sentence',cardType:QUESTION_ANSWER}:{...w};
 }
 /** Canonical BCP-47 tag (e.g. `en-us` → `en-US`), or null when the tag is not a valid language tag. */
 export function canonicalLanguage(tag:unknown):string|null{
@@ -247,7 +270,7 @@ export async function moveWord(id:string,deckId:string):Promise<Word>{
     if(!decks.some(d=>d.id===deckId))throw Error('لم نجد الحزمة');
     const store=tx.objectStore('words'),stored=await request<StoredWord|undefined>(store.get(id));
     if(!stored)throw Error('لم نجد الكلمة');
-    const next:Word={...normalizeWord(stored),deckId,updatedAt:new Date().toISOString()};store.put(next);return next;
+    const next:Word={...normalizeWord(stored),deckId,updatedAt:new Date().toISOString()};store.put(toStored(next));return next;
   });
 }
 export type DeckCount={cards:number;due:number};
@@ -299,7 +322,7 @@ export async function addWord(data:NewCard):Promise<Word>{
   const now=new Date(),id=crypto.randomUUID();
   const fsrs=(await scheduler()).newCard({cardId:id,now});
   const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0,...langs};
-  const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(word);await end;
+  const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(toStored(word));await end;
   announceChange();return word;
 }
 export type CardEdit={term?:string;meanings?:string[];example?:string;translation?:string;note?:string;tag?:string};
@@ -324,7 +347,7 @@ export async function editWord(id:string,patch:CardEdit):Promise<Word>{
       if(all.some(w=>w.id!==id&&!w.archived&&w.contentType===old.contentType&&normalizeTerm(w.term)===normalizeTerm(term)))throw Error('هذه الكلمة موجودة عندك بالفعل');
     }
     next={...old,term,meaning:meanings[0],meanings,example,translation,note,tag,updatedAt:new Date().toISOString()};
-    store.put(next);
+    store.put(toStored(next));
   }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
   await end;announceChange();return next;
 }
@@ -332,7 +355,7 @@ export async function archiveWord(id:string):Promise<void>{
   const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');
   try{
     const w=await request<StoredWord|undefined>(store.get(id));if(!w)throw Error('لم نجد الكلمة');
-    store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});
+    store.put(toStored({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()}));
   }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1: the abort is awaited, never an unhandled rejection
   await end;announceChange();
 }
@@ -353,7 +376,7 @@ export async function reviewWord(id:string,grade:Grade):Promise<string>{
     const result=fsrs.review({card:toCard(old.fsrsState),grade:ratings[grade],now});
     nextAt=result.card.dueAt.toISOString();
     // Built on the record read inside this transaction, so a concurrent deck move or edit is never undone.
-    store.put({...old,fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1});
+    store.put(toStored({...old,fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1}));
     tx.objectStore('reviews').put({id:crypto.randomUUID(),wordId:id,grade,reviewedAt:now.toISOString(),nextDueAt:nextAt} satisfies Review);
   }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1
   await end;announceChange();return nextAt;
@@ -386,7 +409,9 @@ function validWord(w:unknown,version:1|2|3|4):w is StoredWord{
   if(x.contentLanguage!==undefined&&!canonicalLanguage(x.contentLanguage))return false;
   if(x.meaningLanguage!==undefined&&!canonicalLanguage(x.meaningLanguage))return false;
   if(x.note!==undefined&&!text(x.note,NOTE_LIMIT))return false;
-  const kind=isContentType(x.contentType)?x.contentType:'vocabulary';
+  // #18: the only known marker; anything else is refused rather than silently dropped.
+  if(x.cardType!==undefined&&x.cardType!==QUESTION_ANSWER)return false;
+  const kind=x.cardType===QUESTION_ANSWER?'question_answer':isContentType(x.contentType)?x.contentType:'vocabulary';
   return text(x.id,80)&&text(x.term,TERM_LIMIT[kind])&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&validFsrsState(x.fsrsState,x.dueAt);
 }
 function validReview(r:unknown):r is Review{
@@ -478,7 +503,8 @@ export function validateBackup(data:unknown):Backup{
 }
 export async function buildBackup():Promise<Backup>{
   const {folders,decks}=await listLibrary();
-  return {app:'wordloop',version:4,exportedAt:new Date().toISOString(),folders,decks,words:await listWords(),reviews:await listReviews(),passages:await listPassages()};
+  // #18: words are exported in their stored shape (Q&A = sentence + cardType), so older builds can import this file.
+  return {app:'wordloop',version:4,exportedAt:new Date().toISOString(),folders,decks,words:(await listWords()).map(toStored) as Word[],reviews:await listReviews(),passages:await listPassages()};
 }
 /** Replaces cards, reviews, folders, decks and passages in one transaction. Other meta (the last-backup date) is kept. */
 export async function restoreBackup(backup:unknown):Promise<void>{
@@ -496,7 +522,7 @@ export async function restoreBackup(backup:unknown):Promise<void>{
     words.clear();reviews.clear();for(const r of LIBRARY_RANGES())meta.delete(r);meta.delete(PASSAGE_RANGE());
     for(const f of safe.folders)meta.put({key:folderKey(f.id),type:'folder',...f});
     for(const d of safe.decks)meta.put({key:deckKey(d.id),type:'deck',...d});
-    for(const w of safe.words)words.put(w);for(const r of safe.reviews)reviews.put(r);
+    for(const w of safe.words)words.put(toStored(w));for(const r of safe.reviews)reviews.put(r);
     for(const p of safe.passages)meta.put({key:passageKey(p.id),type:'passage',...p});
   }
   catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}

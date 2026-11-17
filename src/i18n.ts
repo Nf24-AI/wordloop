@@ -139,7 +139,7 @@ const ar={
   },
   /* card kinds */
   kindsLabel:'نوع البطاقة',
-  kinds:{vocabulary:{label:'مفردة',hint:'كلمة وحدة'},phrase:{label:'عبارة',hint:'كلمات تمشي مع بعض'},sentence:{label:'جملة',hint:'جملة كاملة'},idiom:{label:'تعبير اصطلاحي',hint:'معناه مو حرفي'}} as Record<ContentType,{label:string;hint:string}>,
+  kinds:{vocabulary:{label:'مفردة',hint:'كلمة وحدة'},phrase:{label:'عبارة',hint:'كلمات تمشي مع بعض'},sentence:{label:'جملة',hint:'جملة كاملة'},idiom:{label:'تعبير اصطلاحي',hint:'معناه مو حرفي'},question_answer:{label:'سؤال وجواب',hint:'سؤال وإجابته'}} as Record<ContentType,{label:string;hint:string}>,
   kindForm:{
     vocabulary:{title:'وش الكلمة الجديدة؟',lead:'اكتب معناها مثل ما فهمته، والباقي علينا.',noun:'الكلمة',
       term:{label:'الكلمة بالإنجليزي',ph:'overlook',hint:'كلمة وحدة.'},meaning:{label:'وش معناها؟',ph:'يغفل عن، ما ينتبه له'},
@@ -155,6 +155,9 @@ const ar={
       meaning:{label:'معناه الاصطلاحي',ph:'يكسر الحاجز ويبدأ الكلام بعفوية',hint:'اكتب المقصود منه، مو الترجمة الحرفية.'},
       note:{label:'وش يقصد ومتى ينقال؟',ph:'ما له علاقة بالثلج. ينقال لما تبدأ حديث مع ناس ما تعرفهم عشان يخف التوتر.',hint:'شرحه بكلامك يساعدك تفهمه، مو تحفظه بس.'},
       example:{label:'مثال',ph:'He told a joke to break the ice.'},translation:{label:'معنى المثال',ph:'قال نكتة عشان يكسر الحاجز.'}},
+    question_answer:{title:'وش السؤال؟',lead:'اكتب السؤال وإجابته، ونرجّعه لك في وقته.',noun:'السؤال',
+      term:{label:'السؤال',ph:'وش وظيفة DNS؟'},meaning:{label:'الإجابة',ph:'يحوّل أسماء النطاقات إلى عناوين IP'},
+      note:{label:'شرح أو مثال',ph:'مثل: لما تكتب example.com يرجع لك عنوانه.'}},
   } as Record<ContentType,KindForm>,
   /* add */
   add:{
@@ -216,6 +219,17 @@ const ar={
     missingTerm:'اكتب الكلمة أو العبارة أول.',missingMeaning:'اكتب معنى واحد على الأقل.',tooLong:(n:number)=>`النص أطول من ${n} حرف، اختصره شوي.`,
     duplicate:'هذا النص موجود في مكتبتك من قبل.',
     saved:(t:string)=>`حفظنا «${t}». اكتب اللي بعدها.`,
+  },
+  /* #18: Question & Answer cards */
+  qa:{
+    mode:'نوع البطاقة',modeWord:'كلمة أو عبارة',modeQa:'سؤال وجواب',
+    title:'وش السؤال؟',lead:'اكتب السؤال وإجابته، ونرجّعه لك في وقته.',
+    question:'السؤال',answer:'الإجابة',explanation:'شرح أو مثال',
+    questionPh:'مثل: وش وظيفة DNS؟',answerPh:'مثل: يحوّل أسماء النطاقات إلى عناوين IP',explanationPh:'اختياري: شرح قصير أو مثال يساعدك تتذكر.',
+    addExplanation:'إضافة شرح أو مثال',removeExplanation:'احذف الشرح',
+    missingQuestion:'اكتب السؤال أول.',missingAnswer:'اكتب الإجابة.',duplicate:'هذا السؤال موجود في مكتبتك من قبل.',
+    tooLong:(n:number)=>`السؤال أطول من ${n} حرف، اختصره شوي.`,
+    think:'فكّر في الإجابة، بعدين شوفها.',explanationLabel:'الشرح',
   },
   /* #25: simplified card details */
   card:{
@@ -316,7 +330,7 @@ const ar={
   },
   /* quick actions */
   quick:{
-    title:'وش تبي تسوي؟',add:'أضف بطاقة',addNote:'مفردة، عبارة، جملة أو تعبير اصطلاحي',
+    title:'وش تبي تسوي؟',add:'أضف بطاقة',addNote:'كلمة، عبارة، جملة، أو سؤال وجواب',
     reviewNow:'راجع الحين',waiting:(n:number)=>`${arCount(n,'بطاقة وحدة','بطاقتين','بطاقات','بطاقة')} تنتظرك`,
     review:'مراجعة',nothingDue:(when:string)=>`ما فيه شي مستحق الحين. أقرب مراجعة ${when}.`,noCards:'ما فيه بطاقات للمراجعة بعد.',
     practice:'ممارسة',practiceNote:'قراءة واستماع ببطاقاتك. نشتغل عليها.',soon:'قريبًا',
@@ -453,7 +467,7 @@ const en:Dict={
     tips:['Write the meaning in your own words, not a copied translation. Phrasing it yourself makes it stick.','Add a sentence from something that happened to you. Personal examples come back more easily.','Clear what’s due before adding new cards, so reviews don’t pile up.','Rate honestly. “Forgot” isn’t failure; it brings the card back sooner, when you need it.','A short session every day beats one long session a week.','Say the word out loud as you review. The speaker button helps with pronunciation.'],
   },
   kindsLabel:'Card type',
-  kinds:{vocabulary:{label:'Vocabulary',hint:'A single word'},phrase:{label:'Phrase',hint:'Words that go together'},sentence:{label:'Sentence',hint:'A full sentence'},idiom:{label:'Idiom',hint:'Not meant literally'}},
+  kinds:{vocabulary:{label:'Vocabulary',hint:'A single word'},phrase:{label:'Phrase',hint:'Words that go together'},sentence:{label:'Sentence',hint:'A full sentence'},idiom:{label:'Idiom',hint:'Not meant literally'},question_answer:{label:'Question & answer',hint:'A question and its answer'}},
   kindForm:{
     vocabulary:{title:'What’s the new word?',lead:'Write the meaning the way you understood it. We’ll handle the rest.',noun:'word',
       term:{label:'English word',ph:'overlook',hint:'A single word.'},meaning:{label:'What does it mean?',ph:'يغفل عن، ما ينتبه له'},
@@ -469,6 +483,9 @@ const en:Dict={
       meaning:{label:'Idiomatic meaning',ph:'يكسر الحاجز ويبدأ الكلام بعفوية',hint:'Write what it means, not a word-for-word translation.'},
       note:{label:'What does it suggest, and when is it used?',ph:'ما له علاقة بالثلج. ينقال لما تبدأ حديث مع ناس ما تعرفهم عشان يخف التوتر.',hint:'Explaining it in your own words helps you understand it, not just memorise it.'},
       example:{label:'Example',ph:'He told a joke to break the ice.'},translation:{label:'Example meaning',ph:'قال نكتة عشان يكسر الحاجز.'}},
+    question_answer:{title:'What’s the question?',lead:'Write the question and its answer. We’ll bring it back on time.',noun:'question',
+      term:{label:'Question',ph:'What does DNS do?'},meaning:{label:'Answer',ph:'Turns domain names into IP addresses'},
+      note:{label:'Explanation or example',ph:'e.g. typing example.com returns its address.'}},
   },
   add:{
     missingTerm:noun=>`Write the ${noun} first.`,
@@ -526,6 +543,16 @@ const en:Dict={
     missingTerm:'Type the word or phrase first.',missingMeaning:'Type at least one meaning.',tooLong:n=>`The text is longer than ${n} characters. Shorten it a little.`,
     duplicate:'This text is already in your library.',
     saved:t=>`Saved “${t}”. Type the next one.`,
+  },
+  qa:{
+    mode:'Card type',modeWord:'Word or phrase',modeQa:'Question & answer',
+    title:'What’s the question?',lead:'Write the question and its answer. We’ll bring it back on time.',
+    question:'Question',answer:'Answer',explanation:'Explanation or example',
+    questionPh:'e.g. What does DNS do?',answerPh:'e.g. Turns domain names into IP addresses',explanationPh:'Optional: a short explanation or example to help you remember.',
+    addExplanation:'Add an explanation or example',removeExplanation:'Remove the explanation',
+    missingQuestion:'Type the question first.',missingAnswer:'Type the answer.',duplicate:'This question is already in your library.',
+    tooLong:n=>`The question is longer than ${n} characters. Shorten it a little.`,
+    think:'Think of the answer, then show it.',explanationLabel:'Explanation',
   },
   card:{
     deck:'Deck:',edit:'Edit',more:t=>`More options for “${t}”`,moreTitle:t=>`What would you like to do with “${t}”?`,
@@ -621,7 +648,7 @@ const en:Dict={
     installOther:'Add it to your home screen so it opens like an app and works offline.',installButton:'Install app',
   },
   quick:{
-    title:'What would you like to do?',add:'Add a card',addNote:'Vocabulary, phrase, sentence or idiom',
+    title:'What would you like to do?',add:'Add a card',addNote:'A word, phrase, sentence, or a question & answer',
     reviewNow:'Review now',waiting:n=>`${enCount(n,'card','cards')} waiting`,
     review:'Review',nothingDue:when=>`Nothing is due right now. Next review ${when}.`,noCards:'No cards to review yet.',
     practice:'Practice',practiceNote:'Reading and listening with your cards. Coming soon.',soon:'Soon',

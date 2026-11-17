@@ -707,3 +707,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .dw del{color:var(--muted);text-decoration-thickness:1.5px}
 .dictation-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);list-style:none;padding:0}
 .dictation-legend li{display:inline-flex;gap:6px;align-items:center}
+/* #18 Question & Answer: a mode switch above the boxes; the question reads as text, not as a display word */
+.add-mode{margin-block:2px 4px}
+.add-mode .chip{min-block-size:44px}
+.term.term-question{font:600 clamp(24px,5.4vw,36px)/1.35 var(--ar);unicode-bidi:plaintext}

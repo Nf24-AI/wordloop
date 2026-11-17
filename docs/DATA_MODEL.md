@@ -25,6 +25,12 @@ Why `meta` and not new object stores: adding stores needs an IndexedDB version b
 - New and edited meanings are trimmed, empty boxes dropped and exact repeats (case-insensitive) removed; at least one must remain.
 - `editWord()` changes content only (term, meanings, example, translation, note, tag). It never touches `id`, `deckId`, `contentType`, `createdAt`, `dueAt`, `fsrsState`, `revision`, archive state or reviews.
 
+## Question & Answer cards (#18)
+- A fifth kind, `question_answer`: question = `term` (≤300), answer = `meanings[0]` (≤240, mirrored in `meaning`), optional explanation/example = `note` (≤500). One card, one FSRS schedule, reviewed with the usual four grades.
+- **Stored shape (rollback-safe):** `contentType:'sentence'` plus the additive marker `cardType:'question_answer'`. `normalizeWord()` maps it to `contentType:'question_answer'` in the app; `toStored()` writes it back. A pre-#18 build reads a valid sentence card and keeps the marker, because every write spreads the stored record — after a roll-forward the card is a question again.
+- Backups are exported in the stored shape and stay **v4**, so an older build can import a file with Q&A cards. Import also accepts `contentType:'question_answer'` without the marker; any other `cardType` value is refused before anything is replaced.
+- Duplicates are checked only among questions (a question never collides with a word of the four kinds). Q&A cards are excluded from Reading/Listening word exercises (#22/#23).
+
 ## Languages
 - BCP-47 tags, canonicalised with `Intl.getCanonicalLocales` (`en-us` → `en-US`). Invalid tags are refused.
 - Effective language of a card: card override → deck → defaults (`cardLanguages()`). Never inferred from the text and independent of the AR/EN interface language (#19).
