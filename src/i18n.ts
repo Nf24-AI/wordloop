@@ -69,7 +69,7 @@ const ar={
     readAction:'تمرين قراءة',readTitle:'تمرين قراءة',
     activities:'وش تبي تتمرن عليه؟',howMany:'كم سؤال؟',all:'الكل',start:'ابدأ التمرين',
     kind:{cloze:'اكمل الفراغ',meaning:'معنى الكلمة',comprehension:'فهم النص'},
-    why:{cloze:'«اكمل الفراغ» يحتاج بطاقات في الحزمة لكلمات موجودة في النص.',meaning:'«معنى الكلمة» يحتاج بطاقات في الحزمة.',comprehension:'«فهم النص» يسأل بس الأسئلة اللي أضفتها للنص. عدّل النص وأضف سؤال.'},
+    why:{cloze:'«اكمل الفراغ» يحتاج بطاقات في الحزمة لكلمات موجودة في النص.',meaning:'«معنى الكلمة» يحتاج بطاقات لكلمات موجودة في النص.',comprehension:'«فهم النص» يسأل بس الأسئلة اللي أضفتها للنص. عدّل النص وأضف سؤال.'},
     notEnoughTitle:'النص يحتاج شوي محتوى',notEnoughBody:'ما نخترع أسئلة من النص. أضف أسئلة للنص، أو بطاقات لكلمات موجودة فيه، ونجهّز لك التمرين.',
     addQuestions:'أضف أسئلة للنص',addCards:'أضف بطاقات',
     noFsrs:'التمرين ما يغيّر مواعيد مراجعة بطاقاتك.',
@@ -79,6 +79,14 @@ const ar={
     correct:'صح!',knewIt:'ممتاز.',almost:'قريب! انتبه للحروف:',answerIs:'الإجابة:',nextTime:'تمر عليك المرة الجاية.',notQuite:'مو هذي. الإجابة:',
     result:(r:number,n:number)=>`${r} من ${n} صح`,almostCount:(n:number)=>n===1?'وإجابة وحدة قريبة.':n===2?'وإجابتين قريبة.':`و${n} إجابات قريبة.`,
     again:'تمرين ثاني',backToText:'رجوع للنص',
+  },
+  /* #61: one place to start practising — deck → text → reading or listening */
+  hub:{
+    title:'ممارسة',lead:'اختر حزمة، بعدين نص، واقرأه أو اسمعه.',entry:'تمرين قراءة واستماع',
+    decksTitle:'اختر الحزمة',textsTitle:'اختر النص',
+    emptyTitle:'ما فيه نصوص للتمرين للحين',emptyBody:'التمرين يشتغل على فقرات قصيرة تحفظها في حزمك. أضف نص لحزمة، وبتقدر تقرأه وتسمعه وتتمرن عليه.',
+    deckEmptyTitle:'الحزمة ما فيها نصوص',deckEmptyBody:'أضف فقرة قصيرة باللغة اللي تتعلمها، وابدأ التمرين عليها.',
+    addText:'أضف نص',chooseDeckFirst:'اختر حزمة تضيف لها النص',
   },
   listening:{
     action:'تمرين استماع',title:'تمرين استماع',player:'المشغّل',
@@ -382,7 +390,7 @@ const ar={
     title:'وش تبي تسوي؟',add:'أضف بطاقة',addNote:'كلمة، عبارة، جملة، أو سؤال وجواب',
     reviewNow:'راجع الحين',waiting:(n:number)=>`${arCount(n,'بطاقة وحدة','بطاقتين','بطاقات','بطاقة')} تنتظرك`,
     review:'مراجعة',nothingDue:(when:string)=>`ما فيه شي مستحق الحين. أقرب مراجعة ${when}.`,noCards:'ما فيه بطاقات للمراجعة بعد.',
-    practice:'ممارسة',practiceNote:'قراءة واستماع ببطاقاتك. نشتغل عليها.',soon:'قريبًا',
+    practice:'ممارسة',practiceNote:'قراءة واستماع على نصوصك.',soon:'قريبًا',
   },
   /* errors */
   errors:{
@@ -453,7 +461,7 @@ const en:Dict={
     readAction:'Reading practice',readTitle:'Reading practice',
     activities:'What would you like to practise?',howMany:'How many questions?',all:'All',start:'Start practice',
     kind:{cloze:'Fill the gap',meaning:'Word meaning',comprehension:'Understanding'},
-    why:{cloze:'“Fill the gap” needs cards in this deck for words that appear in the text.',meaning:'“Word meaning” needs cards in this deck.',comprehension:'“Understanding” only asks the questions you added to the text. Edit the text to add one.'},
+    why:{cloze:'“Fill the gap” needs cards in this deck for words that appear in the text.',meaning:'“Word meaning” needs cards for words that appear in the text.',comprehension:'“Understanding” only asks the questions you added to the text. Edit the text to add one.'},
     notEnoughTitle:'This text needs a little more',notEnoughBody:'We don’t invent questions from the text. Add questions to it, or cards for words that appear in it, and practice is ready.',
     addQuestions:'Add questions',addCards:'Add cards',
     noFsrs:'Practice doesn’t change when your cards come up for review.',
@@ -463,6 +471,13 @@ const en:Dict={
     correct:'Correct!',knewIt:'Great.',almost:'Almost! Check the letters:',answerIs:'Answer:',nextTime:'It’ll come round again.',notQuite:'Not quite. The answer:',
     result:(r,n)=>`${r} of ${n} right`,almostCount:n=>n===1?'And one was almost right.':`And ${n} were almost right.`,
     again:'Practise again',backToText:'Back to the text',
+  },
+  hub:{
+    title:'Practice',lead:'Pick a deck, then a text, and read or listen to it.',entry:'Reading & listening practice',
+    decksTitle:'Choose a deck',textsTitle:'Choose a text',
+    emptyTitle:'No texts to practise yet',emptyBody:'Practice works on short passages you save in your decks. Add a text to a deck and you can read it, listen to it and practise with it.',
+    deckEmptyTitle:'This deck has no texts',deckEmptyBody:'Add a short paragraph in the language you’re learning, then start practising.',
+    addText:'Add a text',chooseDeckFirst:'Choose a deck for the text',
   },
   listening:{
     action:'Listening practice',title:'Listening practice',player:'Player',
@@ -746,7 +761,7 @@ const en:Dict={
     title:'What would you like to do?',add:'Add a card',addNote:'A word, phrase, sentence, or a question & answer',
     reviewNow:'Review now',waiting:n=>`${enCount(n,'card','cards')} waiting`,
     review:'Review',nothingDue:when=>`Nothing is due right now. Next review ${when}.`,noCards:'No cards to review yet.',
-    practice:'Practice',practiceNote:'Reading and listening with your cards. Coming soon.',soon:'Soon',
+    practice:'Practice',practiceNote:'Reading and listening on your texts.',soon:'Soon',
   },
   errors:{
     needName:'Type a name first.',dupFolder:'A folder with this name already exists.',dupDeck:'This folder already has a deck with that name.',badLanguage:'Choose a valid language.',folderMissing:'We couldn’t find that folder. It may have been deleted.',deckMissing:'We couldn’t find that deck. It may have been deleted.',deckBusy:'This deck has cards. Move them first.',folderBusy:'This folder has decks. Move them first.',defaultLocked:'The default place can’t be deleted.',

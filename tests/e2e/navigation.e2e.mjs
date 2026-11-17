@@ -88,15 +88,18 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await context.close();
     });
 
-    await t.test('NAV-04: Practice is shown as «قريبًا», disabled and never navigates',async()=>{
+    await t.test('NAV-04 (#61): Practice is live — opens the Practice hub; Back returns home',async()=>{
       const {context,page}=await freshPage(browser,base());
       await page.click('.tab-add');
       const practice=page.locator('[data-action=practice]');
-      assert.equal(await practice.getAttribute('aria-disabled'),'true');
-      assert.match(await practice.textContent(),/قريبًا/);
-      await practice.click({force:true}); // a real tap; Playwright otherwise refuses aria-disabled targets
-      assert.equal(await hashOf(page),'#/');
-      assert.equal(await page.getByRole('dialog').isVisible(),true,'sheet stays open, nothing happens');
+      assert.equal(await practice.getAttribute('aria-disabled'),null);
+      assert.doesNotMatch(await practice.textContent(),/قريبًا/);
+      await practice.click();
+      await page.locator('.practice-hub').waitFor();
+      assert.equal(await hashOf(page),'#/words/practice');
+      assert.equal(await page.getByRole('dialog').isVisible(),false);
+      await page.locator('.back-btn').click();
+      await page.waitForFunction(()=>location.hash===''||location.hash==='#/');
       await context.close();
     });
 

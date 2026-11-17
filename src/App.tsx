@@ -71,7 +71,7 @@ function getError(e:unknown){
   if(e instanceof DOMException&&e.name==='QuotaExceededError')return E.quota;
   if(e instanceof DOMException&&(e.name==='InvalidStateError'||e.name==='UnknownError'))return E.connection;
   if(e instanceof SyntaxError)return E.unreadableFile;
-  if(e instanceof TypeError&&/fetch|network/i.test(e.message))return E.network;
+  if(e instanceof TypeError&&/fetch|network|load failed/i.test(e.message))return E.network; // Safari says «Load failed»
   if(e instanceof Error){
     const key=errorKeys[e.message];if(key)return E[key];
     if(e.message.startsWith('هذا المتصفح لا يدعم الإشعارات'))return E.pushUnsupported;
@@ -602,10 +602,11 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 type Library={folders:Folder[];decks:Deck[]};
 type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
   |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string}
-  |{kind:'lesson';deckId:string};
+  |{kind:'lesson';deckId:string}|{kind:'hub';deckId:string|null};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
   const [k,id,t,pid,e]=sub.split('/');
+  if(k==='practice')return {kind:'hub',deckId:id?decodeURIComponent(id):null}; // #61: `practice` · `practice/<deck>`
   // #21: `d/<deck>/texts` · `d/<deck>/texts/new` · `d/<deck>/texts/<id>` · `d/<deck>/texts/<id>/edit`
   if(k==='d'&&id&&t==='texts'){const deckId=decodeURIComponent(id);
     if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
@@ -633,6 +634,7 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   const counts=useMemo(()=>libraryCounts(words,lib.decks),[words,lib.decks]);
   if(!lib.folders.length)return <div className="page library" aria-busy="true"><PageHead title={T.lib.title}/></div>;
   const shared={words,reviews,lib,passages,counts,onChanged,notify,go};
+  if(view.kind==='hub')return <PracticeHub key={view.deckId??''} deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
@@ -813,6 +815,9 @@ function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:Lib
       {/* #24: only with the build flag AND a configured generator — neither exists in shipped builds. */}
       {aiLessonsAvailable()&&cards.length>0&&<button type="button" className="btn btn-quiet" onClick={()=>go(deckPath(id)+'/lesson')}><Sparkles size={18} aria-hidden="true"/>{T.lesson.entry}</button>}</div>
     <TextsRow deckId={id} count={textCount} go={go}/>
+    {textCount>0&&<button type="button" className="deck-row texts-row practice-row" onClick={()=>go(HUB+'/'+encodeURIComponent(id))}>
+      <span className="folder-icon sm" aria-hidden="true"><Headphones size={19} strokeWidth={1.8}/></span>
+      <span className="deck-text"><b>{T.hub.entry}</b><small>{T.hub.lead}</small></span><Fwd size={18}/></button>}
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
@@ -849,6 +854,44 @@ function TextsView({deckId,lib,passages,go}:{deckId:string;lib:Library;passages:
       </button></li>)}</ul>
       :<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{Tx.emptyTitle}</h2><p>{Tx.emptyBody}</p>
         <button type="button" className="btn btn-ink" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18}/>{Tx.add}</button></div>}
+  </div>;
+}
+
+/* ───────────── Practice hub (#61): Practice → deck → text → Reading / Listening ───────────── */
+const HUB='words/practice';
+function PracticeHub({deckId,lib,passages,go}:{deckId:string|null;lib:Library;passages:Passage[];go:(path:string)=>void}){
+  const H=T.hub,P=T.practice;
+  const countOf=(id:string)=>passages.filter(p=>p.deckId===id).length;
+  if(deckId===null){
+    // Decks that have texts first; decks without texts stay reachable (to add one) but quieter.
+    const decks=[...lib.decks].sort((a,b)=>(countOf(b.id)>0?1:0)-(countOf(a.id)>0?1:0));
+    const any=passages.some(p=>lib.decks.some(d=>d.id===p.deckId));
+    return <div className="page library practice-hub">
+      <PageHead title={H.title} lead={H.lead}/>
+      {!any&&<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{H.emptyTitle}</h2><p>{H.emptyBody}</p></div>}
+      <h2 className="hub-heading">{any?H.decksTitle:H.chooseDeckFirst}</h2>
+      <ul className="deck-list">{decks.map(d=>{const n=countOf(d.id),f=lib.folders.find(x=>x.id===d.folderId);
+        return <li key={d.id}><button type="button" className={'deck-row'+(n?'':' hub-muted')} onClick={()=>go(n?HUB+'/'+encodeURIComponent(d.id):textsPath(d.id)+'/new')}>
+          <span className="folder-icon sm" aria-hidden="true">{n?<Headphones size={19} strokeWidth={1.8}/>:<Plus size={19} strokeWidth={1.8}/>}</span>
+          <span className="deck-text"><b dir="auto">{deckName(d)}</b><small>{f?folderName(f)+' · ':''}{n?T.texts.count(n):H.addText}</small></span>
+          <span className="lang-chip" dir="ltr">{langCode(d.contentLanguage)}</span><Fwd size={18}/></button></li>;})}</ul>
+    </div>;
+  }
+  const deck=lib.decks.find(d=>d.id===deckId);
+  if(!deck)return <NotFound go={go}/>;
+  const list=passages.filter(p=>p.deckId===deckId);
+  return <div className="page library head-inline practice-hub">
+    <PageHead title={deckName(deck)} lead={H.textsTitle}>
+      <div className="head-actions"><button type="button" className="btn btn-ink head-add" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18} aria-hidden="true"/>{H.addText}</button></div>
+    </PageHead>
+    {list.length?<ul className="hub-list">{list.map(p=><li key={p.id} className="hub-item">
+        <div className="hub-text"><b dir="auto">{p.title}</b><small dir={dirOf(p.contentLanguage)} lang={p.contentLanguage} className="passage-snippet">{p.body.replace(/\s+/g,' ').slice(0,90)}</small></div>
+        <div className="hub-actions">
+          <button type="button" className="btn btn-ink sm" aria-label={`${P.readAction}: ${p.title}`} onClick={()=>go(passagePath(deckId,p.id)+'/read')}><BookOpen size={16} aria-hidden="true"/>{P.readAction}</button>
+          <button type="button" className="btn btn-quiet sm" aria-label={`${T.listening.action}: ${p.title}`} onClick={()=>go(passagePath(deckId,p.id)+'/listen')}><Headphones size={16} aria-hidden="true"/>{T.listening.action}</button>
+        </div></li>)}</ul>
+      :<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{H.deckEmptyTitle}</h2><p>{H.deckEmptyBody}</p>
+        <button type="button" className="btn btn-ink" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18}/>{H.addText}</button></div>}
   </div>;
 }
 
@@ -1010,7 +1053,8 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
       <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
     </div>}
   </div>;
-  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}
+    onSwitch={()=>go(passagePath(deckId,p.id)+'/listen')} switchLabel={T.listening.action}/>;
   const item=items[idx];
   return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
     <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
@@ -1023,7 +1067,7 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
   </div>;
 }
 
-function PracticeResult({items,answers,onAgain,onBack}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void}){
+function PracticeResult({items,answers,onAgain,onBack,onSwitch,switchLabel}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void;onSwitch:()=>void;switchLabel:string}){
   useEffect(()=>{markPracticed();},[]); // #30: practised today → no practice nudge today (only the day is synced)
   const P=T.practice,sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
   return <div className="page practice"><section className="finish">
@@ -1034,6 +1078,7 @@ function PracticeResult({items,answers,onAgain,onBack}:{items:PracticeItem[];ans
     {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
       <span><b dir="auto">{it.kind==='dictation'?T.listening.kind.dictation:promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
     <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={onAgain}>{P.again}</button>
+      <button type="button" className="btn btn-quiet" onClick={onSwitch}>{switchLabel}</button>
       <button type="button" className="btn btn-quiet" onClick={onBack}>{P.backToText}</button></div>
   </section></div>;
 }
@@ -1104,7 +1149,8 @@ function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;
       <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
     </div>}
   </div>;
-  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}/>;
+  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}
+    onSwitch={()=>go(passagePath(deckId,p.id)+'/read')} switchLabel={T.practice.readAction}/>;
   const item=items[idx];
   return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
     <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
@@ -1666,7 +1712,7 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
   /** Dismiss: undo our history entry (its popstate closes the sheet). */
   const dismiss=useCallback(()=>{if(pushed.current&&history.state?.wlSheet)history.back();else{pushed.current=false;onClose();}},[onClose]);
   /** Choose: replace our history entry with the destination so Back returns to where the user was. */
-  function choose(p:Page){
+  function choose(p:Page|typeof HUB){
     pushed.current=false;onClose();
     const target=p==='home'?'#/':'#/'+p;
     if(location.hash===target||(p==='home'&&!location.hash)){history.replaceState(null,'',location.href.split('#')[0]+target);return;}
@@ -1677,7 +1723,7 @@ function QuickActions({open,onClose,due,nextDue,returnFocus}:{open:boolean;onClo
     due>0
       ?{id:'review',label:Q.reviewNow,note:Q.waiting(due),icon:Layers3,tone:'mint',onSelect:()=>choose('review')}
       :{id:'review',label:Q.review,note:nextDue?Q.nothingDue(relative(nextDue)):Q.noCards,icon:Layers3,tone:'mint',onSelect:()=>choose('review')},
-    {id:'practice',label:Q.practice,note:Q.practiceNote,icon:Headphones,tone:'warm',soon:true},
+    {id:'practice',label:Q.practice,note:Q.practiceNote,icon:Headphones,tone:'warm',onSelect:()=>choose(HUB)},
   ];
   return <dialog ref={ref} className="sheet quick-sheet" aria-labelledby="qa-title"
     onCancel={e=>{e.preventDefault();dismiss();}}
@@ -1703,6 +1749,7 @@ function routeLabel(route:string,lib:Library,passages:readonly Passage[]=[]):str
     if(v.kind==='folder'){const f=lib.folders.find(x=>x.id===v.id);if(f)return folderName(f);}
     if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);if(d)return deckName(d);}
     if(v.kind==='texts')return T.texts.title;
+    if(v.kind==='hub'){const d=v.deckId?lib.decks.find(x=>x.id===v.deckId):null;return d?deckName(d):T.hub.title;}
     if(v.kind==='passage'){const p=passages.find(x=>x.id===v.id);if(p)return p.title;}
   }
   return T.nav[page];
@@ -1718,6 +1765,8 @@ function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]
   if(page==='words'){
     const v=parseLibrary(sub);
     if(v.kind==='folder')return to('words');
+    // #61: a deck's texts in Practice → Practice; Practice itself → wherever the learner came from.
+    if(v.kind==='hub')return v.deckId?to(HUB):previousOr('');
     // #21: texts → their deck; a text → the deck's texts; the editor → the text (or the list for a new one).
     if(v.kind==='texts'||v.kind==='lesson')return to(deckPath(v.deckId));
     if(v.kind==='passage')return to(textsPath(v.deckId));

@@ -598,6 +598,15 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 
 /* #21: Learning Passages — one compact row in the deck, a calm reading page, a simple editor */
 .texts-row{margin-block:4px 14px}
+.texts-row+.practice-row{margin-block-start:-4px}
+/* #61: Practice hub — deck → text → read / listen. Touch targets ≥44px. */
+.hub-heading{font-size:15px;font-weight:700;color:var(--muted);margin:18px 0 10px}
+.deck-row.hub-muted{background:transparent;border-style:dashed}
+.hub-list{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}
+.hub-item{display:grid;gap:12px;padding:14px 16px;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--surface);min-inline-size:0}
+.hub-text{display:grid;gap:4px;min-inline-size:0}.hub-text b{color:var(--ink)}.hub-text small{color:var(--muted)}
+.hub-actions{display:flex;flex-wrap:wrap;gap:8px}
+.hub-actions .btn{min-block-size:44px;flex:1 1 140px;justify-content:center}
 .passage-snippet{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-inline-size:100%}
 .passage-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-block:4px 18px}
 .passage-body{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:clamp(18px,4vw,30px);font-size:clamp(18px,2.2vw,21px);line-height:1.8;color:var(--ink);max-inline-size:720px}

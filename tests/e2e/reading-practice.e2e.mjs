@@ -54,7 +54,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const before=await fsrsSnapshot(page);
       await page.getByRole('button',{name:'تمرين قراءة'}).click();
       assert.equal(await page.evaluate(()=>location.hash),path.slice(1)+'/read');
-      assert.match(await page.locator('.practice-setup').innerText(),/اكمل الفراغ\s*2[\s\S]*معنى الكلمة\s*5[\s\S]*فهم النص\s*1/);
+      assert.match(await page.locator('.practice-setup').innerText(),/اكمل الفراغ\s*2[\s\S]*معنى الكلمة\s*2[\s\S]*فهم النص\s*1/);
       await page.locator('.practice-field').nth(1).getByRole('button',{name:'الكل'}).click();
       await page.locator('.practice-start').click();
       let seenComprehension=false,n=0;
@@ -68,8 +68,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
         }else await answer(page,n===0?'wrong':'right');
         n++;await page.locator('.practice-next').click();
       }
-      assert.ok(seenComprehension);assert.equal(n,8,'2 cloze + 5 meaning + 1 comprehension');
-      assert.match(await page.locator('.finish h1').innerText(),/7 من 8 صح/);
+      assert.ok(seenComprehension);assert.equal(n,5,'2 cloze + 2 meaning (only words of this text, #61) + 1 comprehension');
+      assert.match(await page.locator('.finish h1').innerText(),/4 من 5 صح/);
       assert.equal(await page.locator('.practice-missed li').count(),1,'the missed one is listed with its answer');
       assert.match(await page.locator('.finish').innerText(),/التمرين ما يغيّر مواعيد مراجعة بطاقاتك/);
       assert.equal(await fsrsSnapshot(page),before,'cards, due dates, FSRS state and reviews unchanged');
