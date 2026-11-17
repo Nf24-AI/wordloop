@@ -35,7 +35,7 @@ function legacyFixture(){
   const words=Array.from({length:40},(_,i)=>{
     const id=`legacy-${i}`,dueAt=new Date(Date.parse(at)+(i-20)*3600_000).toISOString();
     const w={id,term:`term ${i}`,meaning:`معنى ${i}`,example:i%3?'':'An example.',translation:i%3?'':'مثال.',tag:i%5?'عام':'سفر',createdAt:at,updatedAt:at,dueAt,
-      fsrsState:{cardId:id,dueAt,stability:1.5+i,difficulty:5,state:2,reps:3,lapses:i%2,lastReviewAt:at,learningSteps:0},archived:i%9===0,revision:i%4};
+      fsrsState:{cardId:id,dueAt,stability:1.5+i,stabilityFast:1.2+i,difficulty:5,state:2,scheduleStatus:'review',reps:3,lapses:i%2,lastReviewAt:at,scheduledDays:2,learningStep:0},archived:i%9===0,revision:i%4};
     if(i%4)Object.assign(w,{contentType:kinds[i%4],note:i%2?'ملاحظة':''}); // every 4th card predates #5
     return w;
   });

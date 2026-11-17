@@ -102,6 +102,16 @@ async function transaction(stores:string|string[],mode:IDBTransactionMode):Promi
 /** Test-only: drop the cached connection so a fresh fake IndexedDB can be used. */
 export function resetConnectionForTests(){dbPromise=null;}
 async function getAll<T>(store:'words'|'reviews'):Promise<T[]>{return request((await transaction(store,'readonly')).objectStore(store).getAll()) as Promise<T[]>;}
+/**
+ * The one FSRS-7 scheduler configuration (unchanged values; previously repeated in addWord and reviewWord).
+ * Created once, before any transaction, so a review can read, schedule and write inside a single IndexedDB transaction.
+ */
+let schedulerPromise:ReturnType<typeof DefaultScheduler>|null=null;
+function scheduler(){return schedulerPromise??=DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});}
+/** Stored (JSON) FSRS state → the card object ts-fsrs expects (real Date objects); ts-fsrs validates the rest at runtime. */
+function toCard(raw:Record<string,unknown>):never{
+  return {...raw,dueAt:new Date(String(raw.dueAt)),lastReviewAt:raw.lastReviewAt?new Date(String(raw.lastReviewAt)):null} as never;
+}
 function settled(tx:IDBTransaction):Promise<void>{return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('تعذّر حفظ التغيير'));tx.onabort=()=>reject(tx.error||new Error('لم يكتمل الحفظ'));});}
 
 /* #4: other tabs/windows of the app refresh after any committed local write. Only a ping is sent, never word data. */
@@ -272,8 +282,7 @@ export async function addWord(data:NewCard):Promise<Word>{
   for(const k of ['contentLanguage','meaningLanguage'] as const){const v=data[k];if(v===undefined)continue;const c=canonicalLanguage(v);if(!c)throw Error('رمز اللغة غير صحيح');langs[k]=c;}
   if(deckId!==DEFAULT_DECK_ID&&!(await listLibrary()).decks.some(d=>d.id===deckId))throw Error('لم نجد الحزمة');
   const now=new Date(),id=crypto.randomUUID();
-  const scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
-  const fsrs=scheduler.newCard({cardId:id,now});
+  const fsrs=(await scheduler()).newCard({cardId:id,now});
   const word:Word={id,deckId,contentType,term,meaning:meanings[0],meanings,example:data.example.trim(),translation:data.translation.trim(),note,tag:data.tag.trim()||'عام',createdAt:now.toISOString(),updatedAt:now.toISOString(),dueAt:fsrs.dueAt.toISOString(),fsrsState:JSON.parse(JSON.stringify(fsrs)),archived:false,revision:0,...langs};
   const tx=await transaction('words','readwrite'),end=settled(tx);tx.objectStore('words').add(word);await end;
   announceChange();return word;
@@ -304,26 +313,53 @@ export async function editWord(id:string,patch:CardEdit):Promise<Word>{
   }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
   await end;announceChange();return next;
 }
-export async function archiveWord(id:string):Promise<void>{const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');const w=await request<StoredWord|undefined>(store.get(id));if(!w){tx.abort();throw Error('لم نجد الكلمة');}store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});await end;announceChange();}
+export async function archiveWord(id:string):Promise<void>{
+  const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');
+  try{
+    const w=await request<StoredWord|undefined>(store.get(id));if(!w)throw Error('لم نجد الكلمة');
+    store.put({...normalizeWord(w),archived:true,updatedAt:new Date().toISOString()});
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1: the abort is awaited, never an unhandled rejection
+  await end;announceChange();
+}
+/**
+ * Grade a due card. Reading the card, scheduling it and writing both stores happen in ONE readwrite transaction
+ * (audit M2): no other write — an edit, a move, a restore in another tab — can land between the read and the write,
+ * so a schedule is never computed from a stale card. The FSRS-7 configuration and results are unchanged.
+ */
 export async function reviewWord(id:string,grade:Grade):Promise<string>{
-  const readTx=await transaction('words','readonly');const stored=await request<StoredWord|undefined>(readTx.objectStore('words').get(id));const old=stored&&normalizeWord(stored);
-  if(!old||old.archived)throw Error('لم نجد الكلمة');
-  if(new Date(old.dueAt).getTime()>Date.now()+1000)throw Error('لم يحن وقت مراجعة هذه الكلمة');
-  const now=new Date(),scheduler=await DefaultScheduler({version:'FSRS-7',desiredRetention:0.9,enableShortTerm:true,learningSteps:['1m','10m'],relearningSteps:['10m']});
-  const raw=old.fsrsState;
-  const card={...raw,dueAt:new Date(String(raw.dueAt)),lastReviewAt:raw.lastReviewAt?new Date(String(raw.lastReviewAt)):null};
-  const result=scheduler.review({card:card as Parameters<typeof scheduler.review>[0]['card'],grade:ratings[grade],now});
-  const nextAt=result.card.dueAt.toISOString();
-  // Two stores committed in one atomic local transaction.
+  const fsrs=await scheduler(); // resolved before the transaction: nothing async but IndexedDB requests runs inside it
   const tx=await transaction(['words','reviews'],'readwrite'),end=settled(tx),store=tx.objectStore('words');
-  const existing=await request<StoredWord|undefined>(store.get(id));
-  if(!existing||existing.revision!==old.revision){tx.abort();throw Error('تغيرت هذه الكلمة في تبويب آخر، حدّث الصفحة');}
-  // Built on the record read inside this transaction, so a concurrent deck move (which keeps revision) is not undone.
-  store.put({...normalizeWord(existing),fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1});
-  tx.objectStore('reviews').put({id:crypto.randomUUID(),wordId:id,grade,reviewedAt:now.toISOString(),nextDueAt:nextAt} satisfies Review);
+  let nextAt:string;
+  try{
+    const stored=await request<StoredWord|undefined>(store.get(id));const old=stored&&normalizeWord(stored);
+    if(!old||old.archived)throw Error('لم نجد الكلمة');
+    if(new Date(old.dueAt).getTime()>Date.now()+1000)throw Error('لم يحن وقت مراجعة هذه الكلمة');
+    const now=new Date();
+    const result=fsrs.review({card:toCard(old.fsrsState),grade:ratings[grade],now});
+    nextAt=result.card.dueAt.toISOString();
+    // Built on the record read inside this transaction, so a concurrent deck move or edit is never undone.
+    store.put({...old,fsrsState:JSON.parse(JSON.stringify(result.card)),dueAt:nextAt,updatedAt:now.toISOString(),revision:old.revision+1});
+    tx.objectStore('reviews').put({id:crypto.randomUUID(),wordId:id,grade,reviewedAt:now.toISOString(),nextDueAt:nextAt} satisfies Review);
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;} // L1
   await end;announceChange();return nextAt;
 }
 function text(v:unknown,max:number):v is string{return typeof v==='string'&&v.length<=max;}
+const nonNegative=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+const count=(v:unknown)=>typeof v==='number'&&Number.isInteger(v)&&v>=0;
+/**
+ * Audit M1: an imported card must carry an FSRS-7 state the scheduler can grade — finite memory state
+ * (stability, stabilityFast, difficulty), a known state, whole-number counters and real dates. Otherwise the card
+ * would restore fine and then fail on every review, forever. (restoreBackup also dry-runs each one through the scheduler.)
+ */
+function validFsrsState(v:unknown,dueAt:string):boolean{
+  if(!v||typeof v!=='object'||Array.isArray(v))return false;
+  const s=v as Record<string,unknown>;
+  return text(s.dueAt,64)&&Number.isFinite(Date.parse(s.dueAt))&&s.dueAt===dueAt
+    &&nonNegative(s.stability)&&nonNegative(s.stabilityFast)&&nonNegative(s.difficulty)
+    &&[0,1,2,3].includes(s.state as number)&&count(s.reps)&&count(s.lapses)
+    &&(s.lastReviewAt===null||s.lastReviewAt===undefined||(text(s.lastReviewAt,64)&&Number.isFinite(Date.parse(s.lastReviewAt))))
+    &&(s.cardId===undefined||text(s.cardId,80))&&(s.scheduleStatus===undefined||text(s.scheduleStatus,20));
+}
 /** v1 cards have no kind (read as vocabulary); v2+ cards must carry a known kind; v3 cards must name a deck. */
 function validWord(w:unknown,version:1|2|3):w is StoredWord{
   if(!w||typeof w!=='object')return false;
@@ -336,7 +372,7 @@ function validWord(w:unknown,version:1|2|3):w is StoredWord{
   if(x.meaningLanguage!==undefined&&!canonicalLanguage(x.meaningLanguage))return false;
   if(x.note!==undefined&&!text(x.note,NOTE_LIMIT))return false;
   const kind=isContentType(x.contentType)?x.contentType:'vocabulary';
-  return text(x.id,80)&&text(x.term,TERM_LIMIT[kind])&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&typeof x.fsrsState==='object'&&!!x.fsrsState&&!Array.isArray(x.fsrsState)&&text((x.fsrsState as Record<string,unknown>).dueAt,64)&&Number.isFinite(Date.parse(String((x.fsrsState as Record<string,unknown>).dueAt)))&&x.dueAt===(x.fsrsState as Record<string,unknown>).dueAt;
+  return text(x.id,80)&&text(x.term,TERM_LIMIT[kind])&&x.term.length>0&&text(x.meaning,240)&&x.meaning.length>0&&text(x.example,500)&&text(x.translation,400)&&text(x.tag,40)&&text(x.createdAt,64)&&text(x.updatedAt,64)&&text(x.dueAt,64)&&Number.isFinite(Date.parse(x.dueAt))&&typeof x.revision==='number'&&Number.isInteger(x.revision)&&x.revision>=0&&typeof x.archived==='boolean'&&validFsrsState(x.fsrsState,x.dueAt);
 }
 function validReview(r:unknown):r is Review{
   if(!r||typeof r!=='object')return false;
@@ -397,7 +433,14 @@ export async function buildBackup():Promise<Backup>{
 }
 /** Replaces cards, reviews, folders and decks in one transaction. Other meta (the last-backup date) is kept. */
 export async function restoreBackup(backup:unknown):Promise<void>{
-  const safe=validateBackup(backup),tx=await transaction(['words','reviews','meta'],'readwrite'),end=settled(tx);
+  const safe=validateBackup(backup),fsrs=await scheduler();
+  // M1: dry-run every card through the real scheduler (nothing is stored) before anything is cleared.
+  for(const w of safe.words){
+    const last=w.fsrsState.lastReviewAt?Date.parse(String(w.fsrsState.lastReviewAt)):0;
+    const at=new Date(Math.max(Date.now(),Date.parse(w.dueAt),last)); // a moment the card could really be graded
+    try{fsrs.review({card:toCard(w.fsrsState),grade:Rating.Good,now:at});}catch{throw Error('بعض البيانات في الملف غير صحيحة');}
+  }
+  const tx=await transaction(['words','reviews','meta'],'readwrite'),end=settled(tx);
   const words=tx.objectStore('words'),reviews=tx.objectStore('reviews'),meta=tx.objectStore('meta');
   // Any synchronous failure must abort, or the browser would commit the clear() on its own.
   try{

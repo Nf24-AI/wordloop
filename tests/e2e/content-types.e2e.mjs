@@ -95,7 +95,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.evaluate(w=>new Promise(res=>{const r=indexedDB.open('wordloop-local-v1');r.onsuccess=()=>{const tx=r.result.transaction('words','readwrite');tx.objectStore('words').put(w);tx.oncomplete=()=>{r.result.close();res();};};}),legacy);
       await page.goto(base()+'/#/words/all');await page.reload();
       await page.locator('.word-list .kind-badge',{hasText:'مفردة'}).waitFor();
-      const v1={app:'wordloop',version:1,exportedAt:now,words:[{...legacy,id:'from-file',term:'restored',fsrsState:{cardId:'from-file',dueAt:now}}],reviews:[{id:'r1',wordId:'from-file',grade:'good',reviewedAt:now,nextDueAt:now}]};
+      const v1={app:'wordloop',version:1,exportedAt:now,words:[{...legacy,id:'from-file',term:'restored',fsrsState:{cardId:'from-file',dueAt:now,stability:0,stabilityFast:0,difficulty:0,state:0,scheduleStatus:'new',lastReviewAt:null,reps:0,lapses:0,scheduledDays:0,learningStep:0}}],reviews:[{id:'r1',wordId:'from-file',grade:'good',reviewedAt:now,nextDueAt:now}]};
       await page.goto(base()+'/#/settings');await page.waitForSelector('input[type=file]',{state:'attached'});
       page.once('dialog',d=>void d.accept());
       await page.setInputFiles('input[type=file]',{name:'wordloop-backup-v1.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(v1))});

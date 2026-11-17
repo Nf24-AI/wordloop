@@ -8,7 +8,7 @@ function word(id='w-1',overrides={}){
     id,term:'overlook',meaning:'يغفل عن',example:'I overlooked a detail.',
     translation:'فاتتني تفصيلة.',tag:'عام',
     createdAt:now,updatedAt:now,dueAt:now,
-    fsrsState:{cardId:id,dueAt:now},
+    fsrsState:{cardId:id,dueAt:now,stability:0,stabilityFast:0,difficulty:0,state:0,scheduleStatus:'new',lastReviewAt:null,reps:0,lapses:0,scheduledDays:0,learningStep:0}, // the FSRS-7 shape the app stores for a new card
     archived:false,revision:0,...overrides,
   };
 }
@@ -41,7 +41,7 @@ test('daily summary counts only active words, due cards, and Riyadh-local review
   const later='2026-11-13T17:00:00.000Z';
   const words=[
     word('w-1'),
-    word('w-2',{dueAt:later,fsrsState:{cardId:'w-2',dueAt:later}}),
+    word('w-2',{dueAt:later,fsrsState:{cardId:'w-2',dueAt:later,stability:0,stabilityFast:0,difficulty:0,state:0,scheduleStatus:'new',lastReviewAt:null,reps:0,lapses:0,scheduledDays:0,learningStep:0}}),
     word('w-3',{archived:true}),
   ];
   const reviews=[{id:'r-1',wordId:'w-1',grade:'good',reviewedAt:earlier,nextDueAt:later}];
