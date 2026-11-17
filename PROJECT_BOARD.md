@@ -8,8 +8,8 @@
 
 | المهمة الجديدة | الأولوية | الحالة |
 |---|---|---|
-| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | To do |
-| [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | To do |
+| [#2 — إعداد Staging/UAT](https://github.com/Nf24-AI/wordloop/issues/2) | P0 | In progress — Staging يعمل خلف Access؛ ينقص مفتاح VAPID ‏و UAT الجوال |
+| [#3 — Security Hardening & Testing](https://github.com/Nf24-AI/wordloop/issues/3) | P0 | In progress — CSP/headers واختبارات fuzz على Staging (#48)؛ ينتظر مراجعة المالك |
 
 **تسلسل الإطلاق المعتمد:** `Feature Branch → Pull Request → Automated Tests → Staging/UAT → Security Checks → Owner Approval → Production`.
 
@@ -17,6 +17,28 @@
 
 > التنفيذ متوقف على استكمال #2 و#3؛ لا تعتبر فحوص GitHub البرمجية وحدها بديلًا عن تجربة UAT على الهاتف.
 
+
+## حالة التنفيذ — 17 نوفمبر 2026 (المتتبع [#52](https://github.com/Nf24-AI/wordloop/issues/52))
+
+**Staging:** النسخة النشطة `431ab5c4` = commit `e3c56e9` (دمج #57). **Production لم يتغير** (`b971e957`).
+
+| المهمة | PR | الحالة |
+|---|---|---|
+| #4–#12 تجربة الإضافة والرئيسية والإعدادات | #14 | Ready for UAT |
+| #15–#17، #25، #26 المجلدات والحزم ومكتبتي والمراجعة النطاقية والإضافة الموحدة | #33–#38 | Ready for UAT |
+| #19–#20 الصوت بلغة الحزمة | #39 | Ready for UAT |
+| #41–#43 تحديث PWA، الرجوع، لوحة مفاتيح iPhone | #44–#46 | Ready for UAT |
+| FSRS M1/M2/L1، النسخ الاحتياطي | #47 | على Staging |
+| #3 CSP وترويسات الأمان واختبارات fuzz | #48 | على Staging |
+| #13، #21–#23 النصوص والقراءة والاستماع | #49–#51 | Ready for UAT |
+| #30 التذكيرات الذكية (كل 15 دقيقة، تجميع، هدوء، سقف 3، تمرين 1/يوم) | #40 | منشور؛ **ينتظر مفتاح VAPID لـ Staging** ثم UAT على iPhone |
+| #18 بطاقة سؤال وجواب | #53 | Ready for UAT |
+| #27 أكمل من حيث توقفت | #54 | Ready for UAT |
+| #29 فرز وتحديد متعدد ونقل وأرشفة | #55 | Ready for UAT |
+| #28 إضافة بالجملة | #56 | Ready for UAT |
+| #24 درس بالذكاء الاصطناعي (بنية وواجهة فقط) | #57 | معطّل افتراضيًا، بلا مزود؛ يحتاج قرار المالك (`docs/AI_LESSONS.md`) |
+
+لا تُغلق أي مهمة قبل UAT على الجوال وموافقة المالك.
 
 ## افتح قوائم المهام
 
