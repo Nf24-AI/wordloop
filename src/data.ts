@@ -273,6 +273,41 @@ export async function moveWord(id:string,deckId:string):Promise<Word>{
     const next:Word={...normalizeWord(stored),deckId,updatedAt:new Date().toISOString()};store.put(toStored(next));return next;
   });
 }
+/** Upper bound for one multi-card operation (#28/#29); far above a real selection, it only guards against misuse. */
+export const BATCH_LIMIT=5000;
+const uniqueIds=(ids:readonly string[])=>{const out=[...new Set(ids.filter(id=>typeof id==='string'&&id))];if(out.length>BATCH_LIMIT)throw Error('أحد النصوص أطول من اللازم');return out;};
+/**
+ * #29: moves several cards to one deck in ONE transaction — all or nothing. Like `moveWord`, only `deckId` and
+ * `updatedAt` change: id, createdAt, dueAt, revision, FSRS state and review history stay exactly as they were.
+ * Returns how many cards actually changed deck.
+ */
+export async function moveWords(ids:readonly string[],deckId:string):Promise<number>{
+  const list=uniqueIds(ids);
+  return libraryChange(['meta','words'],async(_meta,{decks},tx)=>{
+    if(!decks.some(d=>d.id===deckId))throw Error('لم نجد الحزمة');
+    const store=tx.objectStore('words'),found=await Promise.all(list.map(id=>request<StoredWord|undefined>(store.get(id))));
+    if(found.some(w=>!w))throw Error('لم نجد الكلمة');
+    const at=new Date().toISOString();let moved=0;
+    for(const stored of found as StoredWord[]){const w=normalizeWord(stored);if(currentDeckId(w,decks)===deckId&&w.deckId===deckId)continue;store.put(toStored({...w,deckId,updatedAt:at}));moved++;}
+    return moved;
+  });
+}
+/**
+ * #29: archives several cards in ONE transaction (after the learner confirmed). Archiving is not deleting: the cards,
+ * their FSRS state and their reviews stay on the device and in backups. Already-archived cards are left as they are.
+ */
+export async function archiveWords(ids:readonly string[]):Promise<number>{
+  const list=uniqueIds(ids);
+  const tx=await transaction('words','readwrite'),end=settled(tx),store=tx.objectStore('words');
+  let count=0;
+  try{
+    const found=await Promise.all(list.map(id=>request<StoredWord|undefined>(store.get(id))));
+    if(found.some(w=>!w))throw Error('لم نجد الكلمة');
+    const at=new Date().toISOString();
+    for(const stored of found as StoredWord[]){const w=normalizeWord(stored);if(w.archived)continue;store.put(toStored({...w,archived:true,updatedAt:at}));count++;}
+  }catch(e){try{tx.abort();}catch{/* already finished */}await end.catch(()=>undefined);throw e;}
+  await end;if(count)announceChange();return count;
+}
 export type DeckCount={cards:number;due:number};
 export type FolderCount={decks:number;cards:number;due:number};
 /** Active card / due counts per deck and folder. A card whose deck is missing counts in the default deck, never dropped. */
@@ -288,6 +323,17 @@ export function libraryCounts(words:readonly Word[],decks:readonly Deck[],now=Da
     const fc=folderEntry(folderOf.get(id)??DEFAULT_FOLDER_ID);fc.cards++;fc.due+=due;
   }
   return {deck,folder};
+}
+/** #29: how a card list is ordered. Display only — sorting never writes anything. */
+export type CardSort='newest'|'name'|'due';
+export const CARD_SORTS:readonly CardSort[]=['newest','name','due'];
+const termCollator=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+export function sortWords<T extends Pick<Word,'term'|'createdAt'|'dueAt'>>(list:readonly T[],by:CardSort):T[]{
+  const out=[...list];
+  if(by==='name')out.sort((a,b)=>termCollator.compare(a.term,b.term));
+  else if(by==='due')out.sort((a,b)=>a.dueAt.localeCompare(b.dueAt));
+  else out.sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  return out;
 }
 export async function listWords():Promise<Word[]>{return (await getAll<StoredWord>('words')).map(normalizeWord).sort((a,b)=>a.dueAt.localeCompare(b.dueAt));}
 export async function listReviews(){return getAll<Review>('reviews');}

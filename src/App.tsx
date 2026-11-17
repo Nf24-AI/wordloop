@@ -1,6 +1,6 @@
-import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownToLine,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
-import {addWord,archiveWord,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
+import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
+import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
+import {addWord,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
 import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
@@ -162,10 +162,11 @@ function PageHead({title,lead,children}:{title:string;lead?:string;children?:Rea
   return <header className="page-head"><div><h1 tabIndex={-1}>{title}</h1>{lead&&<p className="lead">{lead}</p>}</div>{children}</header>;
 }
 function ConfirmDialog({open,title,body,confirm,cancel,onConfirm,onCancel}:{open:boolean;title:string;body:string;confirm:string;cancel:string;onConfirm:()=>void;onCancel:()=>void}){
-  const ref=useRef<HTMLDialogElement>(null);
+  // #29: two confirm dialogs can share a page (one card / several cards), so each needs its own title id.
+  const ref=useRef<HTMLDialogElement>(null),titleId=useId();
   useEffect(()=>{const d=ref.current;if(!d)return;if(open&&!d.open)d.showModal();if(!open&&d.open)d.close();},[open]);
-  return <dialog ref={ref} className="sheet" onCancel={e=>{e.preventDefault();onCancel();}} aria-labelledby="sheet-title">
-    <h2 id="sheet-title">{title}</h2><p>{body}</p>
+  return <dialog ref={ref} className="sheet" onCancel={e=>{e.preventDefault();onCancel();}} aria-labelledby={titleId}>
+    <h2 id={titleId}>{title}</h2><p>{body}</p>
     <div className="sheet-actions"><button type="button" className="btn btn-danger" onClick={onConfirm}>{confirm}</button><button type="button" className="btn btn-quiet" onClick={onCancel} autoFocus>{cancel}</button></div>
   </dialog>;
 }
@@ -560,6 +561,21 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
 }
 type LibShared={words:Word[];reviews:Review[];lib:Library;passages:Passage[];counts:ReturnType<typeof libraryCounts>;onChanged:()=>Promise<unknown>;notify:Notify;go:(path:string)=>void};
 
+/** #29: the chosen order is remembered on this device (display only; never written to the cards). */
+const SORT_KEY='wordloop-sort';
+function useCardSort():[CardSort,(s:CardSort)=>void]{
+  const [sort,setSort]=useState<CardSort>(()=>{try{const v=localStorage.getItem(SORT_KEY);return CARD_SORTS.includes(v as CardSort)?v as CardSort:'newest';}catch{return 'newest';}});
+  return [sort,s=>{setSort(s);try{localStorage.setItem(SORT_KEY,s);}catch{/* private mode */}}];
+}
+/** #29: one quiet row above a card list — the order, and «تحديد» to act on several cards. */
+function ListTools({sort,onSort,selecting,onSelecting}:{sort:CardSort;onSort:(s:CardSort)=>void;selecting:boolean;onSelecting:(v:boolean)=>void}){
+  const L=T.lib;
+  return <div className="list-tools">
+    <label className="sort-pick"><ArrowDownUp size={16} aria-hidden="true"/><span className="visually-hidden">{L.sortLabel}</span>
+      <select value={sort} onChange={e=>onSort(e.target.value as CardSort)} aria-label={L.sortLabel}>{CARD_SORTS.map(s=><option key={s} value={s}>{L.sort[s]}</option>)}</select></label>
+    <button type="button" className={'chip select-toggle'+(selecting?' on':'')} aria-pressed={selecting} onClick={()=>onSelecting(!selecting)}><CheckSquare size={16} aria-hidden="true"/>{selecting?L.selectDone:L.select}</button>
+  </div>;
+}
 function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:string)=>void;placeholder:string;label:string}){
   return <label className="search"><Search size={19}/><span className="visually-hidden">{label}</span><input type="search" dir="auto" value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} enterKeyHint="search"/>{value&&<button type="button" className="icon-btn ghost" aria-label={T.library.clearSearch} onClick={()=>onChange('')}><X size={17}/></button>}</label>;
 }
@@ -567,6 +583,7 @@ function SearchBox({value,onChange,placeholder,label}:{value:string;onChange:(v:
 function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShared&{tab:'folders'|'all'|'due'}){
   const L=T.lib;
   const [q,setQ]=useState(''),[kind,setKind]=useState<ContentType|'all'>('all'),[newFolder,setNewFolder]=useState(false);
+  const [sort,setSort]=useCardSort(),[selecting,setSelecting]=useState(false);
   const active=useMemo(()=>words.filter(w=>!w.archived),[words]);
   const now=Date.now(),dueN=active.filter(w=>isDue(w,now)).length;
   const s=q.trim().toLocaleLowerCase(),has=(x:string)=>x.toLocaleLowerCase().includes(s);
@@ -592,7 +609,7 @@ function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShare
       {cs.length>0&&<section><h2 className="results-title">{L.resultsCards}</h2><CardList list={cs} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} showPlace/></section>}
     </div>;
   }else{
-    const pool=active.filter(w=>(tab==='all'||isDue(w,now))&&(kind==='all'||w.contentType===kind)&&cardMatch(w)).sort(byNewest);
+    const pool=sortWords(active.filter(w=>(tab==='all'||isDue(w,now))&&(kind==='all'||w.contentType===kind)&&cardMatch(w)),sort);
     body=<>
       {tab==='all'&&kindCounts.size>1&&<div className="chips kind-chips" role="group" aria-label={T.kindsLabel}>
         <button type="button" className={'chip'+(kind==='all'?' on':'')} aria-pressed={kind==='all'} onClick={()=>setKind('all')}>{T.library.allKinds}</button>
@@ -601,7 +618,8 @@ function LibraryRoot({tab,words,reviews,lib,counts,onChanged,notify,go}:LibShare
       {!active.length?<div className="empty"><Wash tone="soft"/><BookOpen size={30} strokeWidth={1.6}/><h2>{T.library.emptyTitle}</h2><p>{T.library.emptyBody}</p><button type="button" className="btn btn-ink" onClick={()=>go('add')}>{T.addCard}<Fwd size={18}/></button></div>
         :tab==='due'&&!dueN?<div className="empty small"><CalendarClock size={26} strokeWidth={1.6}/><h2>{L.noDueTitle}</h2><p>{L.noDueBody}</p></div>
         :!pool.length?<NoMatch onClear={()=>{setQ('');setKind('all');}}/>
-        :<CardList list={pool} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} showPlace/>}
+        :<><ListTools sort={sort} onSort={setSort} selecting={selecting} onSelecting={setSelecting}/>
+          <CardList list={pool} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} showPlace selecting={selecting} onSelectingDone={()=>setSelecting(false)}/></>}
     </>;
   }
   return <div className="page library head-inline">
@@ -689,10 +707,11 @@ function FolderView({id,words,reviews,lib,counts,onChanged,notify,go}:LibShared&
 function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:LibShared&{id:string}){
   const L=T.lib;
   const [q,setQ]=useState(''),[settings,setSettings]=useState(false),[confirmDelete,setConfirmDelete]=useState(false);
+  const [sort,setSort]=useCardSort(),[selecting,setSelecting]=useState(false);
   const deck=lib.decks.find(d=>d.id===id);
-  const cards=useMemo(()=>words.filter(w=>!w.archived&&deckIdOf(w,lib)===id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[words,lib,id]);
+  const cards=useMemo(()=>words.filter(w=>!w.archived&&deckIdOf(w,lib)===id),[words,lib,id]);
   if(!deck)return <NotFound go={go}/>;
-  const s=q.trim().toLocaleLowerCase(),list=cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s)));
+  const s=q.trim().toLocaleLowerCase(),list=sortWords(cards.filter(w=>!s||[w.term,...w.meanings,w.example,w.translation,w.note].some(x=>x.toLocaleLowerCase().includes(s))),sort);
   const hasAny=words.some(w=>deckIdOf(w,lib)===id); // archived cards still belong to the deck
   const textCount=passages.filter(p=>p.deckId===id).length;
   const blocked=id===DEFAULT_DECK_ID?L.defaultLocked:hasAny?L.deckNotEmpty:textCount?T.texts.deckHasTexts:'';
@@ -711,7 +730,8 @@ function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:Lib
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
-      :<CardList list={list} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify}/>}
+      :<><ListTools sort={sort} onSort={setSort} selecting={selecting} onSelecting={setSelecting}/>
+        <CardList list={list} reviews={reviews} lib={lib} onChanged={onChanged} notify={notify} selecting={selecting} onSelectingDone={()=>setSelecting(false)}/></>}
     <DeckSheet open={settings} title={L.deckSettings} lib={lib} deck={deck} submit={L.save} onSubmit={save} onClose={()=>setSettings(false)}
       extra={<DangerZone label={L.deleteDeck} blocked={blocked} onDelete={()=>{setSettings(false);setConfirmDelete(true);}}/>}/>
     <ConfirmDialog open={confirmDelete} title={L.deleteDeckTitle(deckName(deck))} body={L.deleteEmptyBody} confirm={L.deleteYes} cancel={L.deleteNo} onConfirm={()=>void remove()} onCancel={()=>setConfirmDelete(false)}/>
@@ -1057,9 +1077,18 @@ function PassageEditor({deckId,id,lib,passages,onChanged,notify,go}:{deckId:stri
  * Listen and Edit are visible; Move and Remove live in the ••• sheet (remove = archive, after confirmation).
  * «تفاصيل التعلم» is optional and human-worded (no raw FSRS). Editing and moving never change dueAt, FSRS or history.
  */
-function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word[];reviews:Review[];lib:Library;onChanged:()=>Promise<unknown>;notify:Notify;showPlace?:boolean}){
+function CardList({list,reviews,lib,onChanged,notify,showPlace=false,selecting=false,onSelectingDone}:{list:Word[];reviews:Review[];lib:Library;onChanged:()=>Promise<unknown>;notify:Notify;showPlace?:boolean;selecting?:boolean;onSelectingDone?:()=>void}){
   const Lb=T.library,L=T.lib,C=T.card;
   const [open,setOpen]=useState<string|null>(null),[pending,setPending]=useState<Word|null>(null),[moving,setMoving]=useState<Word|null>(null),[menu,setMenu]=useState<Word|null>(null),[editing,setEditing]=useState<Word|null>(null);
+  // #29: selection is scoped to what is listed now — a search or filter that hides a card also unselects it.
+  const [picked,setPicked]=useState<Set<string>>(()=>new Set()),[bulk,setBulk]=useState<null|'move'|'archive'>(null);
+  const listedKey=list.map(w=>w.id).join('|');
+  useEffect(()=>{setPicked(p=>{const ids=new Set(list.map(w=>w.id));const next=new Set([...p].filter(id=>ids.has(id)));return next.size===p.size?p:next;});},[listedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(!selecting){setPicked(new Set());setBulk(null);}else setOpen(null);},[selecting]);
+  const toggle=(id:string)=>setPicked(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});
+  const allPicked=list.length>0&&list.every(w=>picked.has(w.id));
+  async function bulkMove(deckId:string){const ids=[...picked];await moveWords(ids,deckId);await onChanged();const d=lib.decks.find(x=>x.id===deckId);notify(L.bulkMoved(ids.length,d?deckName(d):''));setBulk(null);onSelectingDone?.();}
+  async function bulkArchive(){const ids=[...picked];setBulk(null);try{await archiveWords(ids);await onChanged();notify(L.bulkArchived(ids.length));onSelectingDone?.();}catch(e){notify(getError(e),'error');}}
   const history=useMemo(()=>{const m=new Map<string,{n:number;last:string}>();for(const r of reviews){const h=m.get(r.wordId);if(!h)m.set(r.wordId,{n:1,last:r.reviewedAt});else{h.n++;if(r.reviewedAt>h.last)h.last=r.reviewedAt;}}return m;},[reviews]);
   const now=Date.now();
   const place=(w:Word)=>{const d=lib.decks.find(x=>x.id===deckIdOf(w,lib));const f=d&&lib.folders.find(x=>x.id===d.folderId);return d?(f?`${folderName(f)} · ${deckName(d)}`:deckName(d)):'';};
@@ -1067,7 +1096,14 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
   async function move(deckId:string){const w=moving;if(!w)return;await moveWord(w.id,deckId);await onChanged();const d=lib.decks.find(x=>x.id===deckId);notify(L.moved(w.term,d?deckName(d):''));setMoving(null);}
   async function save(v:CardEdit){const w=editing;if(!w)return;const next=await editWord(w.id,v);await onChanged();notify(C.saved(next.term));setEditing(null);}
   return <>
-    <ul className="word-list" aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id),cl=contentLang(w,lib.decks);return <li key={w.id} className={'word'+(isOpen?' open':'')}>
+    {selecting&&<p className="select-hint" role="status">{picked.size?L.selectedCount(picked.size):L.selectHint}</p>}
+    <ul className={'word-list'+(selecting?' selecting':'')} aria-label={Lb.listLabel}>{list.map(w=>{const due=isDue(w,now),isOpen=open===w.id,h=history.get(w.id),cl=contentLang(w,lib.decks);
+      if(selecting){const on=picked.has(w.id);return <li key={w.id} className={'word'+(on?' picked':'')}>
+        <label className="word-main word-pick"><span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir={termDir(w,cl)} lang={cl}>{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
+          <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
+          <input type="checkbox" className="pick-box" checked={on} onChange={()=>toggle(w.id)} aria-label={L.pickLabel(w.term)}/></label>
+      </li>;}
+      return <li key={w.id} className={'word'+(isOpen?' open':'')}>
       <button type="button" className="word-main" aria-expanded={isOpen} aria-controls={'wd-'+w.id} onClick={()=>setOpen(isOpen?null:w.id)}>
         <span className="word-text"><i className="kind-badge">{kindLabel(w.contentType)}</i><b dir={termDir(w,cl)} lang={cl}>{w.term}</b><span dir="auto">{w.meanings.join('؛ ')}</span>{showPlace&&!isOpen&&<small className="word-place" dir="auto">{place(w)}</small>}</span>
         <span className={'due-pill'+(due?' is-due':'')}>{due?Lb.dueNow:relative(w.dueAt,now)}</span>
@@ -1094,6 +1130,15 @@ function CardList({list,reviews,lib,onChanged,notify,showPlace=false}:{list:Word
         </details>
       </div>}
     </li>;})}</ul>
+    {selecting&&<div className="select-bar" role="group" aria-label={L.selectActions}>
+      <button type="button" className="btn btn-quiet sm" onClick={()=>setPicked(allPicked?new Set():new Set(list.map(w=>w.id)))}>{allPicked?L.selectNone:L.selectAll(list.length)}</button>
+      <span className="select-actions">
+        <button type="button" className="btn btn-quiet sm" disabled={!picked.size} onClick={()=>setBulk('move')}><FolderInput size={16} aria-hidden="true"/>{L.moveSelected}</button>
+        <button type="button" className="btn btn-quiet sm danger" disabled={!picked.size} onClick={()=>setBulk('archive')}><Archive size={16} aria-hidden="true"/>{L.archiveSelected}</button>
+      </span>
+    </div>}
+    <BulkMoveSheet open={bulk==='move'} count={picked.size} lib={lib} onMove={bulkMove} onClose={()=>setBulk(null)}/>
+    <ConfirmDialog open={bulk==='archive'} title={L.bulkArchiveTitle(picked.size)} body={Lb.removeBody} confirm={L.bulkArchiveYes} cancel={Lb.removeNo} onConfirm={()=>void bulkArchive()} onCancel={()=>setBulk(null)}/>
     <ActionSheet word={menu} onClose={()=>setMenu(null)} onMove={w=>{setMenu(null);setMoving(w);}} onRemove={w=>{setMenu(null);setPending(w);}}/>
     <ConfirmDialog open={!!pending} title={Lb.removeTitle(pending?.term||'')} body={Lb.removeBody} confirm={Lb.removeYes} cancel={Lb.removeNo} onConfirm={()=>void confirmArchive()} onCancel={()=>setPending(null)}/>
     <MoveSheet word={moving} lib={lib} onMove={move} onClose={()=>setMoving(null)}/>
@@ -1232,6 +1277,15 @@ function MoveSheet({word,lib,onMove,onClose}:{word:Word|null;lib:Library;onMove:
   useEffect(()=>{if(word)setTarget(deckIdOf(word,lib));},[word]); // eslint-disable-line react-hooks/exhaustive-deps
   return <FormSheet open={open} title={L.moveTitle(word?.term||'')} onClose={onClose} onSubmit={()=>void run(()=>onMove(target))} submit={L.move} busy={busy||!word||target===deckIdOf(word,lib)} error={error}>
     <div className="field"><label htmlFor="move-deck">{L.moveTo}</label><select id="move-deck" className="select" value={target} onChange={e=>setTarget(e.target.value)}><DeckOptions lib={lib}/></select><p className="hint">{L.moveNote}</p></div>
+  </FormSheet>;
+}
+/** #29: move the selected cards to one deck. Their review dates and history stay as they are. */
+function BulkMoveSheet({open,count,lib,onMove,onClose}:{open:boolean;count:number;lib:Library;onMove:(deckId:string)=>Promise<void>;onClose:()=>void}){
+  const L=T.lib;
+  const [target,setTarget]=useState(DEFAULT_DECK_ID),{busy,error,run}=useSheetAction(open);
+  useEffect(()=>{if(open&&!lib.decks.some(d=>d.id===target))setTarget(lib.decks[0]?.id??DEFAULT_DECK_ID);},[open]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <FormSheet open={open} title={L.bulkMoveTitle(count)} onClose={onClose} onSubmit={()=>void run(()=>onMove(target))} submit={L.move} busy={busy||!count} error={error}>
+    <div className="field"><label htmlFor="bulk-move-deck">{L.moveTo}</label><select id="bulk-move-deck" className="select" value={target} onChange={e=>setTarget(e.target.value)}><DeckOptions lib={lib}/></select><p className="hint">{L.bulkMoveNote}</p></div>
   </FormSheet>;
 }
 /** #16: where a new card is saved, visible before saving. */
