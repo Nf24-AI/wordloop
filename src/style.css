@@ -725,3 +725,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .select-bar .select-actions{display:flex;gap:8px}
 .select-bar .btn{min-block-size:44px}
 @media(min-width:1024px){.select-bar{inset-block-end:16px}}
+/* #30: practice-suggestion switch under the reminder buttons */
+.check-row{display:flex;gap:12px;align-items:flex-start;margin-block-start:16px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;min-block-size:44px}
+.check-row input{inline-size:20px;block-size:20px;margin-block-start:2px;flex:none;accent-color:var(--ink-btn)}
+.check-row span{display:grid;gap:3px}.check-row b{font-size:15px}.check-row small{font-size:13px;color:var(--muted);line-height:1.6}
