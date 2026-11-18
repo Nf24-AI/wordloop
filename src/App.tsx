@@ -973,7 +973,8 @@ function WordPicker({deckId,lib,words,go}:{deckId:string;lib:Library;words:Word[
       :<p className="practice-note">{X.noMatch}</p>}
     <div className="pick-bar">
       <span className="pick-count" aria-live="polite"><b>{X.count(n,eligible.length)}</b>{n>0&&<small>{X.batches(n,Math.ceil(n/BATCH_SIZE[level]))}</small>}{n===0&&<small>{X.none}</small>}</span>
-      <button type="button" className="btn btn-ink" onClick={()=>stepBackTo(hubDeck(deckId))}>{X.done}</button>
+      {/* A real step back when the hub is the previous screen; otherwise an ordinary navigation (no history replace). */}
+      <button type="button" className="btn btn-ink" onClick={()=>{const to=hubDeck(deckId);if(previousRoute()===to&&history.length>1)history.back();else window.location.hash='/'+to;}}>{X.done}</button>
     </div>
   </div>;
 }
