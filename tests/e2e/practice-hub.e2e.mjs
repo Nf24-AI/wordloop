@@ -133,8 +133,11 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.getByRole('button',{name:'تحديد الكل',exact:true}).isDisabled(),false);
       await page.reload();await page.locator('.pick-list').waitFor();
       assert.match(await page.locator('.pick-count').innerText(),/119 من 120/,'selection survives a reload');
-      await page.getByRole('button',{name:'تم'}).click();
-      await page.locator('.story-start').waitFor();
+      const done=page.getByRole('button',{name:'تم',exact:true});
+      const hit=await done.evaluate(b=>{const r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,t=document.elementFromPoint(x,y);return {top:t===b||b.contains(t),tag:t?.className??'',y,vh:innerHeight};});
+      await done.click();
+      try{await page.locator('.story-start').waitFor({timeout:10000});}
+      catch(e){console.log('P2-03 DIAG',JSON.stringify({hit,hash:await hashOf(page),main:(await page.locator('main').innerText()).slice(0,300)}));throw e;}
       assert.match(await page.locator('.word-summary').innerText(),/119 من 120/);
       assert.match(await page.locator('.story-start').innerText(),/20 قصص/);
       await page.locator('.story-go').click();
