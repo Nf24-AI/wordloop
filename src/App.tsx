@@ -9,8 +9,9 @@ import {disablePush,enablePush,markPracticed,practiceReminders,pushState,pushSup
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 import {readContinue,rememberContinue,resolveContinue} from './continue';
 import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX_LINES,type BulkRow} from './bulk';
-import {batchToGenerate,buildStoryRequest,defaultSelection,eligibleWords,giveConsent,hasConsent,keepEligible,newPlan,readPlan,readSelection,readSettings,recordStory,requestStory,selectState,storyLanguageOk,writePlan,writeSelection,writeSettings,type Plan,type PracticeSettings,type StoryFailure} from './practicePlan';
+import {batchToGenerate,buildStoryRequest,defaultSelection,eligibleWords,giveConsent,hasConsent,keepEligible,newPlan,readPlan,readSelection,readSettings,recordStory,requestStory,selectState,storyLanguageOk,storyStatus,type StoryStatus,writePlan,writeSelection,writeSettings,type Plan,type PracticeSettings,type StoryFailure} from './practicePlan';
 import {batchesLeft,highlightParts,planFinished,BATCH_SIZE,CEFR_LEVELS,STORY_GENRES,type StoryRequest} from './story';
+import {buildDemoStory,isDemoTitle} from './demoStory';
 import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
 
 /* ───────────── Language (#6) ─────────────
@@ -885,6 +886,9 @@ function planIndex(plan:Plan,passageId:string){const i=plan.stories.findIndex(s=
 function PracticeHub({deckId,lib,words,passages,notify,go}:{deckId:string|null;lib:Library;words:Word[];passages:Passage[];notify:Notify;go:(path:string)=>void}){
   const S=T.story,H=T.hub,P=T.practice;
   const [settings,setSettings]=useState(readSettings),[consent,setConsentState]=useState(hasConsent);
+  // #64: ask the Worker once whether AI stories are on, so «off» is explained BEFORE Start (not as a failure after it).
+  const [ai,setAi]=useState<StoryStatus>('unknown');
+  useEffect(()=>{let live=true;void storyStatus(T.locale==='en'?'en':'ar').then(v=>{if(live)setAi(v);});return ()=>{live=false;};},[]);
   const eligibleBy=useMemo(()=>new Map(lib.decks.map(d=>[d.id,eligibleWords(words,d.id)])),[lib.decks,words]);
   const fallback=[...lib.decks].sort((a,b)=>(eligibleBy.get(b.id)?.length??0)-(eligibleBy.get(a.id)?.length??0))[0]?.id??null;
   const chosen=deckId??(settings.deckId&&lib.decks.some(d=>d.id===settings.deckId)?settings.deckId:fallback);
@@ -898,7 +902,7 @@ function PracticeHub({deckId,lib,words,passages,notify,go}:{deckId:string|null;l
   const langOk=!!deck&&storyLanguageOk(deck),texts=deck?passages.filter(p=>p.deckId===deck.id):[];
   const nBatches=Math.ceil(selected.length/BATCH_SIZE[settings.level]);
   const preview=selected.slice(0,8).map(id=>eligible.find(w=>w.id===id)!).filter(Boolean);
-  function start(){if(!deck||!selected.length)return;writePlan(newPlan(deck.id,selected,settings.level,settings.genre));go(hubDeck(deck.id)+'/new');}
+  function start(demo=false){if(!deck||!selected.length)return;writePlan(newPlan(deck.id,selected,settings.level,settings.genre,demo));go(hubDeck(deck.id)+'/new');}
   const decksWithWords=lib.decks.filter(d=>(eligibleBy.get(d.id)?.length??0)>0||passages.some(p=>p.deckId===d.id));
   return <div className="page library practice-hub practice2">
     <PageHead title={S.title} lead={S.lead}/>
@@ -927,7 +931,10 @@ function PracticeHub({deckId,lib,words,passages,notify,go}:{deckId:string|null;l
             <div className="chips">{STORY_GENRES.map(g=><button type="button" key={g} className={'chip'+(settings.genre===g?' on':'')} aria-pressed={settings.genre===g} onClick={()=>save({...settings,genre:g})}>{S.genres[g]}</button>)}</div></fieldset>
           {consent&&<button type="button" className="btn btn-quiet sm" onClick={()=>{giveConsent(false);setConsentState(false);notify(S.withdrawn);}}>{S.withdraw}</button>}
         </details>
-        <button type="button" className="btn btn-ink btn-lg practice-start story-go" disabled={!selected.length} onClick={start}><Sparkles size={18} aria-hidden="true"/>{S.start}</button>
+        {ai==='off'&&<div className="story-off-note" role="note"><b>{S.off.title}</b><p>{S.off.body}</p></div>}
+        {ai==='off'
+          ?<button type="button" className="btn btn-ink btn-lg practice-start story-go story-demo-go" disabled={!selected.length} onClick={()=>start(true)}><FileText size={18} aria-hidden="true"/>{S.off.demoStart}</button>
+          :<button type="button" className="btn btn-ink btn-lg practice-start story-go" disabled={!selected.length} onClick={()=>start()}><Sparkles size={18} aria-hidden="true"/>{S.start}</button>}
         <p className="practice-note">{P.noFsrs}</p>
       </section>)}
     {deck&&<section className="story-texts" aria-labelledby="story-texts-h">
@@ -985,11 +992,12 @@ function WordPicker({deckId,lib,words,go}:{deckId:string;lib:Library;words:Word[
 /** Consent → generating (cancellable) → saved story, or one clear failure with a way forward. Never shows unvalidated text. */
 function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Library;words:Word[];onChanged:()=>Promise<unknown>;go:(path:string)=>void}){
   const S=T.story,G=S.gen,deck=lib.decks.find(d=>d.id===deckId);
-  const [plan]=useState(readPlan);
+  const [plan,setPlan]=useState(readPlan);
   const eligible=useMemo(()=>eligibleWords(words,deckId),[words,deckId]);
   const batch=useMemo(()=>plan&&plan.deckId===deckId?keepEligible(batchToGenerate(plan),eligible):[],[plan,deckId,eligible]);
   const cards=useMemo(()=>batch.map(id=>eligible.find(w=>w.id===id)!).filter(Boolean),[batch,eligible]);
-  const [phase,setPhase]=useState<'consent'|'working'|'failed'>(hasConsent()?'working':'consent');
+  // Demo Mode sends nothing, so it needs no consent.
+  const [phase,setPhase]=useState<'consent'|'working'|'failed'>(plan?.demo||hasConsent()?'working':'consent');
   const [reason,setReason]=useState<StoryFailure|null>(null),[slow,setSlow]=useState(false),[attempt,setAttempt]=useState(0);
   const ctl=useRef<AbortController|null>(null);
   useEffect(()=>{
@@ -1001,7 +1009,10 @@ function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Librar
       let req:StoryRequest;
       try{req=buildStoryRequest(deck,cards,plan.state.level,plan.genre);}catch{setReason('request');setPhase('failed');return;}
       writePlan({...plan,pending:batch});
-      const r=await requestStory(req,c.signal,T.locale==='en'?'en':'ar');
+      const loc=T.locale==='en'?'en':'ar';
+      // Demo Mode: the local template, never the network (and never labelled as AI).
+      const r=plan.demo?(()=>{const d=buildDemoStory(req,loc);return d?{ok:true as const,...d}:{ok:false as const,reason:'request' as StoryFailure};})()
+        :await requestStory(req,c.signal,loc);
       if(c.signal.aborted)return; // left the screen or cancelled: nothing is saved
       if(!r.ok){setReason(r.reason);setPhase('failed');return;}
       try{
@@ -1035,6 +1046,10 @@ function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Librar
       <button type="button" className="btn btn-quiet" onClick={()=>stepBackTo(hubDeck(deckId))}>{S.consent.decline}</button>
     </div>
   </div>;
+  if(phase==='failed'&&reason==='off')return <div className="page practice"><div className="practice-empty story-off" role="status">
+    <h2>{S.off.title}</h2><p>{S.off.body}</p>
+    <div className="btn-row"><button type="button" className="btn btn-ink" onClick={()=>{const d={...plan,demo:true};writePlan(d);setPlan(d);setReason(null);setPhase('working');setAttempt(a=>a+1);}}><FileText size={16} aria-hidden="true"/>{S.off.demoTry}</button>
+      <button type="button" className="btn btn-quiet" onClick={()=>stepBackTo(hubDeck(deckId))}>{G.useTexts}</button></div></div></div>;
   if(phase==='failed'&&reason){
     const canRetry=!['off','request','quota'].includes(reason);
     return <div className="page practice"><div className="practice-empty story-failed" role="alert"><h2>{reason==='cancelled'?S.err.cancelled:G.failTitle}</h2>
@@ -1044,7 +1059,7 @@ function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Librar
   }
   return <div className="page practice story-working" aria-busy="true">
     <section className="finish"><div className="finish-orb story-orb" aria-hidden="true"><Wash/></div>
-      <p className="lead">{label}</p><h1 role="status">{slow?G.checking:G.writing}</h1>
+      <p className="lead">{label}</p><h1 role="status">{plan.demo?S.demo.working:slow?G.checking:G.writing}</h1>
       <div className="word-pills center" lang={deck.contentLanguage}>{cards.map(w=><span key={w.id} className="word-pill">{w.term}</span>)}</div>
       <div className="finish-actions"><button type="button" className="btn btn-quiet" onClick={()=>{ctl.current?.abort();setReason('cancelled');setPhase('failed');}}><X size={16} aria-hidden="true"/>{G.cancel}</button></div>
     </section>
@@ -1066,6 +1081,7 @@ function StoryView({deckId,id,lib,words,passages,go}:{deckId:string;id:string;li
   const pos=plan&&entry?planIndex(plan,id):null,more=!!plan&&!!entry&&!planFinished(plan.state)&&plan.stories[plan.stories.length-1]?.passageId===id;
   return <div className="page practice story-view">
     <PageHead title={p.title} lead={pos?S.plan(pos.i+1,pos.total):deckName(deck)}/>
+    {(entry?.demo||isDemoTitle(p.title))&&<p className="story-demo-banner" role="note"><FileText size={16} aria-hidden="true"/>{S.demo.banner}</p>}
     <div className="story-tools">
       <SpeakButton text={p.body} label={V.listen} lang={p.contentLanguage} className="btn btn-quiet sm" showLabel/>
       {p.translation&&<button type="button" className="btn btn-quiet sm" aria-expanded={tr} onClick={()=>setTr(v=>!v)}><Languages size={16} aria-hidden="true"/>{tr?V.hideTranslation:V.translation}</button>}

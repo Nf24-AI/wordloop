@@ -28,6 +28,7 @@ async function seed(page,{words=[...EN_WORDS,...EXTRA],lang='en-US',passage=fals
 /** Mocks the story endpoint; records every request body. `reply` may be a function of the parsed body. */
 async function mockStory(page,reply=b=>({status:200,body:{story:b.words.some(w=>w.term==='wake up')?EN_STORY:EN_STORY_2}})){
   const calls=[];
+  await page.route('**/api/practice/story/status',route=>route.fulfill({status:200,contentType:'application/json',body:'{"ai":"on"}'}));
   await page.route('**/api/practice/story',async route=>{
     const body=JSON.parse(route.request().postData()||'null');calls.push(body);
     const r=await reply(body);
@@ -36,7 +37,31 @@ async function mockStory(page,reply=b=>({status:200,body:{story:b.words.some(w=>
   });
   return calls;
 }
-async function openPractice(page,base){await page.goto(base+'/#/words/practice');await page.reload();await page.locator('.practice-hub').waitFor();}
+function fakeSpeech(){
+  const voices=[{name:'Samantha',lang:'en-US',localService:true,default:true,voiceURI:'s'}];
+  const log=[];let cur=null;
+  const synth={paused:false,getVoices:()=>voices,addEventListener(){},removeEventListener(){},
+    speak(u){cur=u;log.push(u.text);setTimeout(()=>{if(cur===u){cur=null;u.onend?.();}},30);},
+    cancel(){const u=cur;cur=null;u?.onerror?.({error:'interrupted'});},pause(){},resume(){}};
+  Object.defineProperty(window,'speechSynthesis',{value:synth,configurable:true});window.SpeechSynthesisUtterance=class{constructor(t){this.text=t;}};window.__spoken=log;
+}
+async function answerAll(page,{type}={}){
+  let n=0;
+  while(await page.locator('.practice-q').count()){
+    const q=page.locator('.practice-q');
+    if(await q.locator('.practice-options').count())await q.locator('.practice-option').first().click();
+    else if(await q.locator('#practice-input').count()){
+      if(type){await page.fill('#practice-input',type(n));await q.getByRole('button',{name:'تحقق'}).click();}
+      else await q.getByRole('button',{name:'اعرض الإجابة'}).click();
+    }
+    else{await q.getByRole('button',{name:'اعرض المعنى'}).click();await q.getByRole('button',{name:'عرفتها'}).click();}
+    n++;await page.locator('.practice-next').click();
+    assert.ok(n<60,'the session ends');
+  }
+  return n;
+}
+// Reload first (re-reads the seeded IndexedDB), THEN open Practice: no status request is cut off by a reload.
+async function openPractice(page,base){await page.reload();await page.waitForSelector('main h1');await page.goto(base+'/#/words/practice');await page.locator('.practice-hub').waitFor();}
 
 for(const [name,engine] of Object.entries(ENGINES)){
   test(`[${name}] issues #61 #64 practice 2.0`,async t=>{
@@ -47,7 +72,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
     await t.test('P2-01: a deck with no active words → honest empty state with «add words»; archived cards never count',async()=>{
       const {context,page,errors}=await freshPage(browser,base());
       const {deck}=await seed(page,{words:[{term:'gone',meaning:'راح'}],archived:['gone']});
-      await page.goto(base()+`/#/words/practice/${encodeURIComponent(deck)}`);await page.reload();await page.locator('.practice-hub').waitFor();
+      await page.reload();await page.waitForSelector('main h1');await page.goto(base()+`/#/words/practice/${encodeURIComponent(deck)}`);await page.locator('.practice-hub').waitFor();
       assert.match(await page.locator('.practice-hub .empty').innerText(),/ما فيها كلمات للتمرين/);
       await page.locator('.practice-hub .empty').getByRole('button',{name:'أضف كلمات'}).click();
       assert.equal(await hashOf(page),`#/add/${encodeURIComponent(deck)}`);
@@ -118,6 +143,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const {context,page,errors}=await freshPage(browser,base());
       const words=Array.from({length:120},(_,i)=>({term:'word'+i,meaning:'معنى '+i}));
       const {deck}=await seed(page,{words:[...words,{term:'old',meaning:'قديم'}],archived:['old']});
+      await mockStory(page,()=>'hang');
       await page.goto(base()+`/#/words/practice/${encodeURIComponent(deck)}/words`);await page.reload();
       await page.locator('.pick-list').waitFor();
       assert.equal(await page.locator('.pick-row').count(),120,'archived card excluded');
@@ -172,8 +198,11 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.match(await page.locator('.story-failed').innerText(),/ما نجحت في فحص الجودة/);
       assert.equal(await data(page,async m=>(await m.listPassages()).length),0,'nothing invalid is saved');
       mode='off';await page.locator('.story-failed').getByRole('button',{name:'جرّب مرة ثانية'}).click();
-      await page.waitForFunction(()=>/غير مفعّلة/.test(document.querySelector('.story-failed')?.textContent??''));
-      mode='hang';await page.locator('.story-failed').getByRole('button',{name:'تمرّن على نصوصك'}).click();
+      await page.locator('.story-off').waitFor();
+      assert.match(await page.locator('.story-off').innerText(),/ما تفعّلت للحين[\s\S]*قصة تجريبية محلية/);
+      assert.equal(await page.locator('[role=alert]').count(),0,'«AI off» is information, not an error');
+      assert.equal(await page.locator('.story-off').getByRole('button',{name:'جرّب بقصة تجريبية'}).count(),1);
+      mode='hang';await page.locator('.story-off').getByRole('button',{name:'تمرّن على نصوصك'}).click();
       await page.locator('.story-go').click();
       await page.locator('.story-working').waitFor();
       await page.getByRole('button',{name:'إلغاء'}).click();
@@ -207,6 +236,64 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.deepEqual(errors,[]);await context.close();
     });
 
+    await t.test('P2-07: AI OFF on the real Worker → calm notice + Demo Mode: all 14 words, 3 demo stories, Reading, Listening, results — nothing sent, FSRS untouched',async()=>{
+      const {context,page,errors}=await freshPage(browser,base());
+      await context.addInitScript(fakeSpeech);
+      const words=[...EN_WORDS,...EXTRA,...['window','garden','river','pencil','chair','mountain'].map((term,i)=>({term,meaning:'معنى '+i}))];
+      const {deck}=await seed(page,{words});
+      const sent=[];page.on('request',r=>{if(r.url().includes('/api/practice/story')&&r.method()==='POST')sent.push(r.url());});
+      await openPractice(page,base());
+      const before=await fsrsSnapshot(page);
+      // The real local Worker has no AI binding → the status says «off» before Start: a note, not an error.
+      await page.locator('.story-off-note').waitFor();
+      assert.match(await page.locator('.story-off-note').innerText(),/ما تفعّلت للحين/);
+      assert.equal(await page.locator('[role=alert]').count(),0);
+      // Select every word of the deck.
+      await page.locator('.word-summary').click();await page.locator('.pick-list').waitFor();
+      await page.getByRole('button',{name:'تحديد الكل',exact:true}).click();
+      assert.match(await page.locator('.pick-count').innerText(),/14 من 14[\s\S]*14 كلمة ← 3 قصص/);
+      await page.getByRole('button',{name:'تم',exact:true}).click();
+      await page.locator('.story-start').waitFor();
+      assert.match(await page.locator('.word-summary').innerText(),/14 من 14/);
+      await page.getByRole('button',{name:'ابدأ بقصة تجريبية'}).click();
+      // No consent screen (nothing is sent) → the demo story, clearly labelled.
+      await page.locator('.story-view').waitFor();
+      assert.match(await page.locator('main h1').innerText(),/^قصة تجريبية: /);
+      assert.match(await page.locator('.story-demo-banner').innerText(),/مو من الذكاء الاصطناعي/);
+      assert.match(await page.locator('.page-head .lead').innerText(),/القصة 1 من 3/);
+      assert.equal(await page.locator('.story-coverage .word-pill').count(),6,'the whole first batch is in the text');
+      await page.locator('.story-word',{hasText:'breakfast'}).click();
+      assert.match(await page.locator('.word-pop').innerText(),/فطور/);
+      // Reading: every question.
+      await page.locator('.story-actions').getByRole('button',{name:'تمرين قراءة'}).click();
+      await page.locator('.practice-field').nth(1).getByRole('button',{name:'الكل'}).click();
+      await page.locator('.practice-start').click();
+      const nRead=await answerAll(page);
+      assert.equal(nRead,6+6+3,'6 cloze + 6 meaning + 3 comprehension');
+      await page.locator('.finish').waitFor();
+      const counts=await page.locator('.result-counts dd').allInnerTexts();
+      assert.equal(counts.map(Number).reduce((a,b)=>a+b),nRead,'right + wrong + almost = questions');
+      assert.match(await page.locator('.finish').innerText(),/تمرّنت على 6 كلمة/);
+      // Listening on the same story: dictation (typed exactly → correct) + comprehension.
+      await page.locator('.finish').getByRole('button',{name:'تمرين استماع'}).click();
+      await page.locator('.listen-player').first().waitFor();
+      await page.locator('.practice-field').nth(1).getByRole('button',{name:'الكل'}).click();
+      await page.locator('.practice-start').click();
+      const sentences=await page.evaluate(async()=>{const m=await import('/src/data.ts');const [p]=await m.listPassages();const pr=await import('/src/practice.ts');return pr.sentences(p.body);});
+      const nListen=await answerAll(page,{type:i=>sentences[i]??'x'});
+      assert.ok(nListen>=sentences.length,'every sentence dictated, then comprehension');
+      await page.locator('.finish').waitFor();
+      assert.ok(Number((await page.locator('.result-counts .ok dd').innerText()))>=sentences.length,'exact dictation is marked right');
+      // Next story → demo story 2 of 3, still no network.
+      await page.locator('.finish').getByRole('button',{name:'القصة التالية'}).click();
+      await page.waitForFunction(()=>/القصة 2 من 3/.test(document.querySelector('.page-head .lead')?.textContent??''));
+      assert.ok(await page.locator('.story-demo-banner').isVisible());
+      assert.deepEqual(sent,[],'Demo Mode never calls the story endpoint');
+      assert.equal(await data(page,async m=>(await m.listPassages()).filter(p=>p.title.startsWith('قصة تجريبية: ')).length),2);
+      assert.equal(await fsrsSnapshot(page),before,'cards, due dates, FSRS state and reviews unchanged');
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      assert.deepEqual(errors,[]);await context.close();
+    });
     await t.test('P2-06: a generated story is a local passage: it survives backup → delete → restore',async()=>{
       const {context,page,errors}=await freshPage(browser,base());
       await seed(page);

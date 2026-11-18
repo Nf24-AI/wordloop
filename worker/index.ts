@@ -1,5 +1,5 @@
 import {loadVapidKey,parseSubscription,sendPush} from '@codefusion-cc/web-push';
-import {storyEndpoint,type StoryEnv} from './story.ts';
+import {storyEndpoint,storyStatus,type StoryEnv} from './story.ts';
 import {missingColumn,runReminders,safeDay,safeLocale,safeZone,type D1Database,type Outcome} from './reminders.ts';
 
 type RateLimiter={limit:(args:{key:string;delta?:number})=>Promise<{success:boolean}>};
@@ -46,6 +46,7 @@ async function endpoint(request:Request,env:Env){
     return key?reply({publicKey:key.publicKey}):fail('لم تُفعّل الإشعارات بعد',503);
   }
   if(!originOK(request))return fail('طلب غير مسموح',403);
+  if(path==='/api/practice/story/status'&&method==='GET')return storyStatus(env); // #64: on/off only
   if(path==='/api/practice/story')return storyEndpoint(request,env,body); // #64: OFF unless the owner enables it
   if(method==='POST'&&path.startsWith('/api/push/')){
     if(!env.PUSH_LIMIT)return fail('خدمة الإشعارات غير جاهزة بعد',503);

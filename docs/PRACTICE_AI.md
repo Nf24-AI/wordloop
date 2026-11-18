@@ -19,6 +19,21 @@ Practice → (deck: remembered, or the one with the most words) → **Start**. C
 - A word the story didn't use moves into the next batch once. If it's missed again it is listed as «couldn't fit into a story».
 - No selected word is ever silently dropped (STORY-BATCH-02).
 
+## 1b. When AI is off: notice + Demo Mode
+- `GET /api/practice/story/status` returns only `{ai:"on"|"off"}`. Practice asks once per session, so «AI stories aren't switched on yet» is shown as a calm note **before** Start, not as a failure after it.
+- With AI off, the main button is **«Start with a demo story»**. If an old Worker or an offline device made the status unknown, the generator explains «off» in the same calm way and offers the demo.
+- **Demo Mode** (`src/demoStory.ts`):
+  - A fixed EN/ES frame plus one sentence per selected word. The translation carries each saved meaning.
+  - It passes the same `validateStory` gate.
+  - It runs locally: no request, no consent screen, no quota.
+  - Selection, select all, batches, Reading, Listening, questions, results and «Next story» all behave exactly as with AI.
+- **Never presented as AI output:**
+  - the saved title starts with «قصة تجريبية: » / «Demo story: »;
+  - the story screen shows «A local demo story, not written by AI»;
+  - the plan records `demo:true`.
+  It is a plain practice text, not a language-quality sample.
+- Demo texts are ordinary local passages. The learner can delete them from the deck's texts like any other.
+
 ## 2. Data and privacy
 | | Where |
 |---|---|
@@ -126,7 +141,8 @@ Assuming 2 stories per active user per day (the cap is 10):
 |---|---|---|
 | S1 | + → Practice | The deck is preselected; «6 of N words selected»; one Start button |
 | S2 | Choose words → Select all → Deselect all → pick 3 → Done | Counter matches; Back returns; the selection is kept after reopening |
-| S3 | Start (AI off) | Consent → «AI stories aren't switched on…» and «Practise your texts» |
+| S3 | Practice with AI off | A calm note «AI stories aren't switched on yet» (not an error) and «Start with a demo story» |
+| S3b | Select all → Start with a demo story → Reading → result → Listening → result → Next story | Demo banner on every story; «Story 1 of N»; counts add up; nothing sent; due dates unchanged |
 | S4 | (after enabling) Start → Agree | Progress, then a story with highlighted words. Tap a word: its meaning. Listen speaks the deck's language |
 | S5 | Reading → finish | Right / wrong / almost counts, Next story. Card due dates are unchanged |
 | S6 | Listening on the same story | Dictation with word-level marks. Without a voice there's a clear message and «Show text» |

@@ -260,3 +260,34 @@ test('STORY-EVAL-01: the 20 evaluation cases cover EN+ES, A1–C1, both genres, 
   assert.deepEqual([...new Set(CASES.map(c=>c.request.contentLanguage))].sort(),['en-US','es-ES']);
   assert.deepEqual([...new Set(CASES.map(c=>c.request.genre))].sort(),['conversation','story']);
 });
+
+/* ───────── #64 Demo Mode + status ───────── */
+test('DEMO-01: the local demo text uses every selected word, passes the same story gate, and is labelled as a demo',async()=>{
+  const {buildDemoStory,isDemoTitle,DEMO_PREFIX}=await import('../src/demoStory.ts');
+  for(const [lang,words] of [['en-US',EN_WORDS],['es-ES',ES_WORDS]])for(const n of [1,5,STORY_MAX_WORDS])for(const level of ['A1','C1']){
+    const ws=Array.from({length:n},(_,i)=>words[i]??{term:(lang==='en-US'?'word':'palabra')+i,meaning:'معنى'+i});
+    const req={v:1,contentLanguage:lang,meaningLanguage:'ar-SA',level,genre:'story',words:ws};
+    assert.equal(validateStoryRequest(req).ok,true);
+    const d=buildDemoStory(req,'ar');assert.ok(d,`${lang} ${n} ${level}`);
+    assert.deepEqual(d.used,ws.map(w=>w.term));assert.deepEqual(d.missing,[]);
+    assert.ok(d.story.title.startsWith(DEMO_PREFIX.ar)&&isDemoTitle(d.story.title));
+    assert.equal(d.story.questions.length,3);
+    for(const w of ws)assert.ok(d.story.translation.includes(w.meaning),'the translation carries each saved meaning');
+  }
+  assert.ok(buildDemoStory({...enReq},'en').story.title.startsWith('Demo story: '));
+  assert.equal(buildDemoStory({...enReq,contentLanguage:'fr-FR'},'ar'),null);
+  assert.equal(isDemoTitle('A Busy Morning'),false);
+});
+
+test('DEMO-02: status endpoint reports only on/off; off on the repo config, on only when fully configured',async()=>{
+  const get=()=>new Request(base+'/api/practice/story/status',{headers:{Origin:base}});
+  const r=await worker.fetch(get(),{PUSH_DB:fakeDb(),PUSH_LIMIT:limiter()});
+  assert.equal(r.status,200);assert.deepEqual(await r.json(),{ai:'off'});assert.equal(r.headers.get('cache-control'),'no-store');
+  assert.deepEqual(await (await worker.fetch(get(),onEnv({AI:{run:async()=>({})}}))).json(),{ai:'on'});
+  assert.deepEqual(await (await worker.fetch(get(),onEnv({AI:{run:async()=>({})},AI_STORY_MODEL:'@cf/evil/x'}))).json(),{ai:'off'});
+  assert.deepEqual(await (await worker.fetch(get(),onEnv())).json(),{ai:'off'},'switch on but no binding');
+  const {storyStatus}=await import('../src/practicePlan.ts');
+  let n=0;const f=async()=>{n++;return new Response('{"ai":"off"}');};
+  assert.equal(await storyStatus('ar',f,true),'off');assert.equal(await storyStatus('ar',f),'off');assert.equal(n,1,'cached');
+  assert.equal(await storyStatus('ar',async()=>{throw new TypeError('Load failed');},true),'unknown');
+});
