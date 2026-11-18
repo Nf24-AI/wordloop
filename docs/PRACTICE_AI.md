@@ -111,6 +111,34 @@ It runs them through both candidates with the same validator and repair, and wri
 - **After the fix:** 20/20 pass the automatic gate (2 needed their one repair). 111/115 words were found by the exact matcher; the 4 «missing» words are present in inflected form (looks forward to, barata, prestarle, tenía ganas de). Median 14.5 s, max 30.1 s. ≈ 23.5 neurons per story, about $0.00026.
 - **Neurons spent on the whole test:** ≈ 1,403 of the approved 3,000 (933 on the failed first run + 2 diagnostic calls, then 470 on the run itself).
 
+## 5d. Changes from the eval (prompt `story-v2`)
+- **Word forms count, other words never do.** Coverage, highlighting and «Your words in the story» share one matcher.
+  - EN: -s / -'s, -es after s/x/z/ch/sh/o, -d only after -e, e-drop + -ing, y→ies/ied, a doubled final consonant.
+  - ES: plural; o/a gender; regular conjugations; enclitic pronouns (prestarle).
+  - Multi-word terms: the first word may inflect and take one extra word (tenía *muchas* ganas de).
+  - **Different-meaning guards:**
+    - frequent homographs are never a «form» unless they ARE the target (como, para, casa, sobre…, news, card);
+    - short verb stems (< 4 letters) never take o/a/e/as/es/an/en (com+o = como, par+a = para, cas+a = casa);
+    - o/a noun pairs never swap (puerto ≠ puerta, libro ≠ libra);
+    - 3-letter CVC words take only doubled forms (hop → hopping, never «hoping»);
+    - there is no -er (but ≠ butter), and English function words are not inflected.
+  - Accents stay meaningful (está ≠ esta). There are no guesses for irregular forms or unknown languages.
+  - Re-scoring the saved 20 stories: **115/115** (was 111/115), with no false matches (EVAL-REG-02, MATCH-02).
+- **Questions and answers** (prompt v2 + validator):
+  - Answers are 1–6 words naming the thing. Questions are third-person, and the question's verb must match the answer.
+  - Facts stay consistent; the story reaches at least the minimum length.
+  - New gate checks, each triggering the one repair:
+    - `answerTooLong` (> 8 words);
+    - `answerVague` («a sturdy one», «eso»);
+    - `answerPerson` (a first-person reply to a third-person question — in conversations and yes/no replies only, since first-person narration is fine).
+  - On the saved 60 questions these flag exactly the 6 problems found by hand, and nothing else (EVAL-REG-01).
+- **Variety:**
+  - Each request gets a cast of two names and a suggested setting, from 24 names per language and 24 settings.
+  - The Worker seeds it randomly; the eval uses a fixed seed per case. The 20 eval cases get 20 different casts and 20 settings (VARIETY-01).
+  - In v1, the 20 stories reused Lucas ×5, Leo ×3, Sarah ×3 and Tom ×3, and two titles were identical.
+- **Not judged automatically:** whether a question's verb really matches its answer, and story logic. These are covered by the prompt and by human review in the eval report.
+- **Before/after:** `node scripts/compare-evals.mjs <before.json> <after.json> <out.md>` re-scores the old stories with the current rules, so changes in measurement are shown apart from changes in the model's output.
+
 ## 6. Cost estimate (my arithmetic, using the prices above)
 **Per story:**
 - About 950 input tokens and 1,050 output tokens, including the translation (about 40% of output) and an assumed 15% repair rate.
