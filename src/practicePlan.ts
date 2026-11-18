@@ -58,15 +58,16 @@ export const hasConsent=()=>read<string|null>(CONSENT,null)===CONSENT_VERSION;
 export const giveConsent=(yes:boolean)=>write(CONSENT,yes?CONSENT_VERSION:null);
 
 /** The current multi-story plan: the whole selected queue + which saved story covers which batch. */
-export type PlanStory={passageId:string;batch:string[];used:string[]};
-export type Plan={deckId:string;genre:StoryGenre;state:PlanState;stories:PlanStory[];pending:string[]|null};
+export type PlanStory={passageId:string;batch:string[];used:string[];demo?:boolean};
+/** `demo`: Demo Mode — every story of this plan is the local demo text (no network). */
+export type Plan={deckId:string;genre:StoryGenre;state:PlanState;stories:PlanStory[];pending:string[]|null;demo?:boolean};
 export function readPlan():Plan|null{const p=read<Plan|null>(PLAN,null);return p&&typeof p.deckId==='string'&&p.state&&Array.isArray(p.state.queue)&&Array.isArray(p.stories)?p:null;}
 export const writePlan=(p:Plan|null)=>write(PLAN,p);
-export function newPlan(deckId:string,ids:readonly string[],level:Cefr,genre:StoryGenre):Plan{return {deckId,genre,state:startPlan(ids,level),stories:[],pending:null};}
+export function newPlan(deckId:string,ids:readonly string[],level:Cefr,genre:StoryGenre,demo=false):Plan{return {deckId,genre,state:startPlan(ids,level),stories:[],pending:null,demo};}
 /** The next batch to generate (or the batch already waiting for a story). */
 export function batchToGenerate(p:Plan):string[]{return p.pending??nextBatch(p.state);}
 export function recordStory(p:Plan,passageId:string,batch:string[],usedIds:string[]):Plan{
-  return {...p,state:completeBatch(p.state,batch,usedIds),stories:[...p.stories,{passageId,batch,used:usedIds}],pending:null};
+  return {...p,state:completeBatch(p.state,batch,usedIds),stories:[...p.stories,{passageId,batch,used:usedIds,...(p.demo?{demo:true}:{})}],pending:null};
 }
 export const storyLanguageOk=(deck:Pick<Deck,'contentLanguage'>)=>storyLanguageSupported(deck.contentLanguage);
 
@@ -88,4 +89,18 @@ export async function requestStory(req:StoryRequest,signal:AbortSignal,locale:'a
   if(!res.ok){const c=(data as {code?:unknown}|null)?.code;return {ok:false,reason:CODES.includes(c as StoryFailure)?c as StoryFailure:res.status===404?'off':'provider'};}
   const v=validateStory((data as {story?:unknown}|null)?.story,req);
   return v.ok?{ok:true,story:v.story,used:v.used,missing:v.missing}:{ok:false,reason:'invalid'};
+}
+
+/** Whether AI stories are switched on for this deployment. 'unknown' (offline, signed out, old Worker) → behave as
+ *  before: Start tries, and the generator explains whatever comes back. Cached for the page session. */
+export type StoryStatus='on'|'off'|'unknown';
+let statusCache:Promise<StoryStatus>|null=null;
+export function storyStatus(locale:'ar'|'en',fetcher=accessFetch,fresh=false):Promise<StoryStatus>{
+  if(statusCache&&!fresh)return statusCache;
+  statusCache=(async()=>{
+    try{const r=await fetcher('/api/practice/story/status',{method:'GET'},locale);if(!r.ok)return 'unknown';
+      const j=await r.json() as {ai?:unknown};return j.ai==='on'?'on':j.ai==='off'?'off':'unknown';}
+    catch{statusCache=null;return 'unknown';}
+  })();
+  return statusCache;
 }

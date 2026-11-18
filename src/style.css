@@ -846,3 +846,10 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .result-counts dt{font-size:13px;color:var(--muted)}
 .result-counts dd{margin:0;font:400 28px/1.2 var(--en);color:var(--ink)}
 .result-counts .ok dd{color:var(--teal-deep)}.result-counts .near dd{color:#b0641f}
+/* #64 AI off + Demo Mode: informative, never alarming */
+.story-off-note{display:grid;gap:4px;padding:12px 14px;border-radius:var(--r-lg);background:var(--cream);color:var(--ink-2);font-size:15px;line-height:1.7}
+.story-off-note b{color:var(--ink);font-size:16px}
+.story-off-note p{margin:0}
+.story-off{background:var(--surface)}
+.story-demo-banner{display:flex;align-items:flex-start;gap:8px;margin:0;padding:10px 14px;border-radius:var(--r-md);background:#fbf4e4;border:1px solid #f0e2bf;color:#4a3d1c;font-size:14px;line-height:1.7}
+.story-demo-banner svg{flex:none;margin-block-start:4px}

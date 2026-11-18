@@ -72,6 +72,13 @@ let inFlight=0;
 export const MAX_IN_FLIGHT=4;
 export const STORY_TIMEOUT_MS=30000;
 
+/** GET /api/practice/story/status — lets the app say «AI is off» BEFORE the learner presses Start (no request, no consent).
+ *  Reports only on/off: no model, quota or account detail. «on» still needs the quota table at generation time. */
+export function storyStatus(env:StoryEnv):Response{
+  const on=env.AI_STORIES==='on'&&!!env.AI&&!!env.PUSH_DB&&!!env.PUSH_LIMIT&&!!STORY_MODELS[env.AI_STORY_MODEL||DEFAULT_STORY_MODEL];
+  return json({ai:on?'on':'off'});
+}
+
 export type ReadBody=(request:Request)=>Promise<Record<string,unknown>|null>;
 export async function storyEndpoint(request:Request,env:StoryEnv,readBody:ReadBody,provider?:StoryProvider,now=new Date()):Promise<Response>{
   if(request.method!=='POST')return json({error:'method'},405);
