@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 // #64 — 20-case story quality evaluation against REAL Workers AI. Run ONLY with the owner's approval.
 //
-//   node scripts/eval-stories.mjs --dry-run                       # no network: prints the plan + worst-case neurons
-//   CF_ACCOUNT_ID=… CF_API_TOKEN=… node scripts/eval-stories.mjs   # default model: Gemma 4 26B (owner-approved)
-//   EVAL_NEURON_BUDGET=3000 (default; hard max 4000) stops the run BEFORE any call whose worst case would not fit.
+//   node scripts/eval-stories.mjs --dry-run            # no network: the plan + worst-case neurons
+//   node scripts/eval-stories.mjs --confirm            # the real run (Gemma 4 26B by default)
 //
-// Least privilege: an ACCOUNT API token limited to this one account with exactly «Workers AI Read» + «Workers AI Edit»
-// (Cloudflare's REST docs require both to run a model), a 1-day TTL, optionally an IP filter; revoke it after the run.
-// No Workers, D1, DNS, Access or billing permissions. The token is read from the environment, never printed or written.
-// Output: docs/eval/STORY_EVAL_<date>.md with every story for HUMAN review (CEFR fit, naturalness), plus the automatic
-// PASS/FAIL of the same validator the Worker uses, coverage, latency and token usage per case.
-import {writeFileSync,mkdirSync} from 'node:fs';
-import {buildRepairPrompt,buildStoryPrompt,parseModelJson,validateStory,STORY_JSON_SCHEMA,STORY_PROMPT_VERSION} from '../src/story.ts';
+// Secrets: CF_API_TOKEN_FILE = a file OUTSIDE this repository that holds only the token (or CF_API_TOKEN). The token is
+// never printed, logged or written; CF_ACCOUNT_ID is the account id (not a secret).
+// Least privilege: an ACCOUNT API token on this one account with exactly «Workers AI Read» + «Workers AI Edit»
+// (Cloudflare's REST docs require both to run a model), a short TTL; revoke it after the run.
+// Safety rails (in code, not just in the token):
+//   - the only URLs this script can call are  GET  …/accounts/<id>/tokens/verify  (or /user/tokens/verify)
+//     and  POST …/accounts/<id>/ai/run/<allow-listed model>  — no Workers, D1, bindings, Gateway or settings endpoints;
+//   - the token must be ACTIVE and EXPIRE within 48 h, or nothing is sent;
+//   - EVAL_NEURON_BUDGET (default 3000, hard max 4000) stops the run BEFORE any call whose worst case would not fit.
+// Output (local files): docs/eval/STORY_EVAL_<date>.md (report + every story for human review) and .json (raw results).
+import {writeFileSync,mkdirSync,readFileSync} from 'node:fs';
+import {resolve,relative,isAbsolute} from 'node:path';
+import {buildRepairPrompt,buildStoryPrompt,parseModelJson,validateStory,termsIn,LENGTH_BAND,STORY_JSON_SCHEMA,STORY_PROMPT_VERSION} from '../src/story.ts';
 import {STORY_MODELS,DEFAULT_STORY_MODEL,MAX_OUTPUT_TOKENS,modelText,usageNeurons,worstCaseNeurons} from '../worker/story.ts';
 import {CASES} from './story-cases.mjs';
 
@@ -20,47 +25,121 @@ const models=named.length?named:[DEFAULT_STORY_MODEL];
 for(const m of models)if(!STORY_MODELS[m]){console.error('Not an allowed model: '+m);process.exit(2);}
 const budget=Math.min(Number(process.env.EVAL_NEURON_BUDGET)||3000,4000);
 const firstCall=c=>{const {system,user}=buildStoryPrompt(c.request);return [{role:'system',content:system},{role:'user',content:user}];};
-if(dry){
+if(dry||!args.includes('--confirm')){
   for(const m of models){const w=CASES.reduce((n,c)=>n+worstCaseNeurons(firstCall(c),STORY_MODELS[m]),0);
     console.log(`${m}: ${CASES.length} cases · worst case ≈${w} neurons without repairs, ≈${2*w} if every case needed one repair · budget ${budget} · max_tokens ${MAX_OUTPUT_TOKENS}`);}
-  console.log('Dry run: nothing was sent.');process.exit(0);
+  console.log(`Dry run: nothing was sent.${dry?'':' (add --confirm for the real run)'}`);process.exit(0);
 }
-const {CF_ACCOUNT_ID:acct,CF_API_TOKEN:token}=process.env;
-if(!acct||!token){console.error('Set CF_ACCOUNT_ID and CF_API_TOKEN (owner-approved: Workers AI Read + Edit on this account only).');process.exit(2);}
-let spent=0; // real usage when reported, else the call's worst case
 
+/* ───────── secrets: from a file outside the repo, never echoed ───────── */
+const acct=(process.env.CF_ACCOUNT_ID||'').trim();
+let token=(process.env.CF_API_TOKEN||'').trim();
+if(!token&&process.env.CF_API_TOKEN_FILE){
+  const f=resolve(process.env.CF_API_TOKEN_FILE),rel=relative(resolve('.'),f);
+  if(!rel.startsWith('..')&&!isAbsolute(rel)){console.error('Refused: the token file must be OUTSIDE the repository.');process.exit(2);}
+  try{token=readFileSync(f,'utf8').trim();}catch{console.error('Cannot read CF_API_TOKEN_FILE.');process.exit(2);}
+}
+if(!/^[0-9a-f]{32}$/.test(acct)||!token){console.error('Set CF_ACCOUNT_ID and CF_API_TOKEN_FILE (owner-approved: Workers AI Read + Edit on this account only).');process.exit(2);}
+const redact=s=>String(s).split(token).join('[token]');
+
+/* ───────── the only two kinds of request this script can make ───────── */
+const API='https://api.cloudflare.com/client/v4';
+function allowed(method,url){
+  if(method==='GET'&&(url===`${API}/accounts/${acct}/tokens/verify`||url===`${API}/user/tokens/verify`))return true;
+  const m=url.startsWith(`${API}/accounts/${acct}/ai/run/`)?url.slice(`${API}/accounts/${acct}/ai/run/`.length):null;
+  return method==='POST'&&m!==null&&!!STORY_MODELS[m];
+}
+async function call(method,url,body){
+  if(!allowed(method,url))throw Error('Refused URL (not on the allow-list)');
+  // No AI Gateway headers: plain Workers AI only (a Gateway request could create a gateway / use other billing).
+  return fetch(url,{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+}
+
+/* ───────── preflight: the token must be active and short-lived ───────── */
+async function verify(){
+  for(const url of [`${API}/accounts/${acct}/tokens/verify`,`${API}/user/tokens/verify`]){
+    const r=await call('GET',url).catch(()=>null);const j=await r?.json().catch(()=>null);
+    if(j?.success&&j.result)return j.result;
+  }
+  return null;
+}
+const v=await verify();
+if(!v||v.status!=='active'){console.error('Token not verified as active — nothing was sent to the model.');process.exit(3);}
+const exp=v.expires_on?Date.parse(v.expires_on):NaN;
+if(!Number.isFinite(exp)||exp-Date.now()>48*3600e3){console.error('Refused: the token must have an expiry within 48 hours (create it with a short TTL).');process.exit(3);}
+console.log(`Token: active, expires ${new Date(exp).toISOString()} (value not shown).`);
+
+let spent=0; // real usage when reported, else the call's worst case
 async function run(model,messages){
   const worst=worstCaseNeurons(messages,STORY_MODELS[model]);
   if(spent+worst>budget)throw Error(`BUDGET: stopped before a call (spent ≈${spent}, next worst case ${worst}, budget ${budget})`);
   spent+=worst; // reserved until the answer reports real usage
   const input={messages,max_tokens:MAX_OUTPUT_TOKENS,temperature:0.7};
   if(STORY_MODELS[model].jsonMode)input.response_format={type:'json_schema',json_schema:STORY_JSON_SCHEMA};
-  const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${acct}/ai/run/${model}`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(input)});
+  const r=await call('POST',`${API}/accounts/${acct}/ai/run/${model}`,input);
   const j=await r.json().catch(()=>null);
-  if(!r.ok||!j?.success)throw Error(`HTTP ${r.status} ${(j?.errors??[]).map(e=>e.message).join('; ').slice(0,200)}`);
+  if(!r.ok||!j?.success)throw Error(redact(`HTTP ${r.status} ${(j?.errors??[]).map(e=>`${e.code??''} ${e.message??''}`).join('; ').slice(0,240)}`));
   const usage=j.result?.usage??null,real=usageNeurons(usage,STORY_MODELS[model]);
   if(real!==null)spent+=real-worst;
-  return {out:modelText(j.result),usage};
+  return {out:modelText(j.result),usage,neurons:real??worst,estimated:real===null};
 }
 
-const rows=[],detail=[];let stopped='';
+const words=s=>s.split(/\s+/).filter(Boolean).length;
+const results=[];let stopped='';
 for(const model of models)for(const c of CASES){
   if(stopped)break;
-  const {system,user}=buildStoryPrompt(c.request),messages=[{role:'system',content:system},{role:'user',content:user}];
-  const t=Date.now();let v=null,attempts=0,usage=[],error='';
+  const messages=firstCall(c);
+  const t=Date.now(),calls=[];let val=null,error='',lastOut='';
   try{
-    for(;attempts<2;){attempts++;const {out,usage:u}=await run(model,messages);usage.push(u);
-      v=validateStory(parseModelJson(out),c.request);if(v.ok)break;
-      messages.push({role:'assistant',content:typeof out==='string'?out:JSON.stringify(out)},{role:'user',content:buildRepairPrompt(v.issues)});}
-  }catch(e){error=String(e.message||e);if(error.startsWith('BUDGET'))stopped=error;}
-  const ms=Date.now()-t,ok=!!v?.ok;
-  rows.push({model,id:c.id,lang:c.request.contentLanguage,level:c.request.level,genre:c.request.genre,n:c.request.words.length,ok,attempts,ms,
-    coverage:ok?`${v.used.length}/${c.request.words.length}`:'-',issues:ok?'':error||[...new Set(v.issues.map(i=>i.code))].join(','),
-    tokens:usage.filter(Boolean).map(u=>`${u.prompt_tokens??'?'}→${u.completion_tokens??'?'}`).join(' + ')});
-  if(ok)detail.push(`### ${model} · case ${c.id} · ${c.request.contentLanguage} ${c.request.level} ${c.request.genre}\n**${v.story.title}**\n\n${v.story.story}\n\n- used: ${v.used.join(', ')}\n- missing: ${v.missing.join(', ')||'—'}\n${v.story.questions.map(q=>`- Q: ${q.question} → **${q.answer}** («${q.quote}»)`).join('\n')}\n\nHuman review: CEFR fit ☐ natural ☐ coherent ☐ grammar ☐\n`);
-  console.log(`${ok?'PASS':'FAIL'} ${model} #${c.id} ${c.request.contentLanguage} ${c.request.level} ${ms}ms ${rows.at(-1).issues}`);
+    for(let attempt=0;attempt<2;attempt++){
+      const t0=Date.now(),res=await run(model,messages);
+      calls.push({ms:Date.now()-t0,usage:res.usage,neurons:res.neurons,estimated:res.estimated});
+      lastOut=typeof res.out==='string'?res.out:JSON.stringify(res.out);
+      val=validateStory(parseModelJson(res.out),c.request);if(val.ok)break;
+      messages.push({role:'assistant',content:lastOut.slice(0,6000)},{role:'user',content:buildRepairPrompt(val.issues)});
+    }
+  }catch(e){error=redact(e.message||e);if(error.startsWith('BUDGET'))stopped=error;}
+  const ok=!!val?.ok,st=ok?val.story:null;
+  results.push({model,id:c.id,lang:c.request.contentLanguage,level:c.request.level,genre:c.request.genre,
+    requested:c.request.words.map(w=>w.term),used:ok?val.used:[],missing:ok?val.missing:c.request.words.map(w=>w.term),
+    ok,attempts:calls.length,ms:Date.now()-t,calls,neurons:calls.reduce((n,x)=>n+x.neurons,0),
+    issues:ok?[]:error?[error]:[...new Set(val?.issues?.map(i=>i.code)??[])],
+    story:st,storyWords:st?words(st.story):null,band:LENGTH_BAND[c.request.level],
+    questions:st?st.questions.map(q=>({...q,quoteInStory:st.story.includes(q.quote),answerInQuote:q.quote.toLowerCase().includes(q.answer.toLowerCase()),
+      answerTermsFromBatch:termsIn(q.quote,c.request.words.map(w=>w.term),c.request.contentLanguage)})):[],
+    rejected:ok?null:lastOut.slice(0,1500)});
+  const r=results.at(-1);
+  console.log(`${ok?'PASS':'FAIL'} #${c.id} ${c.request.contentLanguage} ${c.request.level} ${c.request.genre} · ${r.attempts} call(s) · ${r.ms} ms · ${r.neurons} neurons · ${ok?`${r.used.length}/${r.requested.length} words`:r.issues.join(',')}`);
 }
-const day=new Date().toISOString().slice(0,10),sum=m=>{const r=rows.filter(x=>x.model===m);return `${m}: ${r.filter(x=>x.ok).length}/${r.length} PASS, repaired ${r.filter(x=>x.ok&&x.attempts>1).length}, median ${r.map(x=>x.ms).sort((a,b)=>a-b)[r.length>>1]} ms`;};
+
+/* ───────── report ───────── */
+const day=new Date().toISOString().slice(0,10),pass=results.filter(r=>r.ok),med=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[s.length>>1]:0;};
+const tok=r=>r.calls.map(x=>x.usage?`${x.usage.prompt_tokens??'?'}→${x.usage.completion_tokens??'?'}`:'n/a').join(' + ');
+const head=`# Story evaluation ${day} · ${models.join(', ')} · prompt ${STORY_PROMPT_VERSION}
+
+- Automatic gate: **${pass.length}/${results.length} PASS** (${pass.filter(r=>r.attempts>1).length} after one repair).
+- Word coverage in passing stories: ${pass.reduce((n,r)=>n+r.used.length,0)}/${pass.reduce((n,r)=>n+r.requested.length,0)}.
+- Latency per case: median ${med(results.map(r=>r.ms))} ms, max ${Math.max(0,...results.map(r=>r.ms))} ms.
+- **Neurons used ≈ ${spent}** (budget ${budget}; ${results.some(r=>r.calls.some(x=>x.estimated))?'some calls had no usage report and were counted at their worst case':'all from the usage the model reported'}).${stopped?`\n- ⚠ ${stopped}`:''}
+- The token was verified active with an expiry; only Workers AI was called. Nothing in Staging, Production, D1 or bindings was touched.
+
+| # | lang | CEFR | type | result | calls | ms | neurons | tokens (in→out) | words used | missing | length (band) | issues |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+${results.map(r=>`| ${r.id} | ${r.lang} | ${r.level} | ${r.genre} | ${r.ok?'PASS':'FAIL'} | ${r.attempts} | ${r.ms} | ${r.neurons} | ${tok(r)} | ${r.used.length}/${r.requested.length} | ${r.missing.join(', ')||'—'} | ${r.storyWords??'-'} (${r.band.join('–')}) | ${r.issues.join(', ')||'—'} |`).join('\n')}
+`;
+const body=results.map(r=>r.ok?`### #${r.id} · ${r.lang} ${r.level} ${r.genre} — ${r.story.title}
+
+${r.story.story}
+
+- Used: ${r.used.join(', ')} · Missing: ${r.missing.join(', ')||'—'}
+${r.questions.map((q,i)=>`- Q${i+1}: ${q.question} → **${q.answer}** — quote «${q.quote}» (${q.quoteInStory?'in story':'NOT in story'}, ${q.answerInQuote?'answer in quote':'answer NOT in quote'})`).join('\n')}
+`:`### #${r.id} · ${r.lang} ${r.level} ${r.genre} — FAIL (${r.issues.join(', ')})
+
+\`\`\`
+${(r.rejected||'(no output)').replace(/```/g,"'''")}
+\`\`\`
+`).join('\n');
 mkdirSync('docs/eval',{recursive:true});
-writeFileSync(`docs/eval/STORY_EVAL_${day}.md`,`# Story evaluation ${day} (${STORY_PROMPT_VERSION})\n\nNeurons used ≈${spent} (budget ${budget})${stopped?' — '+stopped:''}\n\n${models.map(sum).join('\n\n')}\n\n| model | # | lang | level | genre | words | result | tries | ms | coverage | tokens | issues |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n${rows.map(r=>`| ${r.model} | ${r.id} | ${r.lang} | ${r.level} | ${r.genre} | ${r.n} | ${r.ok?'PASS':'FAIL'} | ${r.attempts} | ${r.ms} | ${r.coverage} | ${r.tokens} | ${r.issues} |`).join('\n')}\n\n## Stories for human review\n\n${detail.join('\n')}`);
-console.log('\n'+models.map(sum).join('\n')+`\nNeurons used ≈${spent} of budget ${budget}${stopped?'\n'+stopped:''}`);
+writeFileSync(`docs/eval/STORY_EVAL_${day}.md`,head+'\n## Stories\n\n'+body);
+writeFileSync(`docs/eval/STORY_EVAL_${day}.json`,JSON.stringify({day,models,promptVersion:STORY_PROMPT_VERSION,neurons:spent,budget,stopped,results},null,1));
+console.log(`\n${pass.length}/${results.length} PASS · neurons ≈${spent}/${budget} · docs/eval/STORY_EVAL_${day}.md`);
