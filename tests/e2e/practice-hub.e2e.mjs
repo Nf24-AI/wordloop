@@ -134,6 +134,8 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.reload();await page.locator('.pick-list').waitFor();
       assert.match(await page.locator('.pick-count').innerText(),/119 من 120/,'selection survives a reload');
       const done=page.getByRole('button',{name:'تم',exact:true});
+      // Regression (WebKit): the Done bar must be pinned on screen, not after the last of 120 words.
+      const box=await done.boundingBox();assert.ok(box&&box.y+box.height<=844,'Done is visible without scrolling: '+JSON.stringify(box));
       const hit=await done.evaluate(b=>{const r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,t=document.elementFromPoint(x,y);return {top:t===b||b.contains(t),tag:t?.className??'',y,vh:innerHeight};});
       await done.click();
       try{await page.locator('.story-start').waitFor({timeout:10000});}

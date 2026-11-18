@@ -1,3 +1,4 @@
+import {createPortal} from 'react-dom';
 import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,Sparkles,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
 import {addWord,addWords,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
@@ -971,11 +972,13 @@ function WordPicker({deckId,lib,words,go}:{deckId:string;lib:Library;words:Word[
         <input type="checkbox" checked={sel.has(w.id)} onChange={()=>toggle(w.id)}/>
         <span className="pick-text"><b dir={dirOf(deck.contentLanguage)} lang={deck.contentLanguage}>{w.term}</b><small dir="auto">{meaningText(w)}</small></span></label></li>)}</ul>
       :<p className="practice-note">{X.noMatch}</p>}
-    <div className="pick-bar">
+    {/* Portalled to <body>: `.content` animates with a transform, and WebKit (iPhone Safari) then pins position:fixed
+        to that box instead of the screen — the bar ended up after the last word. */}
+    {createPortal(<div className="pick-bar" dir={T.dir} lang={T.locale}>
       <span className="pick-count" aria-live="polite"><b>{X.count(n,eligible.length)}</b>{n>0&&<small>{X.batches(n,Math.ceil(n/BATCH_SIZE[level]))}</small>}{n===0&&<small>{X.none}</small>}</span>
       {/* A real step back when the hub is the previous screen; otherwise an ordinary navigation (no history replace). */}
       <button type="button" className="btn btn-ink" onClick={()=>{const to=hubDeck(deckId);if(previousRoute()===to&&history.length>1)history.back();else window.location.hash='/'+to;}}>{X.done}</button>
-    </div>
+    </div>,document.body)}
   </div>;
 }
 
