@@ -1,8 +1,9 @@
 import {loadVapidKey,parseSubscription,sendPush} from '@codefusion-cc/web-push';
+import {storyEndpoint,type StoryEnv} from './story.ts';
 import {missingColumn,runReminders,safeDay,safeLocale,safeZone,type D1Database,type Outcome} from './reminders.ts';
 
 type RateLimiter={limit:(args:{key:string;delta?:number})=>Promise<{success:boolean}>};
-type Env={PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
+type Env=StoryEnv&{PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
 type ScheduledController=unknown;
 type ExecutionContext={waitUntil:(promise:Promise<unknown>)=>void};
 type Subscription={endpoint:string;keys:{p256dh:string;auth:string}};
@@ -45,6 +46,7 @@ async function endpoint(request:Request,env:Env){
     return key?reply({publicKey:key.publicKey}):fail('لم تُفعّل الإشعارات بعد',503);
   }
   if(!originOK(request))return fail('طلب غير مسموح',403);
+  if(path==='/api/practice/story')return storyEndpoint(request,env,body); // #64: OFF unless the owner enables it
   if(method==='POST'&&path.startsWith('/api/push/')){
     if(!env.PUSH_LIMIT)return fail('خدمة الإشعارات غير جاهزة بعد',503);
     // An approximate Cloudflare PoP-level limit. No IP addresses are persisted in our D1 database.
