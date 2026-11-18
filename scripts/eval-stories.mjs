@@ -16,7 +16,7 @@
 // Output (local files): docs/eval/STORY_EVAL_<date>.md (report + every story for human review) and .json (raw results).
 import {writeFileSync,mkdirSync,readFileSync} from 'node:fs';
 import {resolve,relative,isAbsolute} from 'node:path';
-import {buildRepairPrompt,buildStoryPrompt,parseModelJson,validateStory,termsIn,LENGTH_BAND,STORY_JSON_SCHEMA,STORY_PROMPT_VERSION} from '../src/story.ts';
+import {storyCast,buildRepairPrompt,buildStoryPrompt,parseModelJson,validateStory,termsIn,LENGTH_BAND,STORY_JSON_SCHEMA,STORY_PROMPT_VERSION} from '../src/story.ts';
 import {STORY_MODELS,DEFAULT_STORY_MODEL,MAX_OUTPUT_TOKENS,modelInput,modelText,usageNeurons,worstCaseNeurons} from '../worker/story.ts';
 import {CASES} from './story-cases.mjs';
 
@@ -24,7 +24,9 @@ const args=process.argv.slice(2),dry=args.includes('--dry-run'),named=args.filte
 const models=named.length?named:[DEFAULT_STORY_MODEL];
 for(const m of models)if(!STORY_MODELS[m]){console.error('Not an allowed model: '+m);process.exit(2);}
 const budget=Math.min(Number(process.env.EVAL_NEURON_BUDGET)||3000,4000);
-const firstCall=c=>{const {system,user}=buildStoryPrompt(c.request);return [{role:'system',content:system},{role:'user',content:user}];};
+// A fixed seed per case: the eval is reproducible while each case still gets its own cast + setting.
+const seedOf=c=>c.id*7919+13;
+const firstCall=c=>{const {system,user}=buildStoryPrompt(c.request,seedOf(c));return [{role:'system',content:system},{role:'user',content:user}];};
 if(dry||!args.includes('--confirm')){
   for(const m of models){const w=CASES.reduce((n,c)=>n+worstCaseNeurons(firstCall(c),STORY_MODELS[m]),0);
     console.log(`${m}: ${CASES.length} cases · worst case ≈${w} neurons without repairs, ≈${2*w} if every case needed one repair · budget ${budget} · max_tokens ${MAX_OUTPUT_TOKENS}`);}
@@ -84,25 +86,29 @@ async function run(model,messages){
 
 const words=s=>s.split(/\s+/).filter(Boolean).length;
 const results=[];let stopped='';
-for(const model of models)for(const c of CASES){
+const PRIORITY=[5,7,10,13,14,15,17,18,20,1,2,12];
+const ORDERED=[...CASES].sort((a,b)=>(PRIORITY.indexOf(a.id)+1||99)-(PRIORITY.indexOf(b.id)+1||99));
+for(const model of models)for(const c of ORDERED){
   if(stopped)break;
   const messages=firstCall(c);
-  const t=Date.now(),calls=[];let val=null,error='',lastOut='';
+  const t=Date.now(),calls=[];let val=null,error='',lastOut='',firstIssues=[];
   try{
     for(let attempt=0;attempt<2;attempt++){
       const t0=Date.now(),res=await run(model,messages);
       calls.push({ms:Date.now()-t0,finish:res.finish,usage:res.usage,neurons:res.neurons,estimated:res.estimated});
       lastOut=typeof res.out==='string'?res.out:JSON.stringify(res.out);
-      val=validateStory(parseModelJson(res.out),c.request);if(val.ok)break;
+      val=validateStory(parseModelJson(res.out),c.request);if(attempt===0&&!val.ok)firstIssues=[...new Set(val.issues.map(i=>i.code))];if(val.ok)break;
       messages.push({role:'assistant',content:lastOut.slice(0,6000)},{role:'user',content:buildRepairPrompt(val.issues)});
     }
   }catch(e){error=redact(e.message||e);if(error.startsWith('BUDGET'))stopped=error;}
   const ok=!!val?.ok,st=ok?val.story:null;
   results.push({model,id:c.id,lang:c.request.contentLanguage,level:c.request.level,genre:c.request.genre,
     requested:c.request.words.map(w=>w.term),used:ok?val.used:[],missing:ok?val.missing:c.request.words.map(w=>w.term),
-    ok,attempts:calls.length,ms:Date.now()-t,calls,neurons:calls.reduce((n,x)=>n+x.neurons,0),
+    ok,firstIssues,attempts:calls.length,ms:Date.now()-t,calls,neurons:calls.reduce((n,x)=>n+x.neurons,0),
     issues:ok?[]:error?[error]:[...new Set(val?.issues?.map(i=>i.code)??[])],
     story:st,storyWords:st?words(st.story):null,band:LENGTH_BAND[c.request.level],
+    inBand:st?words(st.story)>=LENGTH_BAND[c.request.level][0]&&words(st.story)<=LENGTH_BAND[c.request.level][1]:null,
+    ...storyCast(seedOf(c),c.request.contentLanguage),castUsed:st?storyCast(seedOf(c),c.request.contentLanguage).cast.filter(n=>st.story.includes(n)).length:0,
     questions:st?st.questions.map(q=>({...q,quoteInStory:st.story.includes(q.quote),answerInQuote:q.quote.toLowerCase().includes(q.answer.toLowerCase()),
       answerTermsFromBatch:termsIn(q.quote,c.request.words.map(w=>w.term),c.request.contentLanguage)})):[],
     rejected:ok?null:lastOut.slice(0,1500)});
@@ -111,7 +117,8 @@ for(const model of models)for(const c of CASES){
 }
 
 /* ───────── report ───────── */
-const day=new Date().toISOString().slice(0,10),pass=results.filter(r=>r.ok),med=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[s.length>>1]:0;};
+results.sort((a,b)=>a.id-b.id);
+const day=(process.env.EVAL_TAG?process.env.EVAL_TAG+'_':'')+new Date().toISOString().slice(0,10),pass=results.filter(r=>r.ok),med=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[s.length>>1]:0;};
 const tok=r=>r.calls.map(x=>x.usage?`${x.usage.prompt_tokens??'?'}→${x.usage.completion_tokens??'?'}`:'n/a').join(' + ');
 const head=`# Story evaluation ${day} · ${models.join(', ')} · prompt ${STORY_PROMPT_VERSION}
 
@@ -119,11 +126,12 @@ const head=`# Story evaluation ${day} · ${models.join(', ')} · prompt ${STORY_
 - Word coverage in passing stories: ${pass.reduce((n,r)=>n+r.used.length,0)}/${pass.reduce((n,r)=>n+r.requested.length,0)}.
 - Latency per case: median ${med(results.map(r=>r.ms))} ms, max ${Math.max(0,...results.map(r=>r.ms))} ms.
 - **Neurons used ≈ ${spent}** (budget ${budget}; ${results.some(r=>r.calls.some(x=>x.estimated))?'some calls had no usage report and were counted at their worst case':'all from the usage the model reported'}).${stopped?`\n- ⚠ ${stopped}`:''}
+- Length inside the level band: ${pass.filter(r=>r.inBand).length}/${pass.length}. Distinct titles: ${new Set(pass.map(r=>r.story.title.toLowerCase())).size}/${pass.length}. Stories using their assigned cast: ${pass.filter(r=>r.castUsed===2).length}/${pass.length}.
 - The token was verified active with an expiry; only Workers AI was called. Nothing in Staging, Production, D1 or bindings was touched.
 
-| # | lang | CEFR | type | result | calls | ms | neurons | tokens (in→out) | words used | missing | length (band) | issues |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-${results.map(r=>`| ${r.id} | ${r.lang} | ${r.level} | ${r.genre} | ${r.ok?'PASS':'FAIL'} | ${r.attempts} | ${r.ms} | ${r.neurons} | ${tok(r)} | ${r.used.length}/${r.requested.length} | ${r.missing.join(', ')||'—'} | ${r.storyWords??'-'} (${r.band.join('–')}) | ${r.issues.join(', ')||'—'} |`).join('\n')}
+| # | lang | CEFR | type | result | calls | ms | neurons | tokens (in→out) | words used | missing | length (band) | cast · setting | issues |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+${results.map(r=>`| ${r.id} | ${r.lang} | ${r.level} | ${r.genre} | ${r.ok?'PASS':'FAIL'} | ${r.attempts} | ${r.ms} | ${r.neurons} | ${tok(r)} | ${r.used.length}/${r.requested.length} | ${r.missing.join(', ')||'—'} | ${r.storyWords??'-'} (${r.band.join('–')}) | ${r.cast.join(' & ')} · ${r.setting} | ${r.issues.join(', ')||'—'} |`).join('\n')}
 `;
 const body=results.map(r=>r.ok?`### #${r.id} · ${r.lang} ${r.level} ${r.genre} — ${r.story.title}
 

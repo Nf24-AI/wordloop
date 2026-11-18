@@ -30,7 +30,7 @@ test('STORY-REQ-02: the prompt is versioned and carries only languages, level, l
   assert.match(system,new RegExp(STORY_PROMPT_VERSION));
   assert.match(system,/ONE JSON object only/);
   const u=JSON.parse(user);
-  assert.deepEqual(Object.keys(u).sort(),['cefrLevel','contentLanguage','lengthInWords','meaningLanguage','questionCount','style','targetWords','task']);
+  assert.deepEqual(Object.keys(u).sort(),['cefrLevel','characters','contentLanguage','lengthInWords','meaningLanguage','questionCount','style','suggestedSetting','targetWords','task'],'characters + setting are generated per request, never user data');
   assert.deepEqual(u.targetWords,EN_WORDS.map(w=>({word:w.term,meaning:w.meaning})));
   assert.equal(u.contentLanguage,'English');assert.equal(u.questionCount,3);
   assert.match(JSON.parse(buildStoryPrompt({...enReq,genre:'conversation'}).user).task,/conversation/);
@@ -40,10 +40,11 @@ test('STORY-REQ-02: the prompt is versioned and carries only languages, level, l
 test('STORY-OUT-01: grounded English and Spanish fixtures pass; coverage is measured on the text, not the claim',()=>{
   const en=validateStory(EN_STORY,enReq);assert.equal(en.ok,true,JSON.stringify(en.issues));
   assert.deepEqual(en.used,['wake up','breakfast','bus','umbrella','late']);assert.deepEqual(en.missing,[]);
-  const es=validateStory({...ES_STORY,usedWords:['mercado','manzana','barato','abuela']},esReq);
+  // «baratas» is an inflected form of «barato» → counted (eval 2026-11-18). A FALSE claim is still ignored:
+  const es=validateStory({...ES_STORY,usedWords:['mercado','manzana','barato','abuela','cuchara']},{...esReq,words:[...esReq.words,{term:'cuchara',meaning:'ملعقة'}]});
   assert.equal(es.ok,true,JSON.stringify(es.issues));
-  assert.deepEqual(es.missing,['barato'],'«baratas» is not «barato»: the false claim is ignored, the word is reported missing');
-  assert.deepEqual(es.story.usedWords,['mercado','manzana','abuela']);
+  assert.deepEqual(es.missing,['cuchara'],'claimed but not in the text → reported missing');
+  assert.deepEqual(es.story.usedWords,['mercado','manzana','barato','abuela']);
 });
 
 test('STORY-OUT-02: malformed, ungrounded, leaking, wrong-language, unsafe or off-length output is rejected',()=>{
@@ -71,7 +72,43 @@ test('STORY-OUT-02: malformed, ungrounded, leaking, wrong-language, unsafe or of
 test('STORY-OUT-03: Unicode-aware coverage (NFD accents, multi-word terms, no partial-word hits)',()=>{
   assert.deepEqual(termsIn('La niña come una manzana.'.normalize('NFD'),['niña','manzana','come una','man'],'es'),['niña','manzana','come una']);
   assert.deepEqual(termsIn('I wake up at seven.',['wake','wake up','up at'],'en'),['wake','wake up','up at']);
-  assert.deepEqual(termsIn('Busy buses.',['bus'],'en'),[]);
+  assert.deepEqual(termsIn('Busy buses.',['bus'],'en'),['bus'],'plural');
+});
+
+test('STORY-OUT-05: inflected forms count (the 4 eval misses), but never partial words, other words or lost accents',()=>{
+  // The four words the 2026-11-18 eval wrongly reported missing:
+  assert.deepEqual(termsIn('She really looks forward to her weekly meetings.',['look forward to'],'en'),['look forward to']);
+  assert.deepEqual(termsIn('La fruta era muy barata.',['barato'],'es'),['barato']);
+  assert.deepEqual(termsIn('Le dijo que podía prestarle su libro.',['prestar'],'es'),['prestar']);
+  assert.deepEqual(termsIn('Lucas tenía muchas ganas de contarle todo.',['tener ganas de'],'es'),['tener ganas de']);
+  // English forms.
+  assert.deepEqual(termsIn('We were making tea, then stopped. She carries bags and tried again.',['make','stop','carry','try'],'en'),['make','stop','carry','try']);
+  // Spanish forms.
+  assert.deepEqual(termsIn('Compramos manzanas baratas. Ellos compraron pan. Los jardines.',['comprar','barato','manzana'],'es'),['comprar','barato','manzana']);
+  // Never: partial words, accent loss, short words conjugated, two inserted words, or a different language rule.
+  assert.deepEqual(termsIn('The category is new.',['cat'],'en'),[]);
+  assert.deepEqual(termsIn('Esta casa es grande.',['está'],'es'),[]);
+  assert.deepEqual(termsIn('La ma de Ana.',['mar'],'es'),[]);
+  assert.deepEqual(termsIn('Tenía muchas muchas ganas de ir.',['tener ganas de'],'es'),[]);
+  assert.deepEqual(termsIn('Las gatas.',['gato'],'fr'),[],'no rules for an unknown language: exact only');
+});
+
+test('STORY-HL-02: highlighting uses the same matcher as coverage, so the screen and «your words» agree',async()=>{
+  const {highlightParts}=await import('../src/story.ts');
+  const text='Lucía vio una manzana. La fruta era muy barata. Podía prestarle el libro.';
+  const parts=highlightParts(text,['manzana','barato','prestar'],'es-ES');
+  assert.equal(parts.map(p=>p.text).join(''),text);
+  assert.deepEqual(parts.filter(p=>p.term).map(p=>[p.text,p.term]),[['manzana','manzana'],['barata','barato'],['prestarle','prestar']]);
+  assert.deepEqual(termsIn(text,['manzana','barato','prestar'],'es-ES'),['manzana','barato','prestar']);
+});
+
+test('STORY-PROMPT-02: v2 asks for short, self-contained, third-person answers and consistent facts; long answers are repaired',()=>{
+  assert.equal(STORY_PROMPT_VERSION,'story-v2');
+  const {system}=buildStoryPrompt(enReq);
+  for(const rule of [/1 to 6 words/,/not a pronoun or "one"/,/third person/,/consistent/i,/at least the minimum/])assert.match(system,rule);
+  const long={...EN_STORY,questions:EN_STORY.questions.map((q,i)=>i?q:{...q,answer:'We eat bread with cheese and drink hot tea'})};
+  const v=validateStory(long,enReq);
+  assert.equal(v.ok,false);assert.ok(v.issues.some(i=>i.code==='answerTooLong'));
 });
 
 test('STORY-OUT-04: model JSON is extracted from a plain or fenced reply; anything else is null',()=>{
@@ -342,4 +379,63 @@ test('BUDGET-02: Gemma 4 is called with thinking OFF (else hidden reasoning eats
   assert.deepEqual(i.chat_template_kwargs,{enable_thinking:false});assert.equal(i.max_tokens,MAX_OUTPUT_TOKENS);assert.equal(i.response_format,undefined);
   assert.equal(modelInput('@cf/meta/llama-3.3-70b-instruct-fp8-fast',[]).chat_template_kwargs,undefined);
   assert.equal(usageNeurons({prompt_tokens:421,completion_tokens:306,neurons:12.17},STORY_MODELS[DEFAULT_STORY_MODEL]),13);
+});
+
+/* ───────── #64 regression set from the 20-story eval (docs/eval/STORY_EVAL_2026-11-18.json) ───────── */
+test('EVAL-REG-01: the answer problems seen in the eval are caught — and ONLY those (no false positives on the other 54)',async()=>{
+  const {answerProblems,MAX_ANSWER_WORDS}=await import('../src/story.ts');
+  assert.deepEqual(answerProblems('What did Mrs. Miller bring for Leo to use?','a sturdy one','en'),['answerVague']);
+  assert.deepEqual(answerProblems('¿Fue Lucas al médico ayer?','No, no fui','es-ES'),['answerPerson'],'#14 was a conversation');
+  assert.deepEqual(answerProblems('¿Fue Lucas al médico ayer?','No, no fui','es-ES','story'),['answerPerson'],'a yes/no reply in any genre');
+  assert.deepEqual(answerProblems('Who says hello at work?','my friend Sam','en','story'),[],'first-person narration is fine in a story');
+  assert.deepEqual(answerProblems('What did Mrs. Miller bring for Leo to use?','a tall ladder','en'),[]);
+  assert.deepEqual(answerProblems('¿Fue Lucas al médico ayer?','No, no fue','es-ES'),[]);
+  assert.deepEqual(answerProblems('What do you want?','my bag','en'),[],'a second-person question may get a first-person answer');
+  const {readFileSync}=await import('node:fs');
+  const j=JSON.parse(readFileSync(new URL('../docs/eval/STORY_EVAL_2026-11-18.json',import.meta.url),'utf8'));
+  const flagged=[];
+  for(const r of j.results)r.story.questions.forEach((q,i)=>{
+    const p=answerProblems(q.question,q.answer,r.lang,r.genre);if(q.answer.split(/\s+/).length>MAX_ANSWER_WORDS)p.push('answerTooLong');
+    if(p.length)flagged.push(`#${r.id}Q${i+1}:${p.join(',')}`);
+  });
+  assert.deepEqual(flagged,['#5Q3:answerVague','#7Q1:answerTooLong','#14Q2:answerPerson','#17Q3:answerTooLong','#18Q3:answerTooLong','#20Q2:answerTooLong']);
+});
+
+test('EVAL-REG-02: re-scoring the 20 eval stories — 115/115 words (was 111), with the meaning guards on',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const j=JSON.parse(readFileSync(new URL('../docs/eval/STORY_EVAL_2026-11-18.json',import.meta.url),'utf8'));
+  let found=0,total=0;
+  for(const r of j.results){const u=termsIn(r.story.story,r.requested,r.lang);found+=u.length;total+=r.requested.length;}
+  assert.equal(total,115);assert.equal(found,115);
+});
+
+test('MATCH-02: a DIFFERENT word is never counted (como≠comer, para≠parar, puerta≠puerto, hoping≠hop, card≠car, butter≠but)',()=>{
+  assert.deepEqual(termsIn('Como siempre, para la casa.',['comer','parar','casar'],'es'),[]);
+  assert.deepEqual(termsIn('Vamos al puerto. El libro es caro.',['puerta','libra'],'es'),[]);
+  assert.deepEqual(termsIn('She is hoping to win. He was dining. The news. Give me the card. Pass the butter.',['hop','din','new','car','but'],'en'),[]);
+  // …while the real forms of those same words still count.
+  assert.deepEqual(termsIn('Yo como pan y comió más. Paramos aquí. Se casaron.',['comer','parar','casar'],'es'),['comer','parar','casar'],'comió, paramos, casaron');
+  assert.deepEqual(termsIn('We were hopping. Two new cars.',['hop','car'],'en'),['hop','car']);
+  assert.deepEqual(termsIn('Necesito una casa nueva.',['casa'],'es'),['casa'],'the target itself always counts');
+});
+
+test('VARIETY-01: every request gets a cast + setting; 20 eval seeds give 20 different casts and settings; the Worker seeds randomly',async()=>{
+  const {storyCast,CAST}=await import('../src/story.ts');
+  const all=[...Array(20)].map((_,i)=>storyCast((i+1)*7919+13,i<10?'en-US':'es-ES'));
+  assert.equal(new Set(all.map(x=>x.cast.join('+'))).size,20);assert.equal(new Set(all.map(x=>x.setting)).size,20);
+  for(const [i,x] of all.entries()){assert.notEqual(x.cast[0],x.cast[1]);assert.ok(CAST[i<10?'en':'es'].includes(x.cast[0]));}
+  assert.deepEqual(storyCast(42,'en'),storyCast(42,'en'),'deterministic per seed');
+  const u=JSON.parse(buildStoryPrompt(enReq,42).user);assert.deepEqual(u.characters,storyCast(42,'en').cast);assert.ok(u.suggestedSetting);
+  const {system}=buildStoryPrompt(enReq);assert.match(system,/"characters"/);
+  const src=(await import('node:fs')).readFileSync(new URL('../worker/story.ts',import.meta.url),'utf8');
+  assert.match(src,/buildStoryPrompt\(req,crypto\.getRandomValues/);
+});
+
+test('LENGTH-01: the prompt states the level band and its minimum; far-too-short or far-too-long stories are rejected',()=>{
+  for(const level of ['A1','B1','C1']){const u=JSON.parse(buildStoryPrompt({...enReq,level}).user);assert.match(u.lengthInWords,/^\d+-\d+$/);}
+  assert.match(buildStoryPrompt(enReq).system,/at least the minimum/);
+  const short={...EN_STORY,story:EN_STORY.story.split('. ').slice(0,4).join('. ')+'.'};
+  assert.ok(validateStory(short,enReq).issues?.some(i=>i.code==='tooShort'));
+  const long={...EN_STORY,story:Array(6).fill(EN_STORY.story).join(' ')};
+  assert.ok(validateStory(long,enReq).issues?.some(i=>i.code==='tooLong'));
 });

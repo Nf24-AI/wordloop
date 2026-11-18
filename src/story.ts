@@ -13,7 +13,8 @@
  */
 import {normalize} from './practice.ts';
 
-export const STORY_PROMPT_VERSION='story-v1';
+/** v2 (2026-11-18, from the 20-story eval): short self-contained answers, consistent facts. */
+export const STORY_PROMPT_VERSION='story-v2';
 export const CEFR_LEVELS=['A1','A2','B1','B2','C1'] as const;
 export type Cefr=typeof CEFR_LEVELS[number];
 export const STORY_GENRES=['story','conversation'] as const;
@@ -80,28 +81,51 @@ export const STORY_SYSTEM_PROMPT=`You write original, natural texts for language
 Rules:
 - Write ONLY in the requested content language and at the requested CEFR level.
 - Use a realistic everyday situation with a clear beginning, middle and end. Keep it coherent and interesting.
+- Keep every fact consistent from start to end: places, who did what, and cause and effect (e.g. a noise from upstairs comes from someone upstairs).
+- Use the given "characters" as the main people (you may add a minor one). Use "suggestedSetting" unless the target words clearly need another place.
+- Write at least the minimum number of words in lengthInWords.
 - Include as many of the target words as fit naturally, each written exactly as given (you may adapt a verb's form only if it still contains the given word). Never force a word into an awkward sentence; it is fine to leave a word out.
 - Avoid repeating the same sentence pattern, and do not repeat a target word unnecessarily.
 - No real people, brands, news, medical, legal or financial advice, violence or adult content. No links, markup or emojis.
 - Write exactly 3 comprehension questions in the content language. Each question must be answerable from the text alone.
 - For each question, "quote" is ONE sentence copied character-for-character from the text, and "answer" is a short phrase copied character-for-character from that quote. The question must not contain its answer.
+- Each answer is 1 to 6 words: the specific fact asked for (a thing, person, place, time, reason or action), never the whole sentence.
+- The answer must make sense on its own as a reply to its question: name the thing itself, not a pronoun or "one" (write "a ladder", not "a sturdy one").
+- Ask about the characters in the third person, so the answer reads correctly (not a first-person line like "No, I didn't"). The question's verb must match what the answer says.
 - "usedWords" lists the target words you actually used, exactly as given.
 - "translation" is a faithful translation of the text into the meaning language.
 - Respond with ONE JSON object only, no other text:
 {"title":string,"story":string,"translation":string,"usedWords":string[],"questions":[{"question":string,"answer":string,"quote":string}]}`;
 
-export function buildStoryPrompt(r:StoryRequest):{system:string;user:string}{
+/* Eval 2026-11-18: the model reused the same few names (Lucas ×5, Leo ×2, Sarah ×3, Tom ×3) and two identical titles.
+ * Each request now gets a cast and a setting picked from a seed (random in the Worker, fixed per case in the eval). */
+export const CAST:Record<'en'|'es',string[]>={
+  en:['Maya','Omar','Priya','Daniel','Hana','Victor','Amira','Jonah','Lena','Samir','Grace','Felix','Nadia','Owen','Rosa','Ibrahim','Chloe','Marcus','Yuki','Theo','Zara','Elliot','Layla','Hugo'],
+  es:['Lucía','Mateo','Carmen','Andrés','Valeria','Javier','Inés','Diego','Paula','Rafael','Elena','Tomás','Sofía','Martín','Alba','Hugo','Nerea','Pablo','Irene','Samuel','Julia','Óscar','Marta','Adrián'],
+};
+export const SETTINGS=['a train station','a small bakery','a public library','a football pitch','a hospital waiting room','a mountain village',
+  'a busy market','a school science lab','a ferry crossing','a bicycle repair shop','a city park in autumn','a museum','a beach at sunrise',
+  'a hotel reception','a music lesson','a cooking class','a rainy bus stop','a farm','an airport','a neighbourhood festival','a camping trip',
+  'a bookshop','a dentist\'s office','a new apartment'];
+export function storyCast(seed:number,lang:string):{cast:[string,string];setting:string}{
+  const names=CAST[baseLang(lang)==='es'?'es':'en'],n=names.length,x=Math.abs(Math.trunc(seed))||1;
+  const a=x%n,b=(a+1+Math.floor(x/n)%(n-1))%n;
+  return {cast:[names[a],names[b]],setting:SETTINGS[Math.floor(x/7)%SETTINGS.length]};
+}
+export function buildStoryPrompt(r:StoryRequest,seed=1):{system:string;user:string}{
+  const {cast,setting}=storyCast(seed,r.contentLanguage);
   const [min,max]=LENGTH_BAND[r.level],kind=r.genre==='conversation'?'a short conversation between two people (each line starts with the speaker\'s first name and a colon)':'a short story';
   const user=JSON.stringify({
     task:`Write ${kind}.`,contentLanguage:languageName(r.contentLanguage),meaningLanguage:languageName(r.meaningLanguage),
     cefrLevel:r.level,style:LEVEL_GUIDE[r.level],lengthInWords:`${min}-${max}`,questionCount:STORY_QUESTIONS,
     targetWords:r.words.map(w=>({word:w.term,meaning:w.meaning})),
+    characters:cast,suggestedSetting:setting,
   });
   return {system:STORY_SYSTEM_PROMPT,user};
 }
 /** The bounded repair turn: tells the model exactly which checks failed. Used at most once per request. */
 export function buildRepairPrompt(issues:readonly StoryIssue[]):string{
-  return `Your JSON failed these checks: ${[...new Set(issues.map(i=>i.code))].join(', ')}. Fix them and reply with the corrected JSON object only. Remember: every quote must be copied exactly from the story, every answer copied exactly from its quote.`;
+  return `Your JSON failed these checks: ${[...new Set(issues.map(i=>i.code))].join(', ')}. Fix them and reply with the corrected JSON object only. Remember: every quote must be copied exactly from the story, every answer copied exactly from its quote, and every answer is 1 to 6 words.`;
 }
 /** JSON schema for providers with structured output (Workers AI JSON mode). */
 export const STORY_JSON_SCHEMA={type:'object',additionalProperties:false,required:['title','story','translation','usedWords','questions'],properties:{
@@ -120,7 +144,29 @@ export function parseModelJson(text:unknown):unknown{
 }
 
 /* ───────── output validation ───────── */
-export type StoryIssueCode='shape'|'title'|'tooShort'|'tooLong'|'language'|'unsafe'|'count'|'question'|'quoteNotInStory'|'answerNotInQuote'|'answerInQuestion'|'duplicateQuestion'|'lowCoverage';
+export type StoryIssueCode='shape'|'title'|'tooShort'|'tooLong'|'language'|'unsafe'|'count'|'question'|'quoteNotInStory'|'answerNotInQuote'|'answerInQuestion'|'answerTooLong'|'answerPerson'|'answerVague'|'duplicateQuestion'|'lowCoverage';
+/** An answer is a fact, not a sentence (the prompt asks for 1–6 words; 8 leaves room for names and articles). */
+export const MAX_ANSWER_WORDS=8;
+/* Eval 2026-11-18: «No, no fui» answered a third-person question; «a sturdy one» did not name the thing. */
+const FIRST_PERSON:Record<string,{answer:RegExp;question:RegExp}>={
+  en:{answer:/(?<![\p{L}])(i|me|my|mine|we|us|our)(?![\p{L}])/u,question:/(?<![\p{L}])(i|me|my|we|us|our|you|your)(?![\p{L}])/u},
+  es:{answer:/(?<![\p{L}])(yo|me|mi|mis|nosotros|nosotras|nos|fui|soy|estoy|tengo|estaba|hice|voy|quiero|puedo)(?![\p{L}])/u,
+      question:/(?<![\p{L}])(tú|tu|te|usted|yo|mi|me|vosotros|nosotros)(?![\p{L}])/u},
+};
+const VAGUE:Record<string,RegExp>={
+  en:/(?<![\p{L}])(one|ones|it|that|this|them|those|these|something|thing|things)$/u,
+  es:/^(?:(?:un|una|el|la|lo|eso|esto|ello|algo|uno|ese|esa|este|esta)\s*)+$|(?<![\p{L}])(uno|una|eso|esto|algo)$/u,
+};
+/** Answer problems a reader would notice: a first-person reply to a third-person question; a pronoun instead of the thing.
+ *  The person check applies to conversations and to yes/no replies only — a story narrated in the first person
+ *  («I wake up early…») legitimately has answers like «my friend Sam». */
+export function answerProblems(question:string,answer:string,lang:string,genre:StoryGenre='conversation'):('answerPerson'|'answerVague')[]{
+  const b=baseLang(lang),q=prep(question),a=prep(answer).replace(/[.!?¡¿,;:]+/g,' ').replace(/\s+/g,' ').trim(),out:('answerPerson'|'answerVague')[]=[];
+  const reply=/^(yes|no|sí|si)(?![\p{L}])/u.test(a);
+  const fp=FIRST_PERSON[b];if(fp&&(genre==='conversation'||reply)&&fp.answer.test(a)&&!fp.question.test(q))out.push('answerPerson');
+  const v=VAGUE[b];if(v&&a.split(' ').length<=3&&v.test(a))out.push('answerVague');
+  return out;
+}
 export type StoryIssue={code:StoryIssueCode;index?:number};
 const flat=(v:string)=>v.normalize('NFC').replace(/[’‘]/g,"'").replace(/[“”]/g,'"').replace(/\s+/g,' ').trim().toLocaleLowerCase();
 const wordCount=(s:string)=>s.split(/\s+/).filter(w=>/[\p{L}\p{N}]/u.test(w)).length;
@@ -137,10 +183,79 @@ function languageLooksRight(text:string,lang:string){
   return mine/tokens.length>=0.12&&mine>other;
 }
 const UNSAFE=/(https?:\/\/|www\.|<\/?[a-z][^>]*>|```|@[a-z0-9-]+\.[a-z]{2,})/i;
-/** Which of the requested terms really occur in `text` (Unicode-aware, whole words, case/accents as written). */
+/* ───────── word forms: a target word still counts when the text inflects it ─────────
+ * Eval 2026-11-18: 4 of 115 words were reported «missing» although present — looks forward to, barata (barato),
+ * prestarle (prestar), tenía muchas ganas de (tener ganas de). Rules are deliberately small and conservative:
+ *  EN: -s/-es/-'s/-ed/-d/-ing, e-drop (make→making), y→ies/ied, doubled final consonant (stop→stopped).
+ *  ES: o/a/os/as and plural -s/-es for nouns and adjectives; regular conjugations and enclitic pronouns for -ar/-er/-ir
+ *      verbs (stem ≥ 3 letters, so «mar» or «ir» are never conjugated).
+ *  Multi-word terms: the FIRST word may inflect and may be followed by one extra word (tenía MUCHAS ganas de); the
+ *  rest must follow as written. Accents stay meaningful (está ≠ esta). Irregular forms (woke, tengo) are not guessed. */
+const esc=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const prep=(s:string)=>s.normalize('NFC').replace(/[’‘]/g,"'").toLocaleLowerCase();
+const CLITIC='(?:me|te|se|le|lo|la|nos|os|les|los|las)';
+const ES_AR='o|as|a|amos|áis|an|e|es|en|emos|é|aste|ó|asteis|aron|aba|abas|ábamos|abais|aban|ado|ada|ados|adas|ando|aré|arás|ará|aremos|aréis|arán|aría|arías|aríamos|arían';
+const ES_ER='o|es|e|emos|éis|en|a|as|an|amos|í|iste|ió|imos|isteis|ieron|ía|ías|íamos|íais|ían|ido|ida|idos|idas|iendo|yendo';
+/** Endings that turn a short stem into another common word (com+o = como, par+a = para, cas+a = casa). */
+const RISKY=new Set(['o','a','e','as','es','an','en']);
+const SAFE_FOR_SHORT=(endings:string)=>endings.split('|').filter(x=>!RISKY.has(x)).join('|');
+/* Different-meaning guards (a form that is ALSO a common, unrelated word is never accepted unless it IS the target):
+ *  - frequent function words / homographs a rule could generate: como (comer), para (parar), casa (casar), news (new)…;
+ *  - short verb stems (< 4 letters) do not get the endings o/a/e/as/es/an/en (com+o, par+a, cas+a); tenía, comió still count;
+ *  - Spanish o/a noun pairs with different meanings never swap gender (puerto ≠ puerta, libro ≠ libra);
+ *  - English 3-letter CVC words only take doubled forms (hop → hopping, never «hoping»); -d only after -e (car ≠ card);
+ *    no -er (but ≠ butter); English function words are not inflected at all. */
+const NOT_A_FORM:Record<string,string[]>={
+  en:['news','card','cards','being','things','wanted'],
+  es:['como','para','casa','casas','sobre','entre','cara','nada','todo','toda','todos','todas','solo','sola','este','esta','ese','esa','eso','esto','otro','otra','cada','pero','ante','bajo','baja','tras','hasta','desde','contra','mismo','misma','poco','poca','mucho','mucha','cosa','cama','vale','era','son','sea','fue','vino','pasa','cura'],
+};
+const EN_FUNCTION=new Set(['but','and','not','for','the','can','will','was','has','had','are','you','she','her','his','its','our','who','how','why','yes','all','any','off','out','too','yet','nor','one','two','ten','may','own']);
+const ES_PAIRS=new Set(['puerto','puerta','libro','libra','caso','casa','cesto','cesta','bolso','bolsa','manzano','manzana','ramo','rama','cuento','cuenta','modo','moda','fruto','fruta','suelo','suela','punto','punta','plazo','plaza','banco','banca','gorro','gorra','pato','pata','foco','foca','tallo','talla','cuadro','cuadra','palo','pala','marco','marca','bando','banda','río','ría','seno','sena','lomo','loma','cerco','cerca','giro','gira','hoyo','hoya','leño','leña','barco','barca','huerto','huerta','pozo','poza','sueldo','suelda']);
+function formsOf(word:string,lang:string):string{
+  const w=prep(word),e=esc(w);
+  if(w.length<3||!/^[\p{L}]+$/u.test(w))return e;
+  const block=(NOT_A_FORM[lang]??[]).filter(x=>x!==w);
+  const guard=(pattern:string)=>block.length?`(?:${e}|(?!(?:${block.map(esc).join('|')})(?![\\p{L}\\p{M}]))${pattern})`:pattern;
+  if(lang==='en'){
+    if(EN_FUNCTION.has(w))return e;
+    const alts=[`${e}(?:s|'s)?`];
+    if(/(s|x|z|ch|sh|o)$/.test(w))alts.push(`${e}es`);
+    if(w.endsWith('e'))alts.push(`${e}d`,`${esc(w.slice(0,-1))}ing`);
+    else if(/[^aeiou]y$/.test(w))alts.push(`${esc(w.slice(0,-1))}(?:ies|ied)`,`${e}ing`);
+    else{
+      const cvc=/[^aeiou][aeiou][bdgklmnprt]$/.test(w);
+      if(cvc)alts.push(`${e}${w.at(-1)}(?:ed|ing)`);
+      if(!(cvc&&w.length===3))alts.push(`${e}(?:ed|ing)`);
+    }
+    return guard(`(?:${alts.join('|')})`);
+  }
+  if(lang==='es'){
+    const verb=/(ar|er|ir)$/.exec(w),stem=verb?w.slice(0,-2):'';
+    if(verb&&stem.length>=3){
+      const ends=verb[1]==='ar'?ES_AR:ES_ER,allowed=stem.length>=4?ends:SAFE_FOR_SHORT(ends);
+      return guard(`(?:${e}${CLITIC}{0,2}|${esc(stem)}(?:${allowed}))`);
+    }
+    if(/[oa]$/.test(w))return guard(ES_PAIRS.has(w)?`${e}s?`:`${esc(w.slice(0,-1))}(?:o|a|os|as)`);
+    if(/[aeiouáéíóú]$/.test(w))return guard(`${e}s?`);
+    return guard(`${e}(?:es)?`);
+  }
+  return e;
+}
+/** The pattern for one target term in `lang` (base language, e.g. 'en'); `inflect=false` = exactly as written. */
+export function termPattern(term:string,lang:string,inflect=true):string{
+  const words=prep(term).trim().split(/\s+/).filter(Boolean),b=baseLang(lang);
+  if(!words.length)return '(?!)';
+  if(!inflect)return words.map(esc).join('\\s+');
+  const [first,...rest]=words;
+  // Only the first word may inflect and be followed by ONE extra word (tenía muchas ganas de); the rest is as written.
+  return formsOf(first,b)+(rest.length?'(?:\\s+[\\p{L}\\p{M}]+)?\\s+'+rest.map(esc).join('\\s+'):'');
+}
+const EDGE_L='(?<![\\p{L}\\p{N}\\p{M}])',EDGE_R='(?![\\p{L}\\p{N}\\p{M}])';
+const termRe=(term:string,lang:string,flags:string,inflect=true)=>new RegExp(`${EDGE_L}${termPattern(term,lang,inflect)}${EDGE_R}`,flags);
+/** Which of the requested terms really occur in `text`: whole words, Unicode-aware, case-insensitive, inflected forms allowed. */
 export function termsIn(text:string,terms:readonly string[],lang:string):string[]{
-  const body=` ${normalize(text,lang)} `;
-  return terms.filter(t=>{const n=normalize(t,lang);return !!n&&body.includes(` ${n} `);});
+  const body=prep(text).replace(/\s+/g,' ');
+  return terms.filter(t=>!!prep(t).trim()&&termRe(t,lang,'u').test(body));
 }
 /** At least half of the batch (and ≥1) must really be in the text; the rest is carried to a later batch. */
 export const minCoverage=(n:number)=>Math.max(1,Math.ceil(n/2));
@@ -166,6 +281,8 @@ export function validateStory(raw:unknown,req:StoryRequest):{ok:true;story:Story
     if(!flat(story).includes(flat(quote)))issues.push({code:'quoteNotInStory',index});
     else if(!` ${normalize(quote,lang)} `.includes(` ${normalize(answer,lang)} `))issues.push({code:'answerNotInQuote',index});
     if(` ${normalize(question,lang)} `.includes(` ${normalize(answer,lang)} `))issues.push({code:'answerInQuestion',index});
+    if(wordCount(answer)>MAX_ANSWER_WORDS)issues.push({code:'answerTooLong',index});
+    for(const code of answerProblems(question,answer,lang,req.genre))issues.push({code,index});
     const k=normalize(question,lang);if(seen.has(k))issues.push({code:'duplicateQuestion',index});seen.add(k);
     questions.push({question,answer,quote});
   });
@@ -197,19 +314,20 @@ export const planFinished=(s:PlanState)=>s.queue.length===0;
 /** Batches still to go (an estimate: retried words may add one). */
 export const batchesLeft=(s:PlanState)=>Math.ceil(s.queue.length/BATCH_SIZE[s.level]);
 
-/** Splits `text` into plain runs and runs that are one of `terms` (whole words, case-insensitive, NFC), for highlighting.
- *  Longer terms win («wake up» before «up»). */
-export function highlightParts(text:string,terms:readonly string[]):{text:string;term?:string}[]{
-  const t=text.normalize('NFC'),list=[...new Set(terms.map(x=>x.normalize('NFC').trim()).filter(Boolean))].sort((a,b)=>b.length-a.length);
+/** Splits `text` into plain runs and runs that are one of `terms`, for highlighting. Uses the SAME matcher as coverage
+ *  (inflected forms count when `lang` is given), so «Your words in the story» and the highlights always agree.
+ *  Longer terms win («wake up» before «up»); every character of `text` is kept. */
+export function highlightParts(text:string,terms:readonly string[],lang=''):{text:string;term?:string}[]{
+  const t=text.normalize('NFC'),low=prep(t),list=[...new Set(terms.map(x=>x.normalize('NFC').trim()).filter(Boolean))].sort((a,b)=>b.length-a.length);
   if(!list.length)return [{text:t}];
-  const esc=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s+');
-  const re=new RegExp(`(?<![\\p{L}\\p{N}\\p{M}])(${list.map(esc).join('|')})(?![\\p{L}\\p{N}\\p{M}])`,'giu');
-  const out:{text:string;term?:string}[]=[];let at=0;
-  for(const m of t.matchAll(re)){
-    if(m.index!>at)out.push({text:t.slice(at,m.index)});
-    const hit=m[0].toLocaleLowerCase();out.push({text:m[0],term:list.find(x=>x.toLocaleLowerCase().replace(/\s+/g,' ')===hit.replace(/\s+/g,' '))??m[0]});
-    at=m.index!+m[0].length;
+  const taken:{a:number;b:number;term:string}[]=[];
+  for(const term of list)for(const m of low.matchAll(termRe(term,lang,'gu',!!lang))){
+    const a=m.index!,b=a+m[0].length;
+    if(b>a&&!taken.some(x=>a<x.b&&b>x.a))taken.push({a,b,term});
   }
+  taken.sort((x,y)=>x.a-y.a);
+  const out:{text:string;term?:string}[]=[];let at=0;
+  for(const x of taken){if(x.a>at)out.push({text:t.slice(at,x.a)});out.push({text:t.slice(x.a,x.b),term:x.term});at=x.b;}
   if(at<t.length)out.push({text:t.slice(at)});
   return out;
 }

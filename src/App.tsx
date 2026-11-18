@@ -10,7 +10,7 @@ import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type L
 import {readContinue,rememberContinue,resolveContinue} from './continue';
 import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX_LINES,type BulkRow} from './bulk';
 import {batchToGenerate,buildStoryRequest,defaultSelection,eligibleWords,giveConsent,hasConsent,keepEligible,newPlan,readPlan,readSelection,readSettings,recordStory,requestStory,selectState,storyLanguageOk,storyStatus,type StoryStatus,writePlan,writeSelection,writeSettings,type Plan,type PracticeSettings,type StoryFailure} from './practicePlan';
-import {batchesLeft,highlightParts,planFinished,BATCH_SIZE,CEFR_LEVELS,STORY_GENRES,type StoryRequest} from './story';
+import {batchesLeft,highlightParts,planFinished,termsIn,BATCH_SIZE,CEFR_LEVELS,STORY_GENRES,type StoryRequest} from './story';
 import {buildDemoStory,isDemoTitle} from './demoStory';
 import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
 
@@ -1071,10 +1071,16 @@ function StoryView({deckId,id,lib,words,passages,go}:{deckId:string;id:string;li
   const S=T.story,V=S.view,P=T.practice,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
   const [tr,setTr]=useState(false),[open,setOpen]=useState<Word|null>(null);
   const plan=readPlan(),entry=plan?.deckId===deckId?plan.stories.find(s=>s.passageId===id):undefined;
-  const inText=useMemo(()=>p?cardsInPassage(p,words):[],[p,words]);
+  // Exact matches (the practice engine's rule) plus inflected forms (barata ← barato), the same matcher as story coverage.
+  const inText=useMemo(()=>{
+    if(!p)return [];
+    const exact=cardsInPassage(p,words),rest=words.filter(w=>w.deckId===p.deckId&&!w.archived&&w.contentType!=='question_answer'&&!exact.includes(w));
+    const hit=new Set(termsIn(p.body,rest.map(w=>w.term),p.contentLanguage));
+    return [...exact,...rest.filter(w=>hit.has(w.term))];
+  },[p,words]);
   if(!p||!deck)return <NotFound go={go}/>;
   const byTerm=new Map(inText.map(w=>[w.term.normalize('NFC').trim().toLocaleLowerCase(),w]));
-  const parts=highlightParts(p.body,inText.map(w=>w.term));
+  const parts=highlightParts(p.body,inText.map(w=>w.term),p.contentLanguage);
   const nameOf=(wid:string)=>words.find(w=>w.id===wid)?.term;
   const missing=entry?entry.batch.filter(x=>!entry.used.includes(x)).map(nameOf).filter(Boolean):[];
   const lost=plan&&entry?plan.state.missedTwice.filter(x=>entry.batch.includes(x)).map(nameOf).filter(Boolean):[];

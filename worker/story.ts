@@ -154,7 +154,8 @@ export async function generate(req:StoryRequest,provider:StoryProvider,clientSig
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort('timeout'),STORY_TIMEOUT_MS);
   const onClient=()=>ctl.abort('cancelled');clientSignal?.addEventListener('abort',onClient,{once:true});
   try{
-    const {system,user}=buildStoryPrompt(req);
+    // A fresh cast + setting per request, so a learner's stories don't all star the same people (eval 2026-11-18).
+    const {system,user}=buildStoryPrompt(req,crypto.getRandomValues(new Uint32Array(1))[0]);
     const messages:Msg[]=[{role:'system',content:system},{role:'user',content:user}];
     let issues:StoryIssue[]=[];
     for(let attempt=0;attempt<2;attempt++){ // the first answer + at most ONE repair
