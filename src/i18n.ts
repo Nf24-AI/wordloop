@@ -378,6 +378,7 @@ const ar={
   /* settings */
   settings:{
     title:'الإعدادات',lead:'اللغة، النسخ الاحتياطية، التذكيرات، والخصوصية.',
+    accessTitle:'دخول نسخة الاختبار',accessNote:'أنت داخل برمزك الخاص. تسجيل الخروج ينهي الجلسة على هذا الجهاز، وكلماتك تبقى محفوظة عليه.',accessOut:'تسجيل الخروج',
     privacyTitle:'الخصوصية والبيانات',privacyBody:'التطبيق ما يطلب حساب، وما فيه أدوات تتبّع ولا إعلانات. هذا بالضبط وين تروح بياناتك:',
     privacyItems:[
       ['على جهازك بس','بطاقاتك ومعانيها وأمثلتها وملاحظاتها، وسجل مراجعاتك ومواعيدها، محفوظة في هذا المتصفح على هذا الجهاز. ما نرفعها لأي خادم.'],
@@ -781,6 +782,7 @@ const en:Dict={
   },
   settings:{
     title:'Settings',lead:'Language, backups, reminders and privacy.',
+    accessTitle:'Test version access',accessNote:'You’re signed in with your personal PIN. Signing out ends the session on this device; your words stay saved on it.',accessOut:'Sign out',
     privacyTitle:'Privacy & data',privacyBody:'The app needs no account and has no trackers or ads. Here is exactly where your data goes:',
     privacyItems:[
       ['Only on your device','Your cards, their meanings, examples and notes, and your review history and schedule are stored in this browser on this device. We never upload them to a server.'],

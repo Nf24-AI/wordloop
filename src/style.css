@@ -853,3 +853,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .story-off{background:var(--surface)}
 .story-demo-banner{display:flex;align-items:flex-start;gap:8px;margin:0;padding:10px 14px;border-radius:var(--r-md);background:#fbf4e4;border:1px solid #f0e2bf;color:#4a3d1c;font-size:14px;line-height:1.7}
 .story-demo-banner svg{flex:none;margin-block-start:4px}
+/* #70: another tester's words are in this browser */
+.access-blocked{max-inline-size:440px;margin:0 auto;min-block-size:100dvh;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:24px 16px}
+.access-blocked h1{font-size:clamp(24px,1.2rem + 1.5vw,30px);line-height:1.3;margin:0}
+.access-blocked p{margin:0 0 8px;color:var(--ink-2);line-height:1.8}

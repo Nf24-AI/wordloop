@@ -1,9 +1,10 @@
 import {loadVapidKey,parseSubscription,sendPush} from '@codefusion-cc/web-push';
 import {storyEndpoint,storyStatus,type StoryEnv} from './story.ts';
+import {pinGate,type AuthEnv} from './auth.ts';
 import {missingColumn,runReminders,safeDay,safeLocale,safeZone,type D1Database,type Outcome} from './reminders.ts';
 
 type RateLimiter={limit:(args:{key:string;delta?:number})=>Promise<{success:boolean}>};
-type Env=StoryEnv&{PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
+type Env=StoryEnv&AuthEnv&{PUSH_DB?:D1Database;PUSH_LIMIT?:RateLimiter;VAPID_PRIVATE_KEY?:string;VAPID_SUBJECT?:string};
 type ScheduledController=unknown;
 type ExecutionContext={waitUntil:(promise:Promise<unknown>)=>void};
 type Subscription={endpoint:string;keys:{p256dh:string;auth:string}};
@@ -110,7 +111,15 @@ async function reminders(env:Env){
   });
   if(stats.sent||stats.failed||stats.gone)console.log('Reminders',stats);
 }
+/** The app itself: /api/* is answered here, everything else is a static asset (index.html for app routes). */
+async function route(request:Request,env:Env):Promise<Response>{
+  if(!new URL(request.url).pathname.startsWith('/api/'))return env.ASSETS?env.ASSETS.fetch(request):fail('هذا المسار غير متاح',404);
+  try{return await endpoint(request,env);}catch(e){console.error('WordLoop Worker',e);return fail('حصل خطأ في الإشعارات',500);}
+}
 export default {
-  async fetch(request:Request,env:Env){try{return await endpoint(request,env);}catch(e){console.error('WordLoop Worker',e);return fail('حصل خطأ في الإشعارات',500);}},
+  async fetch(request:Request,env:Env){
+    // #70: with AUTH_MODE="pin" (staging only, owner-approved) every page, asset and API call passes the PIN gate first.
+    return env.AUTH_MODE==='pin'?pinGate(request,env,r=>route(r,env)):route(request,env);
+  },
   async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){ctx.waitUntil(reminders(env));}
 };

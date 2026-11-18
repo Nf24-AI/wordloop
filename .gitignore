@@ -9,3 +9,6 @@ dist/
 *.token
 *token*.txt
 .cf-eval*
+
+# #70 Staging PIN pepper (must stay outside the repo; this is a safety net)
+*pin-pepper*
