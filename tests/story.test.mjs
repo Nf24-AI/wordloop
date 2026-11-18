@@ -335,3 +335,11 @@ test('BUDGET-01: every call reserves its worst case first; over budget → refus
   assert.equal(modelText({choices:[{message:{content:'{"a":1}',reasoning_content:'…'}}]}),'{"a":1}');
   assert.equal(modelText({response:'x'}),'x');
 });
+
+test('BUDGET-02: Gemma 4 is called with thinking OFF (else hidden reasoning eats max_tokens → empty answer); reported neurons win',async()=>{
+  const {modelInput,usageNeurons,STORY_MODELS,DEFAULT_STORY_MODEL,MAX_OUTPUT_TOKENS}=await import('../worker/story.ts');
+  const i=modelInput(DEFAULT_STORY_MODEL,[{role:'user',content:'x'}]);
+  assert.deepEqual(i.chat_template_kwargs,{enable_thinking:false});assert.equal(i.max_tokens,MAX_OUTPUT_TOKENS);assert.equal(i.response_format,undefined);
+  assert.equal(modelInput('@cf/meta/llama-3.3-70b-instruct-fp8-fast',[]).chat_template_kwargs,undefined);
+  assert.equal(usageNeurons({prompt_tokens:421,completion_tokens:306,neurons:12.17},STORY_MODELS[DEFAULT_STORY_MODEL]),13);
+});

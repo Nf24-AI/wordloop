@@ -1,0 +1,2300 @@
+{
+ "day": "2026-11-18",
+ "models": [
+  "@cf/google/gemma-4-26b-a4b-it"
+ ],
+ "promptVersion": "story-v1",
+ "neurons": 470,
+ "budget": 2060,
+ "stopped": "",
+ "results": [
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 1,
+   "lang": "en-US",
+   "level": "A1",
+   "genre": "story",
+   "requested": [
+    "cat",
+    "milk",
+    "happy"
+   ],
+   "used": [
+    "cat",
+    "milk",
+    "happy"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 6513,
+   "calls": [
+    {
+     "ms": 6501,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 421,
+      "completion_tokens": 322,
+      "total_tokens": 743,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 12.609090805053711
+     },
+     "neurons": 13,
+     "estimated": false
+    }
+   ],
+   "neurons": 13,
+   "issues": [],
+   "story": {
+    "title": "The Small Cat",
+    "story": "Tom is at home. He has a small cat. The cat is white and very cute. The cat is hungry now. Tom gives the cat some milk in a blue bowl. The cat drinks the milk. Now, the cat is happy. It sleeps on the soft sofa. Tom is happy too.",
+    "translation": "توم في المنزل. لديه قطة صغيرة. القطة بيضاء وجميلة جداً. القطة جائعة الآن. توم يعطي القطة بعض الحليب في وعاء أزرق. القطة تشرب الحليب. الآن، القطة سعيدة. هي تنام على الأريكة الناعمة. توم سعيد أيضاً.",
+    "usedWords": [
+     "cat",
+     "milk",
+     "happy"
+    ],
+    "questions": [
+     {
+      "question": "What color is the cat?",
+      "answer": "white",
+      "quote": "The cat is white and very cute."
+     },
+     {
+      "question": "What does Tom give the cat?",
+      "answer": "some milk",
+      "quote": "Tom gives the cat some milk in a blue bowl."
+     },
+     {
+      "question": "Where does the cat sleep?",
+      "answer": "on the soft sofa",
+      "quote": "It sleeps on the soft sofa."
+     }
+    ]
+   },
+   "storyWords": 51,
+   "band": [
+    60,
+    130
+   ],
+   "questions": [
+    {
+     "question": "What color is the cat?",
+     "answer": "white",
+     "quote": "The cat is white and very cute.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "cat"
+     ]
+    },
+    {
+     "question": "What does Tom give the cat?",
+     "answer": "some milk",
+     "quote": "Tom gives the cat some milk in a blue bowl.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "cat",
+      "milk"
+     ]
+    },
+    {
+     "question": "Where does the cat sleep?",
+     "answer": "on the soft sofa",
+     "quote": "It sleeps on the soft sofa.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 2,
+   "lang": "en-US",
+   "level": "A1",
+   "genre": "conversation",
+   "requested": [
+    "hello",
+    "coffee",
+    "thank you",
+    "tomorrow"
+   ],
+   "used": [
+    "hello",
+    "coffee",
+    "thank you",
+    "tomorrow"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 12202,
+   "calls": [
+    {
+     "ms": 12200,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 449,
+      "completion_tokens": 416,
+      "total_tokens": 865,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 15.42727279663086
+     },
+     "neurons": 16,
+     "estimated": false
+    }
+   ],
+   "neurons": 16,
+   "issues": [],
+   "story": {
+    "title": "A Morning Meeting",
+    "story": "Tom: Hello, Sara!\nSara: Hello, Tom! How are you?\nTom: I am good. Do you want some coffee?\nSara: Yes, please. I love coffee.\nTom: Here is your coffee.\nSara: Thank you, Tom.\nTom: You are welcome. Do you have time tomorrow?\nSara: Yes, I am free tomorrow morning.\nTom: Great. Let's meet at the cafe.",
+    "translation": "توم: مرحباً، سارة!\nسارة: مرحباً، توم! كيف حالك؟\nتوم: أنا بخير. هل تريدين بعض القهوة؟\nسارة: نعم، من فضلك. أنا أحب القهوة.\nتوم: تفضلي قهوتك.\nسارة: شكراً لك، توم.\nتوم: على الرحب والسعة. هل لديك وقت غداً؟\nسارة: نعم، أنا متفرغة غداً صباحاً.\nتوم: رائع. لنلتقِ في المقهى.",
+    "usedWords": [
+     "hello",
+     "coffee",
+     "thank you",
+     "tomorrow"
+    ],
+    "questions": [
+     {
+      "question": "What does Tom offer to Sara?",
+      "answer": "some coffee",
+      "quote": "Do you want some coffee?"
+     },
+     {
+      "question": "What does Sara say to Tom after he gives her the drink?",
+      "answer": "Thank you, Tom.",
+      "quote": "Thank you, Tom."
+     },
+     {
+      "question": "When is Sara free?",
+      "answer": "tomorrow morning",
+      "quote": "Yes, I am free tomorrow morning."
+     }
+    ]
+   },
+   "storyWords": 56,
+   "band": [
+    60,
+    130
+   ],
+   "questions": [
+    {
+     "question": "What does Tom offer to Sara?",
+     "answer": "some coffee",
+     "quote": "Do you want some coffee?",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "coffee"
+     ]
+    },
+    {
+     "question": "What does Sara say to Tom after he gives her the drink?",
+     "answer": "Thank you, Tom.",
+     "quote": "Thank you, Tom.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "thank you"
+     ]
+    },
+    {
+     "question": "When is Sara free?",
+     "answer": "tomorrow morning",
+     "quote": "Yes, I am free tomorrow morning.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "tomorrow"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 3,
+   "lang": "en-US",
+   "level": "A2",
+   "genre": "story",
+   "requested": [
+    "wake up",
+    "breakfast",
+    "bus",
+    "umbrella",
+    "late"
+   ],
+   "used": [
+    "wake up",
+    "breakfast",
+    "bus",
+    "umbrella",
+    "late"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 9839,
+   "calls": [
+    {
+     "ms": 9838,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 443,
+      "completion_tokens": 488,
+      "total_tokens": 931,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 17.336362838745117
+     },
+     "neurons": 18,
+     "estimated": false
+    }
+   ],
+   "neurons": 18,
+   "issues": [],
+   "story": {
+    "title": "A Busy Morning",
+    "story": "Yesterday, Leo wanted to have a good day. He tried to wake up at seven o'clock, but he felt very tired. He stayed in bed for ten minutes. Then, he ran to the kitchen to eat a quick breakfast. He did not have much time. He looked outside and saw dark clouds. He grabbed his blue umbrella because he thought it might rain. Suddenly, he looked at the clock and realized he was late. He ran to the street to catch the bus. Luckily, the bus arrived just in time. He sat down and felt happy that his day started well.",
+    "translation": "بالأمس، أراد ليو أن يحظى بيوم جيد. حاول أن يستيقظ في الساعة السابعة، لكنه شعر بالتعب الشديد. بقي في السرير لمدة عشر دقائق. ثم ركض إلى المطبخ ليتناول فطوراً سريعاً. لم يكن لديه الكثير من الوقت. نظر إلى الخارج ورأى غيوماً داكنة. أمسك بمظلته الزرقاء لأنه اعتقد أنها قد تمطر. فجأة، نظر إلى الساعة وأدرك أنه متأخر. ركض إلى الشارع ليلحق بالحافلة. لحسن الحظ، وصلت الحافلة في الوقت المناسب تماماً. جلس وشعر بالسعادة لأن يومه بدأ بشكل جيد.",
+    "usedWords": [
+     "wake up",
+     "breakfast",
+     "bus",
+     "umbrella",
+     "late"
+    ],
+    "questions": [
+     {
+      "question": "What time did Leo try to wake up?",
+      "answer": "seven o'clock",
+      "quote": "He tried to wake up at seven o'clock, but he felt very tired."
+     },
+     {
+      "question": "What color was the umbrella?",
+      "answer": "blue",
+      "quote": "He grabbed his blue umbrella because he thought it might rain."
+     },
+     {
+      "question": "Why did Leo run to the street?",
+      "answer": "to catch the bus",
+      "quote": "He ran to the street to catch the bus."
+     }
+    ]
+   },
+   "storyWords": 101,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "What time did Leo try to wake up?",
+     "answer": "seven o'clock",
+     "quote": "He tried to wake up at seven o'clock, but he felt very tired.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "wake up"
+     ]
+    },
+    {
+     "question": "What color was the umbrella?",
+     "answer": "blue",
+     "quote": "He grabbed his blue umbrella because he thought it might rain.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "umbrella"
+     ]
+    },
+    {
+     "question": "Why did Leo run to the street?",
+     "answer": "to catch the bus",
+     "quote": "He ran to the street to catch the bus.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "bus"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 4,
+   "lang": "en-US",
+   "level": "A2",
+   "genre": "conversation",
+   "requested": [
+    "doctor",
+    "headache",
+    "medicine",
+    "rest",
+    "appointment",
+    "fever"
+   ],
+   "used": [
+    "doctor",
+    "headache",
+    "medicine",
+    "rest",
+    "appointment",
+    "fever"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 12983,
+   "calls": [
+    {
+     "ms": 12982,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 465,
+      "completion_tokens": 554,
+      "total_tokens": 1019,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 19.336362838745117
+     },
+     "neurons": 20,
+     "estimated": false
+    }
+   ],
+   "neurons": 20,
+   "issues": [],
+   "story": {
+    "title": "A Bad Day",
+    "story": "Anna: Hi, Tom. You look very tired today. Why are you sad?\nTom: I feel terrible, Anna. I have a bad headache and a high fever.\nAnna: Oh no! Did you see a doctor yesterday?\nTom: Yes, I had an appointment at ten o'clock in the morning.\nAnna: What did the doctor say?\nTom: He said I need to stay in bed and rest for two days.\nAnna: Did he give you any medicine?\nTom: Yes, I took some medicine after breakfast, but I still feel sick.\nAnna: You should sleep more. I hope you feel better soon.\nTom: Thank you, Anna.",
+    "translation": "آنا: مرحباً توم. تبدو متعباً جداً اليوم. لماذا أنت حزين؟\nتوم: أشعر بسوء يا آنا. لدي صداع شديد وحرارة مرتفعة.\nآنا: أوه لا! هل زرت الطبيب بالأمس؟\nتوم: نعم، كان لدي موعد في الساعة العاشرة صباحاً.\nآنا: ماذا قال الطبيب؟\nتوم: قال إنني بحاجة للبقاء في السرير والراحة لمدة يومين.\nآنا: هل أعطاك أي دواء؟\nتوم: نعم، تناولت بعض الدواء بعد الإفطار، لكنني لا أزال أشعر بالمرض.\nآنا: يجب أن تنام أكثر. أتمنى أن تشعر بتحسن قريباً.\nتوم: شكراً لك يا آنا.",
+    "usedWords": [
+     "doctor",
+     "headache",
+     "medicine",
+     "rest",
+     "appointment",
+     "fever"
+    ],
+    "questions": [
+     {
+      "question": "What does Tom have?",
+      "answer": "a bad headache and a high fever",
+      "quote": "I have a bad headache and a high fever."
+     },
+     {
+      "question": "When was his appointment?",
+      "answer": "at ten o'clock in the morning",
+      "quote": "Yes, I had an appointment at ten o'clock in the morning."
+     },
+     {
+      "question": "How long does Tom need to rest?",
+      "answer": "for two days",
+      "quote": "He said I need to stay in bed and rest for two days."
+     }
+    ]
+   },
+   "storyWords": 102,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "What does Tom have?",
+     "answer": "a bad headache and a high fever",
+     "quote": "I have a bad headache and a high fever.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "headache",
+      "fever"
+     ]
+    },
+    {
+     "question": "When was his appointment?",
+     "answer": "at ten o'clock in the morning",
+     "quote": "Yes, I had an appointment at ten o'clock in the morning.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "appointment"
+     ]
+    },
+    {
+     "question": "How long does Tom need to rest?",
+     "answer": "for two days",
+     "quote": "He said I need to stay in bed and rest for two days.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "rest"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 5,
+   "lang": "en-US",
+   "level": "B1",
+   "genre": "story",
+   "requested": [
+    "neighbour",
+    "borrow",
+    "ladder",
+    "garden",
+    "apologise",
+    "noise",
+    "fence",
+    "repair"
+   ],
+   "used": [
+    "neighbour",
+    "borrow",
+    "ladder",
+    "garden",
+    "apologise",
+    "noise",
+    "fence",
+    "repair"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 16813,
+   "calls": [
+    {
+     "ms": 16812,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 468,
+      "completion_tokens": 700,
+      "total_tokens": 1168,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 23.345455169677734
+     },
+     "neurons": 24,
+     "estimated": false
+    }
+   ],
+   "neurons": 24,
+   "issues": [],
+   "story": {
+    "title": "The Broken Fence",
+    "story": "Last Saturday, Leo decided to repair the old wooden fence in his garden. He wanted it to look beautiful for the summer party. However, while he was working, he accidentally hit a heavy tool against the wood, creating a loud noise. His neighbour, Mrs. Miller, came outside to see what happened.\n\nLeo felt very embarrassed. He went to her and began to apologise for the sudden disturbance. He explained that he was trying to fix the garden boundary. Mrs. Miller was very kind and smiled at him. She told him not to worry about the sound.\n\nThen, she offered to help him. She realized that Leo did not have a tall ladder to reach the top of the fence. She went into her garage and brought a sturdy one for him to borrow. Working together, they finished the job quickly. By the afternoon, the fence was strong again, and the garden looked perfect. Leo was happy to have such a helpful neighbour.",
+    "translation": "في يوم السبت الماضي، قرر ليو إصلاح السور الخشبي القديم في حديقته. أراد أن يبدو جميلاً من أجل حفلة الصيف. ومع ذلك، بينما كان يعمل، اصطدمت أداة ثقيلة بالخشب عن طريق الخطأ، مما أحدث ضوضاء عالية. جاءت جارته، السيدة ميلر، إلى الخارج لترى ما حدث.\n\nشعر ليو بإحراج شديد. ذهب إليها وبدأ يعتذر عن الإزعاج المفاجئ. وأوضح أنه كان يحاول إصلاح حدود الحديقة. كانت السيدة ميلر لطيفة للغاية وابتسمت له. أخبرته ألا يقلق بشأن الصوت.\n\nثم عرضت عليه المساعدة. أدركت أن ليو ليس لديه سلم طويل للوصول إلى أعلى السور. ذهبت إلى مرآبها وأحضرت واحداً متيناً ليستعيره منه. بالعمل معاً، أنهيا المهمة بسرعة. وبحلول فترة بعد الظهر، كان السور قوياً مرة أخرى، وبدت الحديقة مثالية. كان ليو سعيداً لأن لديه جاراً متعاوناً كهذا.",
+    "usedWords": [
+     "neighbour",
+     "borrow",
+     "ladder",
+     "garden",
+     "apologise",
+     "noise",
+     "fence",
+     "repair"
+    ],
+    "questions": [
+     {
+      "question": "Why did Leo want to fix the fence?",
+      "answer": "to look beautiful for the summer party",
+      "quote": "He wanted it to look beautiful for the summer party."
+     },
+     {
+      "question": "What did Leo do when he heard the loud noise?",
+      "answer": "He went to her and began to apologise",
+      "quote": "He went to her and began to apologise for the sudden disturbance."
+     },
+     {
+      "question": "What did Mrs. Miller bring for Leo to use?",
+      "answer": "a sturdy one",
+      "quote": "She went into her garage and brought a sturdy one for him to borrow."
+     }
+    ]
+   },
+   "storyWords": 162,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "Why did Leo want to fix the fence?",
+     "answer": "to look beautiful for the summer party",
+     "quote": "He wanted it to look beautiful for the summer party.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    },
+    {
+     "question": "What did Leo do when he heard the loud noise?",
+     "answer": "He went to her and began to apologise",
+     "quote": "He went to her and began to apologise for the sudden disturbance.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "apologise"
+     ]
+    },
+    {
+     "question": "What did Mrs. Miller bring for Leo to use?",
+     "answer": "a sturdy one",
+     "quote": "She went into her garage and brought a sturdy one for him to borrow.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "borrow"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 6,
+   "lang": "en-US",
+   "level": "B1",
+   "genre": "conversation",
+   "requested": [
+    "interview",
+    "experience",
+    "salary",
+    "nervous",
+    "deadline",
+    "team"
+   ],
+   "used": [
+    "interview",
+    "experience",
+    "salary",
+    "nervous",
+    "deadline",
+    "team"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 2,
+   "ms": 30104,
+   "calls": [
+    {
+     "ms": 15887,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 468,
+      "completion_tokens": 672,
+      "total_tokens": 1140,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 22.581817626953125
+     },
+     "neurons": 23,
+     "estimated": false
+    },
+    {
+     "ms": 14215,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 1189,
+      "completion_tokens": 661,
+      "total_tokens": 1850,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 28.83636474609375
+     },
+     "neurons": 29,
+     "estimated": false
+    }
+   ],
+   "neurons": 52,
+   "issues": [],
+   "story": {
+    "title": "The Big Job Interview",
+    "story": "Sarah: Hi Mark, you look very pale today. Is everything okay?\nMark: Honestly, I am feeling quite nervous. I have a big job interview in one hour.\nSarah: Don't worry! You have plenty of experience in marketing, so you will do great.\nMark: I hope so. I really need this position because the deadline for my current project is approaching, and I want a fresh start.\nSarah: What kind of company is it?\nMark: It is a creative agency. They have a very talented team, and I want to work with them.\nSarah: That sounds wonderful. Did they mention anything about the salary?\nMark: They said they would discuss the salary during the second meeting. For now, I just need to focus on my presentation.\nSarah: You are ready. Just breathe deeply and be yourself.\nMark: Thanks, Sarah. I will call you as soon as it is finished.",
+    "translation": "سارة: مرحباً مارك، تبدو شاحباً جداً اليوم. هل كل شيء بخير؟\nمارك: صراحةً، أشعر بالتوتر الشديد. لدي مقابلة عمل كبيرة خلال ساعة واحدة.\nسارة: لا تقلق! لديك الكثير من الخبرة في التسويق، لذا ستؤدي بشكل رائع.\nمارك: أتمنى ذلك. أنا حقاً بحاجة إلى هذا المنصب لأن الموعد النهائي لمشروعي الحالي يقترب، وأريد بداية جديدة.\nسارة: أي نوع من الشركات هي؟\nمارك: إنها وكالة إبداعية. لديهم فريق موهوب للغاية، وأريد العمل معهم.\nسارة: هذا يبدو رائعاً. هل ذكروا أي شيء بخصوص الراتب؟\nمارك: قالوا إنهم سيناقشون الراتب خلال الاجتماع الثاني. في الوقت الحالي، أحتاج فقط للتركيز على عرضي التقديمي.\nسارة: أنت مستعد. فقط تنفس بعمق وكن على طبيعتك.\nمارك: شكراً يا سارة. سأتصل بك بمجرد انتهائه.",
+    "usedWords": [
+     "interview",
+     "experience",
+     "salary",
+     "nervous",
+     "deadline",
+     "team"
+    ],
+    "questions": [
+     {
+      "question": "How is Mark feeling?",
+      "answer": "quite nervous",
+      "quote": "Honestly, I am feeling quite nervous."
+     },
+     {
+      "question": "What kind of people does the agency have?",
+      "answer": "a very talented team",
+      "quote": "They have a very talented team, and I want to work with them."
+     },
+     {
+      "question": "When will the company discuss the salary?",
+      "answer": "during the second meeting",
+      "quote": "They said they would discuss the salary during the second meeting."
+     }
+    ]
+   },
+   "storyWords": 148,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "How is Mark feeling?",
+     "answer": "quite nervous",
+     "quote": "Honestly, I am feeling quite nervous.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "nervous"
+     ]
+    },
+    {
+     "question": "What kind of people does the agency have?",
+     "answer": "a very talented team",
+     "quote": "They have a very talented team, and I want to work with them.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "team"
+     ]
+    },
+    {
+     "question": "When will the company discuss the salary?",
+     "answer": "during the second meeting",
+     "quote": "They said they would discuss the salary during the second meeting.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "salary"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 7,
+   "lang": "en-US",
+   "level": "B2",
+   "genre": "story",
+   "requested": [
+    "reluctant",
+    "negotiate",
+    "landlord",
+    "lease",
+    "deposit",
+    "leak",
+    "compromise",
+    "tenant",
+    "inspect",
+    "grateful"
+   ],
+   "used": [
+    "reluctant",
+    "negotiate",
+    "landlord",
+    "lease",
+    "deposit",
+    "leak",
+    "compromise",
+    "tenant",
+    "inspect",
+    "grateful"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 16990,
+   "calls": [
+    {
+     "ms": 16989,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 501,
+      "completion_tokens": 782,
+      "total_tokens": 1283,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 25.881816864013672
+     },
+     "neurons": 26,
+     "estimated": false
+    }
+   ],
+   "neurons": 26,
+   "issues": [],
+   "story": {
+    "title": "The Apartment Dilemma",
+    "story": "When Leo first saw the charming apartment downtown, he was ready to sign the lease immediately. However, he felt slightly reluctant when he noticed a small water stain on the ceiling. Before moving in, he decided to inspect the kitchen and bathroom more thoroughly. During his search, he discovered a hidden leak under the sink that could cause serious trouble later.\n\nLeo called the landlord to discuss the issue. At first, the owner was hesitant to pay for repairs, but Leo knew he had to negotiate a fair solution. As a responsible tenant, Leo wanted everything to be perfect before he paid the large security deposit. They eventually reached a compromise: the landlord agreed to fix the plumbing immediately, and Leo promised to sign a longer contract.\n\nAfter the repairs were finished, Leo felt much more comfortable. He was incredibly grateful that the owner took his concerns seriously. Moving into a new place can be stressful, but a little bit of communication goes a long way in ensuring a smooth start to a new chapter.",
+    "translation": "عندما رأى ليو الشقة الساحرة في وسط المدينة لأول مرة، كان مستعداً لتوقيع عقد الإيجار على الفور. ومع ذلك، شعر بالتردد قليلاً عندما لاحظ بقعة مائية صغيرة على السقف. قبل الانتقال، قرر فحص المطبخ والحمام بشكل أكثر دقة. وخلال بحثه، اكتشف تسريباً مخفياً تحت الحوض يمكن أن يسبب مشاكل خطيرة لاحقاً.\n\nاتصل ليو بمالك العقار لمناقشة المشكلة. في البداية، كان المالك متردداً في دفع تكاليف الإصلاحات، لكن ليو علم أنه يجب عليه التفاوض للوصول إلى حل عادل. وبصفته مستأجراً مسؤولاً، أراد ليو أن يكون كل شيء مثالياً قبل أن يدفع مبلغ التأمين الكبير. توصلوا في النهاية إلى حل وسط: وافق المالك على إصلاح السباكة على الفور، ووعد ليو بتوقيع عقد أطول.\n\nبعد انتهاء الإصلاحات، شعر ليو براحة أكبر. كان ممتناً للغاية لأن المالك أخذ مخاوفه على محمل الجد. يمكن أن يكون الانتقال إلى مكان جديد أمراً مرهقاً، لكن القليل من التواصل يقطع شوطاً طويلاً لضمان بداية سلسة لفصل جديد.",
+    "usedWords": [
+     "reluctant",
+     "negotiate",
+     "landlord",
+     "lease",
+     "deposit",
+     "leak",
+     "compromise",
+     "tenant",
+     "inspect",
+     "grateful"
+    ],
+    "questions": [
+     {
+      "question": "Why did Leo feel hesitant about the apartment initially?",
+      "answer": "he felt slightly reluctant when he noticed a small water stain on the ceiling",
+      "quote": "However, he felt slightly reluctant when he noticed a small water stain on the ceiling."
+     },
+     {
+      "question": "What did Leo find under the sink?",
+      "answer": "a hidden leak",
+      "quote": "During his search, he discovered a hidden leak under the sink that could cause serious trouble later."
+     },
+     {
+      "question": "What was the final agreement between Leo and the owner?",
+      "answer": "the landlord agreed to fix the plumbing immediately",
+      "quote": "the landlord agreed to fix the plumbing immediately, and Leo promised to sign a longer contract."
+     }
+    ]
+   },
+   "storyWords": 175,
+   "band": [
+    170,
+    300
+   ],
+   "questions": [
+    {
+     "question": "Why did Leo feel hesitant about the apartment initially?",
+     "answer": "he felt slightly reluctant when he noticed a small water stain on the ceiling",
+     "quote": "However, he felt slightly reluctant when he noticed a small water stain on the ceiling.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "reluctant"
+     ]
+    },
+    {
+     "question": "What did Leo find under the sink?",
+     "answer": "a hidden leak",
+     "quote": "During his search, he discovered a hidden leak under the sink that could cause serious trouble later.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "leak"
+     ]
+    },
+    {
+     "question": "What was the final agreement between Leo and the owner?",
+     "answer": "the landlord agreed to fix the plumbing immediately",
+     "quote": "the landlord agreed to fix the plumbing immediately, and Leo promised to sign a longer contract.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "landlord"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 8,
+   "lang": "en-US",
+   "level": "C1",
+   "genre": "story",
+   "requested": [
+    "meticulous",
+    "ambiguous",
+    "scrutinise",
+    "unprecedented",
+    "resilient",
+    "nuance",
+    "candid",
+    "undermine",
+    "elaborate",
+    "reconcile",
+    "whereas",
+    "thereby"
+   ],
+   "used": [
+    "meticulous",
+    "ambiguous",
+    "scrutinise",
+    "unprecedented",
+    "resilient",
+    "nuance",
+    "candid",
+    "undermine",
+    "elaborate",
+    "reconcile",
+    "whereas",
+    "thereby"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 16446,
+   "calls": [
+    {
+     "ms": 16442,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 527,
+      "completion_tokens": 940,
+      "total_tokens": 1467,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 30.42727279663086
+     },
+     "neurons": 31,
+     "estimated": false
+    }
+   ],
+   "neurons": 31,
+   "issues": [],
+   "story": {
+    "title": "The Architect's Dilemma",
+    "story": "Elias was known for his meticulous approach to urban design, a trait that earned him respect but also a reputation for being difficult. His latest project, a sustainable housing complex, faced an unprecedented challenge: the site sat atop unstable, shifting soil. To succeed, he had to reconcile the aesthetic beauty of the structures with the harsh technical realities of the terrain.\n\nDuring the planning phase, the city council provided ambiguous guidelines regarding the height restrictions. This lack of clarity threatened to undermine his entire vision. Elias spent weeks attempting to scrutinise every blueprint, searching for a single nuance in the regulations that might grant him more flexibility. He refused to accept anything less than an elaborate, foolproof plan.\n\nIn a candid meeting with the lead engineer, Elias expressed his frustrations. He argued that while some developers might settle for superficial solutions, his goal was to create something truly resilient. He explained that the building must adapt to the ground's movement, thereby ensuring its longevity for decades to come. The engineer noted that Elias’s passion was intense, whereas most architects preferred a more passive approach. Eventually, through rigorous testing and constant adjustment, the design evolved into a masterpiece of engineering, proving that even the most complex obstacles could be overcome with precision and persistence.",
+    "translation": "عُرف إلياس بنهجه الدقيق في التصميم الحضري، وهي سمة أكسبته الاحترام ولكنها أكسبته أيضًا سمعة بأنه شخص صعب المراس. واجه مشروعه الأخير، وهو مجمع سكني مستدام، تحديًا غير مسبوق: الموقع يقع فوق تربة غير مستقرة ومتغيرة. للنجاح، كان عليه التوفيق بين الجمال الجمالي للمباني والواقع التقني القاسي للتضاريس.\n\nخلال مرحلة التخطيط، قدم مجلس المدينة توجيهات غامضة فيما يتعلق بقيود الارتفاع. هدد هذا النقص في الوضوح بتقويض رؤيته بأكملها. قضى إلياس أسابيع في محاولة التدقيق في كل مخطط، بحثًا عن فرق دقيق واحد في اللوائح قد يمنحه مرونة أكبر. لقد رفض قبول أي شيء أقل من خطة مفصلة ومضمونة.\n\nفي اجتماع صريح مع كبير المهندسين، أعرب إلياس عن إحباطاته. جادل بأن بعض المطورين قد يرضون بحلول سطحية، بينما كان هدفه هو خلق شيء صامد حقًا. أوضح أن المبنى يجب أن يتكيف مع حركة الأرض، وبذلك يضمن بقاءه لعقود قادمة. لاحظ المهندس أن شغف إلياس كان مكثفًا، بينما يفضل معظم المهندسين المعماريين نهجًا أكثر سلبية. في النهاية، من خلال الاختبار الصارم والتعديل المستمر، تطور التصميم إلى تحفة هندسية، مما أثبت أنه يمكن التغلب حتى على العقبات الأكثر تعقيدًا بالدقة والمثابرة.",
+    "usedWords": [
+     "meticulous",
+     "ambiguous",
+     "scrutinise",
+     "unprecedented",
+     "resilient",
+     "nuance",
+     "candid",
+     "undermine",
+     "elaborate",
+     "reconcile",
+     "whereas",
+     "thereby"
+    ],
+    "questions": [
+     {
+      "question": "What was the unprecedented challenge facing Elias's project?",
+      "answer": "the site sat atop unstable, shifting soil",
+      "quote": "His latest project, a sustainable housing complex, faced an unprecedented challenge: the site sat atop unstable, shifting soil."
+     },
+     {
+      "question": "Why did the city council's guidelines cause trouble?",
+      "answer": "ambiguous guidelines regarding the height restrictions",
+      "quote": "During the planning phase, the city council provided ambiguous guidelines regarding the height restrictions."
+     },
+     {
+      "question": "How did Elias intend to ensure the building's longevity?",
+      "answer": "the building must adapt to the ground's movement",
+      "quote": "He explained that the building must adapt to the ground's movement, thereby ensuring its longevity for decades to come."
+     }
+    ]
+   },
+   "storyWords": 213,
+   "band": [
+    200,
+    360
+   ],
+   "questions": [
+    {
+     "question": "What was the unprecedented challenge facing Elias's project?",
+     "answer": "the site sat atop unstable, shifting soil",
+     "quote": "His latest project, a sustainable housing complex, faced an unprecedented challenge: the site sat atop unstable, shifting soil.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "unprecedented"
+     ]
+    },
+    {
+     "question": "Why did the city council's guidelines cause trouble?",
+     "answer": "ambiguous guidelines regarding the height restrictions",
+     "quote": "During the planning phase, the city council provided ambiguous guidelines regarding the height restrictions.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "ambiguous"
+     ]
+    },
+    {
+     "question": "How did Elias intend to ensure the building's longevity?",
+     "answer": "the building must adapt to the ground's movement",
+     "quote": "He explained that the building must adapt to the ground's movement, thereby ensuring its longevity for decades to come.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "thereby"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 9,
+   "lang": "en-US",
+   "level": "A2",
+   "genre": "story",
+   "requested": [
+    "supermarket"
+   ],
+   "used": [
+    "supermarket"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 10884,
+   "calls": [
+    {
+     "ms": 10883,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 404,
+      "completion_tokens": 477,
+      "total_tokens": 881,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 16.68181800842285
+     },
+     "neurons": 17,
+     "estimated": false
+    }
+   ],
+   "neurons": 17,
+   "issues": [],
+   "story": {
+    "title": "A Busy Morning",
+    "story": "Yesterday, Sarah woke up early. She looked in her kitchen, but there was no milk and no bread. She decided to go to the supermarket to buy some food. The weather was sunny and warm. When she arrived at the supermarket, the building was very big. She walked through the aisles and put apples, eggs, and pasta into her basket. She saw her friend, Tom, near the fruit section. They talked for five minutes about their weekend plans. Finally, Sarah paid for her groceries and walked home. She felt happy because her kitchen was full again.",
+    "translation": "بالأمس، استيقظت سارة مبكراً. نظرت في مطبخها، ولكن لم يكن هناك حليب أو خبز. قررت الذهاب إلى السوبرماركت لشراء بعض الطعام. كان الطقس مشمساً ودافئاً. عندما وصلت إلى السوبرماركت، كان المبنى كبيراً جداً. مشت عبر الممرات ووضعت التفاح والبيض والمعكرونة في سلتها. رأت صديقها، توم، بالقرب من قسم الفاكهة. تحدثا لمدة خمس دقائق عن خطط عطلة نهاية الأسبوع. أخيراً، دفعت سارة ثمن مشترياتها وعادت إلى المنزل. شعرت بالسعادة لأن مطبخها كان ممتلئاً مرة أخرى.",
+    "usedWords": [
+     "supermarket"
+    ],
+    "questions": [
+     {
+      "question": "Why did Sarah go to the supermarket?",
+      "answer": "to buy some food",
+      "quote": "She decided to go to the supermarket to buy some food."
+     },
+     {
+      "question": "Who did Sarah see near the fruit section?",
+      "answer": "her friend, Tom",
+      "quote": "She saw her friend, Tom, near the fruit section."
+     },
+     {
+      "question": "How did Sarah feel at the end of the story?",
+      "answer": "She felt happy",
+      "quote": "She felt happy because her kitchen was full again."
+     }
+    ]
+   },
+   "storyWords": 96,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "Why did Sarah go to the supermarket?",
+     "answer": "to buy some food",
+     "quote": "She decided to go to the supermarket to buy some food.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "supermarket"
+     ]
+    },
+    {
+     "question": "Who did Sarah see near the fruit section?",
+     "answer": "her friend, Tom",
+     "quote": "She saw her friend, Tom, near the fruit section.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    },
+    {
+     "question": "How did Sarah feel at the end of the story?",
+     "answer": "She felt happy",
+     "quote": "She felt happy because her kitchen was full again.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 10,
+   "lang": "en-US",
+   "level": "B1",
+   "genre": "story",
+   "requested": [
+    "take off",
+    "look forward to",
+    "run out of",
+    "get along with"
+   ],
+   "used": [
+    "take off",
+    "run out of",
+    "get along with"
+   ],
+   "missing": [
+    "look forward to"
+   ],
+   "ok": true,
+   "attempts": 1,
+   "ms": 15047,
+   "calls": [
+    {
+     "ms": 15046,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 440,
+      "completion_tokens": 698,
+      "total_tokens": 1138,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 23.03636360168457
+     },
+     "neurons": 24,
+     "estimated": false
+    }
+   ],
+   "neurons": 24,
+   "issues": [],
+   "story": {
+    "title": "A New Beginning in London",
+    "story": "Last month, Sarah moved to London for a new job. At first, she felt quite nervous about living in a big city alone. However, she quickly realized that she could get along with her new neighbors, who were very friendly and helpful. She also started a new hobby by joining a local photography club. She really looks forward to her weekly meetings with the other members because they share great ideas.\n\nOne afternoon, Sarah decided to visit a famous museum. She packed her camera and left her apartment early. While she was walking to the station, she realized she had run out of bus credit on her card. Luckily, she found a small cafe nearby to buy some change. Later that evening, she sat by her window and watched the planes take off from the nearby airport. As the lights of the city began to shine, she felt happy and realized that her new life was off to a wonderful start.",
+    "translation": "في الشهر الماضي، انتقلت سارة إلى لندن من أجل وظيفة جديدة. في البدا%%، شعرت بالقلق قليلاً بشأن العيش في مدينة كبيرة بمفردها. ومع ذلك، أدركت بسرعة أنها تستطيع التفاهم مع جيرانها الجدد، الذين كانوا ودودين ومتعاونين للغاية. كما بدأت هواية جديدة من خلال الانضمام إلى نادي محلي للتصوير الفوتوغرافي. إنها تتطلع حقاً إلى اجتماعاتها الأسبوعية مع الأعضاء الآخرين لأنهم يتشاركون أفكاراً رائعة.\n\nفي أحد أيام بعد الظهر، قررت سارة زيارة متحف مشهور. حزمت كاميرتها وغادرت شقتها مبكراً. وبينما كانت تمشي إلى المحطة، أدركت أن رصيد الحافلة في بطاقتها قد نفد. لحسن الحظ، وجدت مقهى صغيراً بالجوار لشراء بعض الفكة. في وقت لاحق من ذلك المساء، جلست بجانب نافذتها وشاهدت الطائرات وهي تقلع من المطار القريب. وبينما بدأت أضواء المدينة تلمع، شعرت بالسعادة وأدركت أن حياتها الجديدة قد بدأت بشكل رائع.",
+    "usedWords": [
+     "take off",
+     "run out of",
+     "get along with"
+    ],
+    "questions": [
+     {
+      "question": "How did Sarah feel about living alone at first?",
+      "answer": "quite nervous",
+      "quote": "At first, she felt quite nervous about living in a big city alone."
+     },
+     {
+      "question": "What happened to Sarah's bus credit?",
+      "answer": "she had run out of bus credit",
+      "quote": "While she was walking to the station, she realized she had run out of bus credit on her card."
+     },
+     {
+      "question": "What did Sarah watch from her window in the evening?",
+      "answer": "the planes take off",
+      "quote": "Later that evening, she sat by her window and watched the planes take off from the nearby airport."
+     }
+    ]
+   },
+   "storyWords": 161,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "How did Sarah feel about living alone at first?",
+     "answer": "quite nervous",
+     "quote": "At first, she felt quite nervous about living in a big city alone.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    },
+    {
+     "question": "What happened to Sarah's bus credit?",
+     "answer": "she had run out of bus credit",
+     "quote": "While she was walking to the station, she realized she had run out of bus credit on her card.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "run out of"
+     ]
+    },
+    {
+     "question": "What did Sarah watch from her window in the evening?",
+     "answer": "the planes take off",
+     "quote": "Later that evening, she sat by her window and watched the planes take off from the nearby airport.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "take off"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 11,
+   "lang": "es-ES",
+   "level": "A1",
+   "genre": "story",
+   "requested": [
+    "gato",
+    "casa",
+    "agua"
+   ],
+   "used": [
+    "gato",
+    "casa",
+    "agua"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 4231,
+   "calls": [
+    {
+     "ms": 4231,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 421,
+      "completion_tokens": 349,
+      "total_tokens": 770,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 13.345454216003418
+     },
+     "neurons": 14,
+     "estimated": false
+    }
+   ],
+   "neurons": 14,
+   "issues": [],
+   "story": {
+    "title": "El gato de Ana",
+    "story": "Ana tiene una casa pequeña y bonita. En la casa vive un gato gris. El gato es muy inteligente y tranquilo. El gato tiene mucha hambre ahora. Ana busca comida en la cocina. El gato también necesita agua fresca. Ana pone agua en un plato azul. El gato bebe el agua y está feliz. Ahora el gato duerme en el sofá.",
+    "translation": "تملك آنا منزلاً صغيراً وجميلاً. في المنزل يعيش قط رمادي. القط ذكي جداً وهادئ. القط جائع جداً الآن. تبحث آنا عن الطعام في المطبخ. القط يحتاج أيضاً إلى ماء عذب. تضع آنا الماء في طبق أزرق. يشرب القط الماء ويكون سعيداً. الآن ينام القط على الأريكة.",
+    "usedWords": [
+     "gato",
+     "casa",
+     "agua"
+    ],
+    "questions": [
+     {
+      "question": "¿Cómo es la casa de Ana?",
+      "answer": "pequeña y bonita",
+      "quote": "Ana tiene una casa pequeña y bonita."
+     },
+     {
+      "question": "¿De qué color es el gato?",
+      "answer": "gris",
+      "quote": "En la casa vive un gato gris."
+     },
+     {
+      "question": "¿Dónde duerme el gato?",
+      "answer": "en el sofá",
+      "quote": "Ahora el gato duerme en el sofá."
+     }
+    ]
+   },
+   "storyWords": 61,
+   "band": [
+    60,
+    130
+   ],
+   "questions": [
+    {
+     "question": "¿Cómo es la casa de Ana?",
+     "answer": "pequeña y bonita",
+     "quote": "Ana tiene una casa pequeña y bonita.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "casa"
+     ]
+    },
+    {
+     "question": "¿De qué color es el gato?",
+     "answer": "gris",
+     "quote": "En la casa vive un gato gris.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "gato",
+      "casa"
+     ]
+    },
+    {
+     "question": "¿Dónde duerme el gato?",
+     "answer": "en el sofá",
+     "quote": "Ahora el gato duerme en el sofá.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "gato"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 12,
+   "lang": "es-ES",
+   "level": "A1",
+   "genre": "conversation",
+   "requested": [
+    "hola",
+    "café",
+    "gracias",
+    "mañana"
+   ],
+   "used": [
+    "hola",
+    "café",
+    "gracias",
+    "mañana"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 2,
+   "ms": 22251,
+   "calls": [
+    {
+     "ms": 12816,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 451,
+      "completion_tokens": 416,
+      "total_tokens": 867,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 15.445453643798828
+     },
+     "neurons": 16,
+     "estimated": false
+    },
+    {
+     "ms": 9435,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 917,
+      "completion_tokens": 418,
+      "total_tokens": 1335,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 19.73636245727539
+     },
+     "neurons": 20,
+     "estimated": false
+    }
+   ],
+   "neurons": 36,
+   "issues": [],
+   "story": {
+    "title": "En la cafetería",
+    "story": "Juan: Hola, María.\nMaría: Hola, Juan. ¿Cómo estás?\nJuan: Estoy bien, gracias. ¿Quieres un café?\nMaría: Sí, por favor. Me gusta mucho el café.\nJuan: Muy bien. Yo tengo una cita mañana.\nMaría: ¿A qué hora es tu cita?\nJuan: La cita es a las diez de la mañana.\nMaría: ¡Qué bien! Nos vemos luego.\nJuan: Adiós, María.",
+    "translation": "خوان: مرحباً، ماريا.\nماريا: مرحباً، خوان. كيف حالك؟\nخوان: أنا بخير، شكراً. هل تريد قهوة؟\nماريا: نعم، من فضلك. أنا أحب القهوة كثيراً.\nخوان: جيد جداً. لدي موعد غداً.\nماريا: في أي ساعة موعدك؟\nخوان: الموعد في الساعة العاشرة صباحاً.\nماريا: هذا رائع! نراك لاحقاً.\nخوان: وداعاً، ماريا.",
+    "usedWords": [
+     "hola",
+     "café",
+     "gracias",
+     "mañana"
+    ],
+    "questions": [
+     {
+      "question": "¿Cómo está Juan?",
+      "answer": "bien",
+      "quote": "Juan: Estoy bien, gracias."
+     },
+     {
+      "question": "¿Qué le gusta a María?",
+      "answer": "el café",
+      "quote": "María: Sí, por favor. Me gusta mucho el café."
+     },
+     {
+      "question": "¿A qué hora es la cita?",
+      "answer": "a las diez de la mañana",
+      "quote": "La cita es a las diez de la mañana."
+     }
+    ]
+   },
+   "storyWords": 58,
+   "band": [
+    60,
+    130
+   ],
+   "questions": [
+    {
+     "question": "¿Cómo está Juan?",
+     "answer": "bien",
+     "quote": "Juan: Estoy bien, gracias.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "gracias"
+     ]
+    },
+    {
+     "question": "¿Qué le gusta a María?",
+     "answer": "el café",
+     "quote": "María: Sí, por favor. Me gusta mucho el café.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "café"
+     ]
+    },
+    {
+     "question": "¿A qué hora es la cita?",
+     "answer": "a las diez de la mañana",
+     "quote": "La cita es a las diez de la mañana.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "mañana"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 13,
+   "lang": "es-ES",
+   "level": "A2",
+   "genre": "story",
+   "requested": [
+    "mercado",
+    "manzana",
+    "barato",
+    "abuela",
+    "comprar"
+   ],
+   "used": [
+    "mercado",
+    "manzana",
+    "abuela",
+    "comprar"
+   ],
+   "missing": [
+    "barato"
+   ],
+   "ok": true,
+   "attempts": 1,
+   "ms": 8511,
+   "calls": [
+    {
+     "ms": 8510,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 443,
+      "completion_tokens": 436,
+      "total_tokens": 879,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 15.918182373046875
+     },
+     "neurons": 16,
+     "estimated": false
+    }
+   ],
+   "neurons": 16,
+   "issues": [],
+   "story": {
+    "title": "Un día en el mercado",
+    "story": "El sábado pasado, Lucía fue al mercado con su abuela. El lugar era muy grande y tenía mucha gente. Primero, ellas decidieron comprar frutas frescas. Lucía vio una manzana roja y muy bonita en una mesa. La fruta era muy barata y de buena calidad. Su abuela prefirió comprar verduras para la cena. Después de la compra, las dos mujeres caminaron al parque. Lucía estaba muy feliz porque el día fue perfecto.",
+    "translation": "السبت الماضي، ذهبت لوسيا إلى السوق مع جدتها. كان المكان كبيراً جداً وكان فيه الكثير من الناس. أولاً، قررتا شراء فواكه طازجة. رأت لوسيا تفاحة حمراء وجميلة جداً على طاولة. كانت الفاكهة رخيصة جداً وذات جودة جيدة. فضلت جدتها شراء خضروات للعشاء. بعد الشراء، مشت المرأتان إلى الحديقة. كانت لوسيا سعيدة جداً لأن اليوم كان مثالياً.",
+    "usedWords": [
+     "mercado",
+     "manzana",
+     "abuela",
+     "comprar"
+    ],
+    "questions": [
+     {
+      "question": "¿Con quién fue Lucía al mercado?",
+      "answer": "con su abuela",
+      "quote": "El sábado pasado, Lucía fue al mercado con su abuela."
+     },
+     {
+      "question": "¿Cómo era la manzana?",
+      "answer": "roja y muy bonita",
+      "quote": "Lucía vio una manzana roja y muy bonita en una mesa."
+     },
+     {
+      "question": "¿Qué prefirió comprar la abuela?",
+      "answer": "verduras para la cena",
+      "quote": "Su abuela prefirió comprar verduras para la cena."
+     }
+    ]
+   },
+   "storyWords": 72,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "¿Con quién fue Lucía al mercado?",
+     "answer": "con su abuela",
+     "quote": "El sábado pasado, Lucía fue al mercado con su abuela.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "mercado",
+      "abuela"
+     ]
+    },
+    {
+     "question": "¿Cómo era la manzana?",
+     "answer": "roja y muy bonita",
+     "quote": "Lucía vio una manzana roja y muy bonita en una mesa.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "manzana"
+     ]
+    },
+    {
+     "question": "¿Qué prefirió comprar la abuela?",
+     "answer": "verduras para la cena",
+     "quote": "Su abuela prefirió comprar verduras para la cena.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "abuela",
+      "comprar"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 14,
+   "lang": "es-ES",
+   "level": "A2",
+   "genre": "conversation",
+   "requested": [
+    "médico",
+    "dolor",
+    "cabeza",
+    "pastilla",
+    "descansar"
+   ],
+   "used": [
+    "médico",
+    "dolor",
+    "cabeza",
+    "pastilla",
+    "descansar"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 11811,
+   "calls": [
+    {
+     "ms": 11810,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 464,
+      "completion_tokens": 522,
+      "total_tokens": 986,
+      "prompt_tokens_details": {
+       "cached_tokens": 320
+      },
+      "neurons": 16.999998092651367
+     },
+     "neurons": 17,
+     "estimated": false
+    }
+   ],
+   "neurons": 17,
+   "issues": [],
+   "story": {
+    "title": "Un mal día para Lucas",
+    "story": "Lucas: Hola, Elena. ¿Cómo estás? No me siento muy bien.\nElena: Hola, Lucas. Te ves muy pálido. ¿Qué pasa?\nLucas: Tengo un dolor fuerte en la cabeza. No pude dormir anoche.\nElena: Lo siento mucho. ¿Fuiste al médico ayer?\nLucas: No, no fui. Solo tomé una pastilla, pero no funcionó.\nElena: Tal vez necesitas descansar un poco más. El trabajo es muy difícil esta semana.\nLucas: Tienes razón. Mañana voy a pedir un día libre.\nElena: Es una buena idea. Bebe mucha agua y quédate en casa.",
+    "translation": "لوكاس: مرحبًا، إيلينا. كيف حالك؟ لا أشعر أنني بخير.\nإيلينا: مرحبًا، لوكاس. تبدو شاحبًا جدًا. ماذا يحدث؟\nلوكاس: لدي ألم شديد في رأسي. لم أستطع النوم ليلة أمس.\nإيلينا: أنا آسفة جدًا. هل ذهبت إلى الطبيب أمس؟\nلوكاس: لا، لم أذهب. فقط تناولت حبة دواء، لكنها لم تعمل.\nإيلينا: ربما تحتاج إلى الراحة قليلاً. العمل صعب جدًا هذا الأسبوع.\nلوكاس: معك حق. غدًا سأطلب يومًا إجازة.\nإيلينا: هذه فكرة جيدة. اشرب الكثير من الماء وابقى في المنزل.",
+    "usedWords": [
+     "médico",
+     "dolor",
+     "cabeza",
+     "pastilla",
+     "descansar"
+    ],
+    "questions": [
+     {
+      "question": "¿Qué tiene Lucas?",
+      "answer": "un dolor fuerte en la cabeza",
+      "quote": "Tengo un dolor fuerte en la cabeza."
+     },
+     {
+      "question": "¿Fue Lucas al médico ayer?",
+      "answer": "No, no fui",
+      "quote": "No, no fui."
+     },
+     {
+      "question": "¿Qué necesita Lucas según Elena?",
+      "answer": "descansar un poco más",
+      "quote": "Tal vez necesitas descansar un poco más."
+     }
+    ]
+   },
+   "storyWords": 87,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "¿Qué tiene Lucas?",
+     "answer": "un dolor fuerte en la cabeza",
+     "quote": "Tengo un dolor fuerte en la cabeza.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "dolor",
+      "cabeza"
+     ]
+    },
+    {
+     "question": "¿Fue Lucas al médico ayer?",
+     "answer": "No, no fui",
+     "quote": "No, no fui.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    },
+    {
+     "question": "¿Qué necesita Lucas según Elena?",
+     "answer": "descansar un poco más",
+     "quote": "Tal vez necesitas descansar un poco más.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "descansar"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 15,
+   "lang": "es-ES",
+   "level": "B1",
+   "genre": "story",
+   "requested": [
+    "vecino",
+    "prestar",
+    "escalera",
+    "jardín",
+    "ruido",
+    "arreglar",
+    "pedir perdón"
+   ],
+   "used": [
+    "vecino",
+    "escalera",
+    "jardín",
+    "ruido",
+    "arreglar",
+    "pedir perdón"
+   ],
+   "missing": [
+    "prestar"
+   ],
+   "ok": true,
+   "attempts": 1,
+   "ms": 6192,
+   "calls": [
+    {
+     "ms": 6191,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 466,
+      "completion_tokens": 689,
+      "total_tokens": 1155,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 23.027271270751953
+     },
+     "neurons": 24,
+     "estimated": false
+    }
+   ],
+   "neurons": 24,
+   "issues": [],
+   "story": {
+    "title": "Un pequeño problema con el vecino",
+    "story": "El sábado por la mañana, Lucas quería descansar en su casa. Sin embargo, escuchó un ruido muy fuerte que venía del piso de arriba. Al principio, pensó que era la televisión, pero el sonido continuaba. Decidió subir la escalera para hablar con su vecino, el señor Martínez.\n\nCuando llegó a la puerta, vio que el señor Martínez intentaba arreglar una silla de madera en su jardín. El hombre parecía muy concentrado y no se daba cuenta del problema. Lucas llamó a la puerta con cuidado y explicó la situación con amabilidad. El señor Martínez se sintió muy mal por la molestia y decidió pedir perdón inmediatamente.\n\nPara solucionar el malentendido, el señor Martínez le ofreció a Lucas un poco de té. Además, le dijo que podía prestarle su libro favorito si quería leer algo tranquilo. Al final, el problema se resolvió rápidamente y Lucas pudo disfrutar de su tarde en silencio.",
+    "translation": "صباح السبت، أراد لوكاس أن يستريح في منزله. ومع ذلك، سمع ضجيجًا عاليًا جدًا يأتي من الطابق العلوي. في البداية، ظن أنه التلفاز، لكن الصوت استمر. قرر صعود السلم للتحدث مع جاره، السيد مارتينيز.\n\nعندما وصل إلى الباب، رأى السيد مارتينيز يحاول إصلاح كرسي خشبي في حديقته. بدا الرجل مركزًا جدًا ولم يدرك المشكلة. طرق لوكاس الباب بحذر وشرح الموقف بلطف. شعر السيد مارتينيز بالسوء الشديد بسبب الإزعاج وقرر الاعتذار فورًا.\n\nلحل سوء الفهم، عرض السيد مارتينيز على لوكاس بعض الشاي. بالإضافة إلى ذلك، قال له إنه يمكنه إعارته كتابه المفضل إذا أراد قراءة شيء هادئ. في النهاية، تم حل المشكلة بسرعة وتمكن لوكاس من الاستمتاع ببعده في هدوء.",
+    "usedWords": [
+     "vecino",
+     "escalera",
+     "jardín",
+     "ruido",
+     "arreglar",
+     "pedir perdón"
+    ],
+    "questions": [
+     {
+      "question": "¿Qué escuchó Lucas por la mañana?",
+      "answer": "un ruido muy fuerte",
+      "quote": "Sin embargo, escuchó un ruido muy fuerte que venía del piso de arriba."
+     },
+     {
+      "question": "¿Qué intentaba hacer el señor Martínez?",
+      "answer": "arreglar una silla de madera",
+      "quote": "vio que el señor Martínez intentaba arreglar una silla de madera en su jardín."
+     },
+     {
+      "question": "¿Qué le ofreció el señor Martínez a Lucas para solucionar el malentendido?",
+      "answer": "un poco de té",
+      "quote": "Para solucionar el malentendido, el señor Martínez le ofreció a Lucas un poco de té."
+     }
+    ]
+   },
+   "storyWords": 151,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "¿Qué escuchó Lucas por la mañana?",
+     "answer": "un ruido muy fuerte",
+     "quote": "Sin embargo, escuchó un ruido muy fuerte que venía del piso de arriba.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "ruido"
+     ]
+    },
+    {
+     "question": "¿Qué intentaba hacer el señor Martínez?",
+     "answer": "arreglar una silla de madera",
+     "quote": "vio que el señor Martínez intentaba arreglar una silla de madera en su jardín.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "jardín",
+      "arreglar"
+     ]
+    },
+    {
+     "question": "¿Qué le ofreció el señor Martínez a Lucas para solucionar el malentendido?",
+     "answer": "un poco de té",
+     "quote": "Para solucionar el malentendido, el señor Martínez le ofreció a Lucas un poco de té.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 16,
+   "lang": "es-ES",
+   "level": "B1",
+   "genre": "conversation",
+   "requested": [
+    "entrevista",
+    "experiencia",
+    "sueldo",
+    "nervioso",
+    "equipo",
+    "plazo"
+   ],
+   "used": [
+    "entrevista",
+    "experiencia",
+    "sueldo",
+    "nervioso",
+    "equipo",
+    "plazo"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 14532,
+   "calls": [
+    {
+     "ms": 14531,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 470,
+      "completion_tokens": 671,
+      "total_tokens": 1141,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 22.57272720336914
+     },
+     "neurons": 23,
+     "estimated": false
+    }
+   ],
+   "neurons": 23,
+   "issues": [],
+   "story": {
+    "title": "Una reunión importante",
+    "story": "Laura: Hola, Diego. ¿Cómo estás? Te veo un poco nervioso hoy.\nDiego: Hola, Laura. Sí, es que tengo una entrevista de trabajo en una hora.\nLaura: ¡Qué buena noticia! ¿Es para la empresa de tecnología?\nDiego: Exacto. El puesto requiere mucha experiencia en programación, pero creo que estoy preparado.\nLaura: Estoy segura de que te irá bien. ¿Ya sabes cuánto será el sueldo?\nDiego: No lo sé todavía, pero espero que sea justo. Lo más importante para mí es trabajar con un buen equipo.\nLaura: Tienes razón. Trabajar con gente motivada ayuda mucho a crecer profesionalmente.\nDiego: Además, me dijeron que el proyecto tiene un plazo muy corto para terminar, así que habrá mucho trabajo.\nLaura: No te preocupes, tú puedes con todo. ¡Mucha suerte!\nDiego: Gracias, Laura. Te llamaré cuando salga de la oficina.",
+    "translation": "لورا: مرحبًا دييغو. كيف حالك؟ أراك متوترًا قليلاً اليوم.\nدييغو: مرحبًا لورا. نعم، لأن لدي مقابلة عمل بعد ساعة.\nلورا: يا له من خبر جيد! هل هي لشركة التكنولوجيا؟\nدييغو: بالضبط. المنصب يتطلب خبرة كبيرة في البرمجة، لكنني أعتقد أنني مستعد.\nلورا: أنا متأكدة أنك ستنجح. هل تعرف كم سيكون الراتب؟\nدييغو: لا أعرف بعد، لكنني آمل أن يكون عادلاً. الأهم بالنسبة لي هو العمل مع فريق جيد.\nلورا: معك حق. العمل مع أشخاص متحمسين يساعد كثيرًا في النمو المهني.\nدييغو: بالإضافة إلى ذلك، أخبروني أن المشروع لديه مهلة قصيرة جدًا للانتهاء، لذا سيكون هناك الكثير من العمل.\nلورا: لا تقلق، أنت تستطيع فعل كل شيء. حظًا سعيدًا!\nدييغو: شكرًا لورا. سأتصل بك عندما أخرج من المكتب.",
+    "usedWords": [
+     "entrevista",
+     "experiencia",
+     "sueldo",
+     "nervioso",
+     "equipo",
+     "plazo"
+    ],
+    "questions": [
+     {
+      "question": "¿Cómo se siente Diego hoy?",
+      "answer": "un poco nervioso",
+      "quote": "Te veo un poco nervioso hoy."
+     },
+     {
+      "question": "¿Qué necesita el puesto para la empresa de tecnología?",
+      "answer": "mucha experiencia en programación",
+      "quote": "El puesto requiere mucha experiencia en programación, pero creo que estoy preparado."
+     },
+     {
+      "question": "¿Cómo es el plazo del proyecto?",
+      "answer": "un plazo muy corto",
+      "quote": "Además, me dijeron que el proyecto tiene un plazo muy corto para terminar, así que habrá mucho trabajo."
+     }
+    ]
+   },
+   "storyWords": 135,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "¿Cómo se siente Diego hoy?",
+     "answer": "un poco nervioso",
+     "quote": "Te veo un poco nervioso hoy.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "nervioso"
+     ]
+    },
+    {
+     "question": "¿Qué necesita el puesto para la empresa de tecnología?",
+     "answer": "mucha experiencia en programación",
+     "quote": "El puesto requiere mucha experiencia en programación, pero creo que estoy preparado.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "experiencia"
+     ]
+    },
+    {
+     "question": "¿Cómo es el plazo del proyecto?",
+     "answer": "un plazo muy corto",
+     "quote": "Además, me dijeron que el proyecto tiene un plazo muy corto para terminar, así que habrá mucho trabajo.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "plazo"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 17,
+   "lang": "es-ES",
+   "level": "B2",
+   "genre": "story",
+   "requested": [
+    "alquiler",
+    "fianza",
+    "gotera",
+    "inquilino",
+    "negociar",
+    "propietario",
+    "acuerdo",
+    "reacio"
+   ],
+   "used": [
+    "alquiler",
+    "fianza",
+    "gotera",
+    "inquilino",
+    "negociar",
+    "propietario",
+    "acuerdo",
+    "reacio"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 17581,
+   "calls": [
+    {
+     "ms": 17581,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 486,
+      "completion_tokens": 841,
+      "total_tokens": 1327,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 27.35454559326172
+     },
+     "neurons": 28,
+     "estimated": false
+    }
+   ],
+   "neurons": 28,
+   "issues": [],
+   "story": {
+    "title": "Un nuevo comienzo en la ciudad",
+    "story": "Después de meses buscando, Lucas finalmente encontró un apartamento que parecía ideal. El precio del alquiler era razonable para la zona, pero el propietario se mostraba un poco reacio a mostrar el piso antes de la visita oficial. A pesar de su desconfianza inicial, Lucas decidió seguir adelante.\n\nDurante la inspección, mientras revisaba las paredes, notó una pequeña gotera en el techo del baño. Esto le preocupó bastante, así que decidió que era el momento perfecto para negociar las condiciones del contrato. Lucas llamó al dueño para explicarle la situación y sugerir una pequeña rebaja mensual a cambio de asumir él mismo la reparación.\n\nAl principio, el hombre no quería ceder, pero tras una conversación tranquila, ambos llegaron a un acuerdo satisfactorio. El propietario aceptó reducir la cuota mensual y, a cambio, Lucas aceptó pagar una fianza ligeramente menor de lo habitual. Como buen inquilino, Lucas se aseguró de que todos los detalles quedaran por escrito para evitar malentendidos futuros. Al final, con las llaves en la mano, sintió que su nueva vida en la ciudad finalmente comenzaba con buen pie.",
+    "translation": "بعد شهور من البحث، وجد لوكاس أخيراً شقة تبدو مثالية. كان سعر الإيجار معقولاً بالنسبة للمنطقة، لكن المالك كان متردداً قليلاً في عرض الشقة قبل الزيارة الرسمية. ورغم عدم ثقته الأولية، قرر لوكاس المضي قدماً.\n\nخلال المعاينة، وبينما كان يفحص الجدران، لاحظ تسريباً صغيراً في سقف الحمام. أثار هذا قلقه كثيراً، لذا قرر أن الوقت مثالي للتفاوض على شروط العقد. اتصل لوكاس بالمالك ليشرح له الموقف ويقترح تخفيضاً شهرياً بسيطاً مقابل أن يتولى هو بنفسه الإصلاح.\n\nفي البداية، لم يرغب الرجل في التنازل، ولكن بعد محادثة هادئة، توصل كلاهما إلى اتفاق مرضٍ. وافق المالك على تقليل القسط الشهري، وفي المقابل، وافق لوكاس على دفع تأمين أقل قليلاً من المعتاد. وبصفته مستأجراً جيداً، حرص لوكاس على تدوين جميع التفاصيل كتابياً لتجنب أي سوء تفاهم مستقبلي. في النهاية، والمفاتيح في يده، شعر أن حياته الجديدة في المدينة قد بدأت أخيراً بشكل جيد.",
+    "usedWords": [
+     "alquiler",
+     "fianza",
+     "gotera",
+     "inquilino",
+     "negociar",
+     "propietario",
+     "acuerdo",
+     "reacio"
+    ],
+    "questions": [
+     {
+      "question": "¿Qué problema encontró Lucas en el baño?",
+      "answer": "una pequeña gotera",
+      "quote": "Durante la inspección, mientras revisaba las paredes, notó una pequeña gotera en el techo del baño."
+     },
+     {
+      "question": "¿Cómo era el propietario al principio de la historia?",
+      "answer": "reacio a mostrar el piso",
+      "quote": "El precio del alquiler era razonable para la zona, pero el propietario se mostraba un poco reacio a mostrar el piso antes de la visita oficial."
+     },
+     {
+      "question": "¿Qué decidió hacer Lucas para evitar malentendidos?",
+      "answer": "se aseguró de que todos los detalles quedaran por escrito",
+      "quote": "Como buen inquilino, Lucas se aseguró de que todos los detalles quedaran por escrito para evitar malentendidos futuros."
+     }
+    ]
+   },
+   "storyWords": 181,
+   "band": [
+    170,
+    300
+   ],
+   "questions": [
+    {
+     "question": "¿Qué problema encontró Lucas en el baño?",
+     "answer": "una pequeña gotera",
+     "quote": "Durante la inspección, mientras revisaba las paredes, notó una pequeña gotera en el techo del baño.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "gotera"
+     ]
+    },
+    {
+     "question": "¿Cómo era el propietario al principio de la historia?",
+     "answer": "reacio a mostrar el piso",
+     "quote": "El precio del alquiler era razonable para la zona, pero el propietario se mostraba un poco reacio a mostrar el piso antes de la visita oficial.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "alquiler",
+      "propietario",
+      "reacio"
+     ]
+    },
+    {
+     "question": "¿Qué decidió hacer Lucas para evitar malentendidos?",
+     "answer": "se aseguró de que todos los detalles quedaran por escrito",
+     "quote": "Como buen inquilino, Lucas se aseguró de que todos los detalles quedaran por escrito para evitar malentendidos futuros.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "inquilino"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 18,
+   "lang": "es-ES",
+   "level": "C1",
+   "genre": "story",
+   "requested": [
+    "minucioso",
+    "ambiguo",
+    "sin precedentes",
+    "matiz",
+    "franco",
+    "socavar",
+    "conciliar",
+    "no obstante"
+   ],
+   "used": [
+    "minucioso",
+    "ambiguo",
+    "sin precedentes",
+    "matiz",
+    "franco",
+    "socavar",
+    "conciliar",
+    "no obstante"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 19642,
+   "calls": [
+    {
+     "ms": 19641,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 481,
+      "completion_tokens": 921,
+      "total_tokens": 1402,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 29.490907669067383
+     },
+     "neurons": 30,
+     "estimated": false
+    }
+   ],
+   "neurons": 30,
+   "issues": [],
+   "story": {
+    "title": "El dilema del restaurador",
+    "story": "Julián era un restaurador de arte conocido por su carácter minucioso y su paciencia infinita. Su último encargo era una pintura del siglo XVIII que presentaba un daño sin precedentes debido a la humedad excesiva en la galería. El cuadro era una obra maestra, pero el estado de los pigmentos era sumamente ambiguo; no era fácil determinar si el color original era un azul profundo o un gris ceniza.\n\nDurante semanas, Julián trabajó bajo la luz de una lámpara especial, buscando cada matiz necesario para devolverle la vida a la tela. Sin embargo, se enfrentaba a un dilema ético. El cliente quería que el cuadro luciera como nuevo, pero Julián sabía que una intervención demasiado agresiva podría socavar la autenticidad de la pieza histórica. Debía encontrar la manera de conciliar la estética de la obra con la integridad de su pasado.\n\nEn una reunión con los expertos del museo, Julián se mostró muy franco sobre los riesgos de la restauración. Explicó que cualquier error en la mezcla de los materiales podría alterar la esencia del autor. No obstante, su honestidad fue valorada por el comité, que decidió confiar en su criterio profesional. Al final, la obra no solo recuperó su esplendor, sino que conservó la huella del tiempo, demostrando que la verdadera maestría reside en el respeto por la historia.",
+    "translation": "كان جوليان مرمم فنون معروفاً بطباعه الدقيقة وصبره اللامتناهي. كانت مهمته الأخيرة لوحة من القرن الثامن عشر تعاني من ضرر غير مسبوق بسبب الرطوبة الزائدة في المعرض. كانت اللوحة تحفة فنية، لكن حالة الأصباغ كانت غامضة للغاية؛ لم يكن من السهل تحديد ما إذا كان اللون الأصلي أزرق عميقاً أم رمادياً رمادياً.\n\nعلى مدار أسابيع، عمل جوليان تحت ضوء مصباح خاص، بحثاً عن كل فارق دقيق ضروري لإعادة الحياة إلى القماش. ومع ذلك، فقد واجه معضلة أخلاقية. أراد العميل أن تبدو اللوحة كأنها جديدة، لكن جوليان كان يعلم أن أي تدخل عدواني للغاية قد يقوض أصالة القطعة التاريخية. كان عليه أن يجد طريقة للتوفيق بين جمالية العمل ونزاهة ماضيه.\n\nفي اجتماع مع خبراء المتحف، كان جوليان صريحاً للغاية بشأن مخاطر الترميم. أوضح أن أي خطأ في خلط المواد قد يغير جوهر المؤلف. ومع ذلك، قوبلت صراحته بالتقدير من قبل اللجنة، التي قررت الثقة في رأيه المهني. في النهاية، لم تستعد اللوحة تألقها فحسب، بل حافظت أيضاً على أثر الزمن، مما أثبت أن البراعة الحقيقية تكمن في احترام التاريخ.",
+    "usedWords": [
+     "minucioso",
+     "ambiguo",
+     "sin precedentes",
+     "matiz",
+     "franco",
+     "socavar",
+     "conciliar",
+     "no obstante"
+    ],
+    "questions": [
+     {
+      "question": "¿Por qué el daño de la pintura era especial?",
+      "answer": "debido a la humedad excesiva en la galería",
+      "quote": "Su último encargo era una pintura del siglo XVIII que presentaba un daño sin precedentes debido a la humedad excesiva en la galería."
+     },
+     {
+      "question": "¿Qué temía Julián que ocurriera con la pieza histórica?",
+      "answer": "podría socavar la autenticidad de la pieza histórica",
+      "quote": "Julián sabía que una intervención demasiado agresiva podría socavar la autenticidad de la pieza histórica."
+     },
+     {
+      "question": "¿Cómo fue la actitud de Julián con los expertos?",
+      "answer": "Julián se mostró muy franco sobre los riesgos de la restauración",
+      "quote": "En una reunión con los expertos del museo, Julián se mostró muy franco sobre los riesgos de la restauración."
+     }
+    ]
+   },
+   "storyWords": 220,
+   "band": [
+    200,
+    360
+   ],
+   "questions": [
+    {
+     "question": "¿Por qué el daño de la pintura era especial?",
+     "answer": "debido a la humedad excesiva en la galería",
+     "quote": "Su último encargo era una pintura del siglo XVIII que presentaba un daño sin precedentes debido a la humedad excesiva en la galería.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "sin precedentes"
+     ]
+    },
+    {
+     "question": "¿Qué temía Julián que ocurriera con la pieza histórica?",
+     "answer": "podría socavar la autenticidad de la pieza histórica",
+     "quote": "Julián sabía que una intervención demasiado agresiva podría socavar la autenticidad de la pieza histórica.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "socavar"
+     ]
+    },
+    {
+     "question": "¿Cómo fue la actitud de Julián con los expertos?",
+     "answer": "Julián se mostró muy franco sobre los riesgos de la restauración",
+     "quote": "En una reunión con los expertos del museo, Julián se mostró muy franco sobre los riesgos de la restauración.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "franco"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 19,
+   "lang": "es-ES",
+   "level": "A2",
+   "genre": "story",
+   "requested": [
+    "año",
+    "niño",
+    "español",
+    "corazón",
+    "también",
+    "está"
+   ],
+   "used": [
+    "año",
+    "niño",
+    "español",
+    "corazón",
+    "también",
+    "está"
+   ],
+   "missing": [],
+   "ok": true,
+   "attempts": 1,
+   "ms": 7378,
+   "calls": [
+    {
+     "ms": 7377,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 453,
+      "completion_tokens": 459,
+      "total_tokens": 912,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 16.636363983154297
+     },
+     "neurons": 17,
+     "estimated": false
+    }
+   ],
+   "neurons": 17,
+   "issues": [],
+   "story": {
+    "title": "Un nuevo amigo",
+    "story": "Lucas es un niño de diez años. Él vive en una ciudad muy grande. El año pasado, Lucas viajó a España para aprender un nuevo idioma. Ahora, él está en una escuela de idiomas. En su clase, hay un estudiante español llamado Mateo. Mateo es muy simpático y también es muy inteligente. Un día, Lucas y Mateo jugaron en el parque después de las clases. Lucas sintió mucha alegría en su corazón porque encontró un buen amigo. Ahora, ellos estudian juntos todos los días y practican mucho.",
+    "translation": "لوكاس طفل في العاشرة من عمره. هو يعيش في مدينة كبيرة جدًا. في العام الماضي، سافر لوكاس إلى إسبانيا لتعلم لغة جديدة. الآن، هو في مدرسة لغات. في فصله، يوجد طالب إسباني يدعى ماتيو. ماتيو لطيف جدًا وأيضًا ذكي جدًا. ذات يوم، لعب لوكاس وماتيو في الحديقة بعد الدروس. شعر لوكاس بفرح كبير في قلبه لأنه وجد صديقًا جيدًا. الآن، يدرسان معًا كل يوم ويتدربان كثيرًا.",
+    "usedWords": [
+     "año",
+     "niño",
+     "español",
+     "corazón",
+     "también",
+     "está"
+    ],
+    "questions": [
+     {
+      "question": "¿Cuántos años tiene Lucas?",
+      "answer": "diez años",
+      "quote": "Lucas es un niño de diez años."
+     },
+     {
+      "question": "¿Cómo es Mateo?",
+      "answer": "muy simpático y también es muy inteligente",
+      "quote": "Mateo es muy simpático y también es muy inteligente."
+     },
+     {
+      "question": "¿Qué sintió Lucas en su corazón?",
+      "answer": "mucha alegría",
+      "quote": "Lucas sintió mucha alegría en su corazón porque encontró un buen amigo."
+     }
+    ]
+   },
+   "storyWords": 87,
+   "band": [
+    90,
+    170
+   ],
+   "questions": [
+    {
+     "question": "¿Cuántos años tiene Lucas?",
+     "answer": "diez años",
+     "quote": "Lucas es un niño de diez años.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "niño"
+     ]
+    },
+    {
+     "question": "¿Cómo es Mateo?",
+     "answer": "muy simpático y también es muy inteligente",
+     "quote": "Mateo es muy simpático y también es muy inteligente.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "también"
+     ]
+    },
+    {
+     "question": "¿Qué sintió Lucas en su corazón?",
+     "answer": "mucha alegría",
+     "quote": "Lucas sintió mucha alegría en su corazón porque encontró un buen amigo.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "corazón"
+     ]
+    }
+   ],
+   "rejected": null
+  },
+  {
+   "model": "@cf/google/gemma-4-26b-a4b-it",
+   "id": 20,
+   "lang": "es-ES",
+   "level": "B1",
+   "genre": "story",
+   "requested": [
+    "echar de menos",
+    "darse cuenta",
+    "ponerse de acuerdo",
+    "tener ganas de"
+   ],
+   "used": [
+    "echar de menos",
+    "darse cuenta",
+    "ponerse de acuerdo"
+   ],
+   "missing": [
+    "tener ganas de"
+   ],
+   "ok": true,
+   "attempts": 1,
+   "ms": 15339,
+   "calls": [
+    {
+     "ms": 15338,
+     "finish": "stop",
+     "usage": {
+      "prompt_tokens": 441,
+      "completion_tokens": 710,
+      "total_tokens": 1151,
+      "prompt_tokens_details": {
+       "cached_tokens": 0
+      },
+      "neurons": 23.372726440429688
+     },
+     "neurons": 24,
+     "estimated": false
+    }
+   ],
+   "neurons": 24,
+   "issues": [],
+   "story": {
+    "title": "Un reencuentro inesperado",
+    "story": "Lucas vivía en una ciudad muy grande y siempre estaba ocupado con su trabajo. Aunque tenía muchos amigos, a veces sentía que debía echar de menos su antiguo pueblo y la tranquilidad de la naturaleza. Un viernes por la tarde, después de una semana muy larga, decidió llamar a su mejor amigo, Mateo.\n\nPrimero, tuvieron que ponerse de acuerdo sobre la hora y el lugar para verse. Finalmente, decidieron ir a un pequeño café cerca del parque. Mientras caminaba hacia la cafetería, Lucas empezó a darse cuenta de lo mucho que necesitaba un descanso de la tecnología y el ruido constante.\n\nCuando llegó al café, vio a Mateo sonriendo desde una mesa al fondo. Lucas tenía muchas ganas de contarle todas sus aventuras y de hablar durante horas. Pasaron la tarde riendo y recordando viejos tiempos. Al final del día, Lucas se sintió mucho más feliz y relajado que antes.",
+    "translation": "كان لوكاس يعيش في مدينة كبيرة جدًا وكان دائمًا مشغولًا بعمله. على الرغم من أن لديه الكثير من الأصدقاء، إلا أنه كان يشعر أحيانًا أنه يجب أن يشتاق إلى قريته القديمة وهدوء الطبيعة. في أحد أيام الجمعة بعد الظهر، وبعد أسبوع طويل جدًا، قرر الاتصال بصديقه المفضل، ماتيو.\n\nفي البداية، كان عليهم الاتفاق على الوقت والمكان للقاء. وأخيرًا، قرروا الذهاب إلى مقهى صغير بالقرب من المنتزه. بينما كان يمشي نحو المقهى، بدأ لوكاس يدرك مدى حاجته إلى استراحة من التكنولوجيا والضجيج المستمر.\n\nعندما وصل إلى المقهى، رأى ماتيو يبتسم من طاولة في الخلف. كان لدى لوكاس رغبة كبيرة في إخباره بكل مغامراته والتحدث لساعات. قضوا بعد الظهر في الضحك وتذكر الأوقات القديمة. في نهاية اليوم، شعر لوكاس بسعادة واسترخاء أكبر بكثير مما كان عليه من قبل.",
+    "usedWords": [
+     "echar de menos",
+     "darse cuenta",
+     "ponerse de acuerdo"
+    ],
+    "questions": [
+     {
+      "question": "¿Qué sentía Lucas a veces?",
+      "answer": "debía echar de menos su antiguo pueblo",
+      "quote": "Aunque tenía muchos amigos, a veces sentía que debía echar de menos su antiguo pueblo y la tranquilidad de la naturaleza."
+     },
+     {
+      "question": "¿Qué decidió hacer Lucas mientras caminaba?",
+      "answer": "empezó a darse cuenta de lo mucho que necesitaba un descanso",
+      "quote": "Mientras caminaba hacia la cafetería, Lucas empezó a darse cuenta de lo mucho que necesitaba un descanso de la tecnología y el ruido constante."
+     },
+     {
+      "question": "¿Qué quería hacer Lucas al ver a Mateo?",
+      "answer": "tenía muchas ganas de contarle todas sus aventuras",
+      "quote": "Lucas tenía muchas ganas de contarle todas sus aventuras y de hablar durante horas."
+     }
+    ]
+   },
+   "storyWords": 150,
+   "band": [
+    130,
+    230
+   ],
+   "questions": [
+    {
+     "question": "¿Qué sentía Lucas a veces?",
+     "answer": "debía echar de menos su antiguo pueblo",
+     "quote": "Aunque tenía muchos amigos, a veces sentía que debía echar de menos su antiguo pueblo y la tranquilidad de la naturaleza.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "echar de menos"
+     ]
+    },
+    {
+     "question": "¿Qué decidió hacer Lucas mientras caminaba?",
+     "answer": "empezó a darse cuenta de lo mucho que necesitaba un descanso",
+     "quote": "Mientras caminaba hacia la cafetería, Lucas empezó a darse cuenta de lo mucho que necesitaba un descanso de la tecnología y el ruido constante.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": [
+      "darse cuenta"
+     ]
+    },
+    {
+     "question": "¿Qué quería hacer Lucas al ver a Mateo?",
+     "answer": "tenía muchas ganas de contarle todas sus aventuras",
+     "quote": "Lucas tenía muchas ganas de contarle todas sus aventuras y de hablar durante horas.",
+     "quoteInStory": true,
+     "answerInQuote": true,
+     "answerTermsFromBatch": []
+    }
+   ],
+   "rejected": null
+  }
+ ]
+}

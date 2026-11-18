@@ -55,7 +55,7 @@ Each check below happens in this order:
 7. Daily quota per user (default 10, keyed by the Cloudflare Access identity, else the IP).
 8. Global daily budget (default 200). Fails **closed**.
 9. Daily neuron budget: each model call reserves its worst case first (default 8,000, ceiling 9,000 — below the 10,000/day free allocation).
-10. 30-second timeout, plus client cancellation.
+10. 45-second timeout (measured max 30.1 s with a repair), plus client cancellation.
 11. Output validation, with one bounded repair call (also metered), then a 422.
 
 The API key never reaches the browser: Workers AI is a binding.
@@ -105,6 +105,11 @@ It runs them through both candidates with the same validator and repair, and wri
 1. **Account plan: Workers Free** (dashboard → Workers plans shows «Current plan» on Free). Cloudflare's pricing page: on Free, usage above 10,000 neurons/day *fails with an error*; it is billed only on Workers Paid. Cloudflare offers **no** Workers AI spend cap, so this guarantee holds **only while the account stays on Free and no AI Gateway «Unified billing» / prepaid credits are set up**. Upgrading the plan must be a deliberate owner decision that revisits this section.
 2. **App-side hard budget** (works on any plan): every model call first reserves its worst case (input estimate at 1 token / 2 chars + 1,600 output tokens) in D1 atomically, and is refused if today's total would pass `AI_NEURON_DAILY` (default **8,000**, ceiling **9,000** in code — a var cannot raise it). The reservation is then settled down to the usage the model reports. A repair that does not fit is not attempted. Gemma worst case ≈ 55–60 neurons per call, so 8,000 always covers ≥ 130 calls; typical ≈ 37 per story.
 3. The 10,000/day allocation is **per account** (resets 00:00 UTC): the eval script shares it, so it has its own budget (`EVAL_NEURON_BUDGET`, default 3,000, max 4,000; worst case for 20 cases ≈ 1,059, ≈ 2,118 with a repair each). Run the eval on a day the story budget is not in heavy use.
+
+## 5c. Eval result (2026-11-18, Gemma 4 26B, prompt story-v1): `docs/eval/STORY_EVAL_2026-11-18.md`
+- **Finding:** with Gemma's default reasoning ON, the model spent all 1,600 output tokens on hidden reasoning and returned empty content (`finish_reason: length`), so 9/9 cases failed. Fix: `chat_template_kwargs.enable_thinking=false` in the shared `modelInput()`, used by both the Worker and the eval.
+- **After the fix:** 20/20 pass the automatic gate (2 needed their one repair). 111/115 words were found by the exact matcher; the 4 «missing» words are present in inflected form (looks forward to, barata, prestarle, tenía ganas de). Median 14.5 s, max 30.1 s. ≈ 23.5 neurons per story, about $0.00026.
+- **Neurons spent on the whole test:** ≈ 1,403 of the approved 3,000 (933 on the failed first run + 2 diagnostic calls, then 470 on the run itself).
 
 ## 6. Cost estimate (my arithmetic, using the prices above)
 **Per story:**

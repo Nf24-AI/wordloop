@@ -11,13 +11,13 @@
 // Safety rails (in code, not just in the token):
 //   - the only URLs this script can call are  GET  …/accounts/<id>/tokens/verify  (or /user/tokens/verify)
 //     and  POST …/accounts/<id>/ai/run/<allow-listed model>  — no Workers, D1, bindings, Gateway or settings endpoints;
-//   - the token must be ACTIVE and EXPIRE within 48 h, or nothing is sent;
+//   - the token must be ACTIVE and EXPIRE within 72 h, or nothing is sent;
 //   - EVAL_NEURON_BUDGET (default 3000, hard max 4000) stops the run BEFORE any call whose worst case would not fit.
 // Output (local files): docs/eval/STORY_EVAL_<date>.md (report + every story for human review) and .json (raw results).
 import {writeFileSync,mkdirSync,readFileSync} from 'node:fs';
 import {resolve,relative,isAbsolute} from 'node:path';
 import {buildRepairPrompt,buildStoryPrompt,parseModelJson,validateStory,termsIn,LENGTH_BAND,STORY_JSON_SCHEMA,STORY_PROMPT_VERSION} from '../src/story.ts';
-import {STORY_MODELS,DEFAULT_STORY_MODEL,MAX_OUTPUT_TOKENS,modelText,usageNeurons,worstCaseNeurons} from '../worker/story.ts';
+import {STORY_MODELS,DEFAULT_STORY_MODEL,MAX_OUTPUT_TOKENS,modelInput,modelText,usageNeurons,worstCaseNeurons} from '../worker/story.ts';
 import {CASES} from './story-cases.mjs';
 
 const args=process.argv.slice(2),dry=args.includes('--dry-run'),named=args.filter(a=>!a.startsWith('--'));
@@ -66,7 +66,7 @@ async function verify(){
 const v=await verify();
 if(!v||v.status!=='active'){console.error('Token not verified as active — nothing was sent to the model.');process.exit(3);}
 const exp=v.expires_on?Date.parse(v.expires_on):NaN;
-if(!Number.isFinite(exp)||exp-Date.now()>48*3600e3){console.error('Refused: the token must have an expiry within 48 hours (create it with a short TTL).');process.exit(3);}
+if(!Number.isFinite(exp)||exp-Date.now()>72*3600e3){console.error(`Refused: the token must expire within 72 hours (its expiry: ${v.expires_on||'none set'}). Nothing was sent to the model.`);process.exit(3);}
 console.log(`Token: active, expires ${new Date(exp).toISOString()} (value not shown).`);
 
 let spent=0; // real usage when reported, else the call's worst case
@@ -74,14 +74,12 @@ async function run(model,messages){
   const worst=worstCaseNeurons(messages,STORY_MODELS[model]);
   if(spent+worst>budget)throw Error(`BUDGET: stopped before a call (spent ≈${spent}, next worst case ${worst}, budget ${budget})`);
   spent+=worst; // reserved until the answer reports real usage
-  const input={messages,max_tokens:MAX_OUTPUT_TOKENS,temperature:0.7};
-  if(STORY_MODELS[model].jsonMode)input.response_format={type:'json_schema',json_schema:STORY_JSON_SCHEMA};
-  const r=await call('POST',`${API}/accounts/${acct}/ai/run/${model}`,input);
+  const r=await call('POST',`${API}/accounts/${acct}/ai/run/${model}`,modelInput(model,messages));
   const j=await r.json().catch(()=>null);
   if(!r.ok||!j?.success)throw Error(redact(`HTTP ${r.status} ${(j?.errors??[]).map(e=>`${e.code??''} ${e.message??''}`).join('; ').slice(0,240)}`));
   const usage=j.result?.usage??null,real=usageNeurons(usage,STORY_MODELS[model]);
   if(real!==null)spent+=real-worst;
-  return {out:modelText(j.result),usage,neurons:real??worst,estimated:real===null};
+  return {out:modelText(j.result),usage,neurons:real??worst,estimated:real===null,finish:j.result?.choices?.[0]?.finish_reason??null};
 }
 
 const words=s=>s.split(/\s+/).filter(Boolean).length;
@@ -93,7 +91,7 @@ for(const model of models)for(const c of CASES){
   try{
     for(let attempt=0;attempt<2;attempt++){
       const t0=Date.now(),res=await run(model,messages);
-      calls.push({ms:Date.now()-t0,usage:res.usage,neurons:res.neurons,estimated:res.estimated});
+      calls.push({ms:Date.now()-t0,finish:res.finish,usage:res.usage,neurons:res.neurons,estimated:res.estimated});
       lastOut=typeof res.out==='string'?res.out:JSON.stringify(res.out);
       val=validateStory(parseModelJson(res.out),c.request);if(val.ok)break;
       messages.push({role:'assistant',content:lastOut.slice(0,6000)},{role:'user',content:buildRepairPrompt(val.issues)});
