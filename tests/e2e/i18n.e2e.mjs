@@ -105,7 +105,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.goto(base()+'/#/');await page.waitForSelector('main h1');
       await page.click('.tab-add');await page.getByRole('dialog',{name:'What would you like to do?'}).waitFor();
       assert.ok(!ARABIC.test(await uiText(page)),'quick actions sheet');
-      assert.match(await page.locator('[data-action=practice]').textContent(),/Reading and listening on your texts/);
+      assert.match(await page.locator('[data-action=practice]').textContent(),/A story from your words to read and hear/);
       assert.equal(await page.getAttribute('.tab-add','aria-label').then(v=>ARABIC.test(v)),false,'+ label');
       assert.deepEqual(errors,[]);
       await context.close();

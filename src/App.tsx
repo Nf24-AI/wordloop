@@ -1,13 +1,16 @@
+import {createPortal} from 'react-dom';
 import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
 import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,Sparkles,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
 import {addWord,addWords,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
-import {buildListening,buildReading,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
+import {buildListening,buildReading,cardsInPassage,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
 import {applyUpdate,dismissUpdate,onUpdateStatus,updateStatus,type UpdateStatus} from './update';
 import {disablePush,enablePush,markPracticed,practiceReminders,pushState,pushSupported,setPracticeAvailable,setPracticeReminders,syncPush,testPush} from './push';
 import {dictionaries,errorKeys,LOCALES,storedLocale,storeLocale,type Dict,type Locale} from './i18n';
 import {readContinue,rememberContinue,resolveContinue} from './continue';
 import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX_LINES,type BulkRow} from './bulk';
+import {batchToGenerate,buildStoryRequest,defaultSelection,eligibleWords,giveConsent,hasConsent,keepEligible,newPlan,readPlan,readSelection,readSettings,recordStory,requestStory,selectState,storyLanguageOk,writePlan,writeSelection,writeSettings,type Plan,type PracticeSettings,type StoryFailure} from './practicePlan';
+import {batchesLeft,highlightParts,planFinished,BATCH_SIZE,CEFR_LEVELS,STORY_GENRES,type StoryRequest} from './story';
 import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
 
 /* ───────────── Language (#6) ─────────────
@@ -602,11 +605,18 @@ function ReviewPage({words,lib,scope,onReviewed,onNavigate,go}:{words:Word[];lib
 type Library={folders:Folder[];decks:Deck[]};
 type LibView={kind:'root';tab:'folders'|'all'|'due'}|{kind:'folder';id:string}|{kind:'deck';id:string}
   |{kind:'texts';deckId:string}|{kind:'passage';deckId:string;id:string}|{kind:'passageEdit';deckId:string;id:string|null}|{kind:'practice';mode:'read'|'listen';deckId:string;id:string}
-  |{kind:'lesson';deckId:string}|{kind:'hub';deckId:string|null};
+  |{kind:'lesson';deckId:string}|{kind:'hub';deckId:string|null}
+  |{kind:'pick';deckId:string}|{kind:'gen';deckId:string}|{kind:'story';deckId:string;id:string};
 /** `''` folders grid · `all` / `due` card tabs · `f/<id>` a folder's decks · `d/<id>` a deck's cards. Tabs are routes, so Back works. */
 function parseLibrary(sub:string):LibView{
   const [k,id,t,pid,e]=sub.split('/');
-  if(k==='practice')return {kind:'hub',deckId:id?decodeURIComponent(id):null}; // #61: `practice` · `practice/<deck>`
+  if(k==='practice'){ // #61/#64: `practice` · `practice/<deck>` · `…/words` · `…/new` · `…/s/<story>`
+    const deckId=id?decodeURIComponent(id):null;
+    if(deckId&&t==='words'&&!pid)return {kind:'pick',deckId};
+    if(deckId&&t==='new'&&!pid)return {kind:'gen',deckId};
+    if(deckId&&t==='s'&&pid)return {kind:'story',deckId,id:decodeURIComponent(pid)};
+    return {kind:'hub',deckId};
+  }
   // #21: `d/<deck>/texts` · `d/<deck>/texts/new` · `d/<deck>/texts/<id>` · `d/<deck>/texts/<id>/edit`
   if(k==='d'&&id&&t==='texts'){const deckId=decodeURIComponent(id);
     if(!pid)return {kind:'texts',deckId};if(pid==='new')return {kind:'passageEdit',deckId,id:null};
@@ -634,11 +644,14 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   const counts=useMemo(()=>libraryCounts(words,lib.decks),[words,lib.decks]);
   if(!lib.folders.length)return <div className="page library" aria-busy="true"><PageHead title={T.lib.title}/></div>;
   const shared={words,reviews,lib,passages,counts,onChanged,notify,go};
-  if(view.kind==='hub')return <PracticeHub key={view.deckId??''} deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
+  if(view.kind==='hub')return <PracticeHub key={view.deckId??''} deckId={view.deckId} lib={lib} words={words} passages={passages} notify={notify} go={go}/>;
+  if(view.kind==='pick')return <WordPicker key={view.deckId} deckId={view.deckId} lib={lib} words={words} go={go}/>;
+  if(view.kind==='gen')return <StoryGenerate key={view.deckId} deckId={view.deckId} lib={lib} words={words} onChanged={onChanged} go={go}/>;
+  if(view.kind==='story')return <StoryView key={view.id} deckId={view.deckId} id={view.id} lib={lib} words={words} passages={passages} go={go}/>;
   if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
-  if(view.kind==='practice')return <ListeningPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} go={go}/>;
+  if(view.kind==='practice')return <ListeningPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
   if(view.kind==='passageEdit')return <PassageEditor key={view.id??'new'} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='lesson')return <LessonPage key={view.deckId} deckId={view.deckId} lib={lib} words={words} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='folder')return <FolderView key={view.id} id={view.id} {...shared}/>;
@@ -815,9 +828,9 @@ function DeckView({id,words,reviews,lib,passages,counts,onChanged,notify,go}:Lib
       {/* #24: only with the build flag AND a configured generator — neither exists in shipped builds. */}
       {aiLessonsAvailable()&&cards.length>0&&<button type="button" className="btn btn-quiet" onClick={()=>go(deckPath(id)+'/lesson')}><Sparkles size={18} aria-hidden="true"/>{T.lesson.entry}</button>}</div>
     <TextsRow deckId={id} count={textCount} go={go}/>
-    {textCount>0&&<button type="button" className="deck-row practice-row" onClick={()=>go(HUB+'/'+encodeURIComponent(id))}>
+    {(textCount>0||cards.some(c=>!c.archived))&&<button type="button" className="deck-row practice-row" onClick={()=>go(HUB+'/'+encodeURIComponent(id))}>
       <span className="folder-icon sm" aria-hidden="true"><Headphones size={19} strokeWidth={1.8}/></span>
-      <span className="deck-text"><b>{T.hub.entry}</b><small>{T.hub.lead}</small></span><Fwd size={18}/></button>}
+      <span className="deck-text"><b>{T.hub.entry}</b><small>{T.story.lead}</small></span><Fwd size={18}/></button>}
     {cards.length>0&&<div className="library-tools"><SearchBox value={q} onChange={setQ} placeholder={T.library.searchPh} label={T.library.search}/></div>}
     {!cards.length?<div className="empty small"><Layers3 size={26} strokeWidth={1.6}/><h2>{L.deckEmptyTitle}</h2><p>{L.deckEmptyBody}</p></div>
       :!list.length?<NoMatch onClear={()=>setQ('')}/>
@@ -857,42 +870,236 @@ function TextsView({deckId,lib,passages,go}:{deckId:string;lib:Library;passages:
   </div>;
 }
 
-/* ───────────── Practice hub (#61): Practice → deck → text → Reading / Listening ───────────── */
+/* ───────────── Practice 2.0 (#64): Practice → deck → words → Start → AI story → Reading / Listening → result ─────────────
+ * One obvious action (Start). Deck, words, level and story/conversation have sensible defaults; changing them is optional.
+ * The story is generated only after explicit consent, validated twice (server + here), and saved as an ordinary local
+ * Passage (#21), so Reading/Listening, backup/restore and offline use all work unchanged. Practice never touches FSRS. */
 const HUB='words/practice';
-function PracticeHub({deckId,lib,passages,go}:{deckId:string|null;lib:Library;passages:Passage[];go:(path:string)=>void}){
-  const H=T.hub,P=T.practice;
-  const countOf=(id:string)=>passages.filter(p=>p.deckId===id).length;
-  if(deckId===null){
-    // Decks that have texts first; decks without texts stay reachable (to add one) but quieter.
-    const decks=[...lib.decks].sort((a,b)=>(countOf(b.id)>0?1:0)-(countOf(a.id)>0?1:0));
-    const any=passages.some(p=>lib.decks.some(d=>d.id===p.deckId));
-    return <div className="page library practice-hub">
-      <PageHead title={H.title} lead={H.lead}/>
-      {!any&&<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{H.emptyTitle}</h2><p>{H.emptyBody}</p></div>}
-      <h2 className="hub-heading">{any?H.decksTitle:H.chooseDeckFirst}</h2>
-      <ul className="deck-list">{decks.map(d=>{const n=countOf(d.id),f=lib.folders.find(x=>x.id===d.folderId);
-        return <li key={d.id}><button type="button" className={'deck-row'+(n?'':' hub-muted')} onClick={()=>go(n?HUB+'/'+encodeURIComponent(d.id):textsPath(d.id)+'/new')}>
-          <span className="folder-icon sm" aria-hidden="true">{n?<Headphones size={19} strokeWidth={1.8}/>:<Plus size={19} strokeWidth={1.8}/>}</span>
-          <span className="deck-text"><b dir="auto">{deckName(d)}</b><small>{f?folderName(f)+' · ':''}{n?T.texts.count(n):H.addText}</small></span>
-          <span className="lang-chip" dir="ltr">{langCode(d.contentLanguage)}</span><Fwd size={18}/></button></li>;})}</ul>
-    </div>;
-  }
-  const deck=lib.decks.find(d=>d.id===deckId);
-  if(!deck)return <NotFound go={go}/>;
-  const list=passages.filter(p=>p.deckId===deckId);
-  return <div className="page library head-inline practice-hub">
-    <PageHead title={deckName(deck)} lead={H.textsTitle}>
-      <div className="head-actions"><button type="button" className="btn btn-ink head-add" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18} aria-hidden="true"/>{H.addText}</button></div>
-    </PageHead>
-    {list.length?<ul className="hub-list">{list.map(p=><li key={p.id} className="hub-item">
-        <div className="hub-text"><b dir="auto">{p.title}</b><small dir={dirOf(p.contentLanguage)} lang={p.contentLanguage} className="passage-snippet">{p.body.replace(/\s+/g,' ').slice(0,90)}</small></div>
-        <div className="hub-actions">
-          <button type="button" className="btn btn-ink sm" aria-label={`${P.readAction}: ${p.title}`} onClick={()=>go(passagePath(deckId,p.id)+'/read')}><BookOpen size={16} aria-hidden="true"/>{P.readAction}</button>
-          <button type="button" className="btn btn-quiet sm" aria-label={`${T.listening.action}: ${p.title}`} onClick={()=>go(passagePath(deckId,p.id)+'/listen')}><Headphones size={16} aria-hidden="true"/>{T.listening.action}</button>
-        </div></li>)}</ul>
-      :<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{H.deckEmptyTitle}</h2><p>{H.deckEmptyBody}</p>
-        <button type="button" className="btn btn-ink" onClick={()=>go(textsPath(deckId)+'/new')}><Plus size={18}/>{H.addText}</button></div>}
+const hubDeck=(id:string)=>HUB+'/'+encodeURIComponent(id);
+const storyPath=(deckId:string,id:string)=>hubDeck(deckId)+'/s/'+encodeURIComponent(id);
+/** Replace the current route (no history entry): used after generation so Back never lands on the generator again. */
+function replaceRoute(path:string){replacingRoute=true;window.location.replace('#/'+path);}
+const meaningText=(w:Word)=>(w.meanings?.length?w.meanings:[w.meaning]).filter(Boolean).join('، ');
+function planIndex(plan:Plan,passageId:string){const i=plan.stories.findIndex(s=>s.passageId===passageId);return {i,total:plan.stories.length+batchesLeft(plan.state)};}
+
+function PracticeHub({deckId,lib,words,passages,notify,go}:{deckId:string|null;lib:Library;words:Word[];passages:Passage[];notify:Notify;go:(path:string)=>void}){
+  const S=T.story,H=T.hub,P=T.practice;
+  const [settings,setSettings]=useState(readSettings),[consent,setConsentState]=useState(hasConsent);
+  const eligibleBy=useMemo(()=>new Map(lib.decks.map(d=>[d.id,eligibleWords(words,d.id)])),[lib.decks,words]);
+  const fallback=[...lib.decks].sort((a,b)=>(eligibleBy.get(b.id)?.length??0)-(eligibleBy.get(a.id)?.length??0))[0]?.id??null;
+  const chosen=deckId??(settings.deckId&&lib.decks.some(d=>d.id===settings.deckId)?settings.deckId:fallback);
+  const deck=lib.decks.find(d=>d.id===chosen);
+  if(deckId&&!deck)return <NotFound go={go}/>;
+  const save=(s:PracticeSettings)=>{setSettings(s);writeSettings(s);};
+  const pickDeck=(id:string)=>{save({...settings,deckId:id});if(deckId)stepBackTo(hubDeck(id));};
+  const eligible=deck?eligibleBy.get(deck.id)??[]:[];
+  const selected=deck?keepEligible(readSelection(deck.id)??defaultSelection(eligible,settings.level),eligible):[];
+  const plan=readPlan(),planHere=plan&&deck&&plan.deckId===deck.id&&!planFinished(plan.state)?plan:null;
+  const langOk=!!deck&&storyLanguageOk(deck),texts=deck?passages.filter(p=>p.deckId===deck.id):[];
+  const nBatches=Math.ceil(selected.length/BATCH_SIZE[settings.level]);
+  const preview=selected.slice(0,8).map(id=>eligible.find(w=>w.id===id)!).filter(Boolean);
+  function start(){if(!deck||!selected.length)return;writePlan(newPlan(deck.id,selected,settings.level,settings.genre));go(hubDeck(deck.id)+'/new');}
+  const decksWithWords=lib.decks.filter(d=>(eligibleBy.get(d.id)?.length??0)>0||passages.some(p=>p.deckId===d.id));
+  return <div className="page library practice-hub practice2">
+    <PageHead title={S.title} lead={S.lead}/>
+    {lib.decks.length>1&&<div className="deck-chips" role="group" aria-label={S.deck}>{(decksWithWords.length?decksWithWords:lib.decks).map(d=>
+      <button type="button" key={d.id} className={'chip'+(d.id===deck?.id?' on':'')} aria-pressed={d.id===deck?.id} onClick={()=>pickDeck(d.id)}>
+        <span dir="auto">{deckName(d)}</span><span className="chip-n" dir="ltr">{langCode(d.contentLanguage)}</span></button>)}</div>}
+    {deck&&(!eligible.length
+      ?<div className="empty small"><BookOpen size={26} strokeWidth={1.6}/><h2>{S.noWordsTitle}</h2><p>{S.noWordsBody}</p>
+        <button type="button" className="btn btn-ink" onClick={()=>go('add/'+encodeURIComponent(deck.id))}><Plus size={18}/>{S.addWords}</button></div>
+      :!langOk?<p className="practice-note story-soon" role="status">{S.langSoon(langName(deck.contentLanguage))}</p>
+      :<section className="story-start" aria-labelledby="story-start-h">
+        {planHere&&<div className="plan-banner" role="status"><div><b>{S.plan(planHere.stories.length+1,planHere.stories.length+batchesLeft(planHere.state))}</b><small>{S.planLeft(planHere.state.queue.length)}</small></div>
+          <div className="btn-row"><button type="button" className="btn btn-ink sm" onClick={()=>go(hubDeck(deck.id)+'/new')}>{S.continuePlan}</button>
+            <button type="button" className="btn btn-quiet sm" onClick={()=>{writePlan(null);setSettings({...settings});}}>{S.restart}</button></div></div>}
+        <h2 id="story-start-h" className="sr-only">{S.start}</h2>
+        <button type="button" className="word-summary" onClick={()=>go(hubDeck(deck.id)+'/words')}>
+          <span className="word-summary-top"><b>{S.selected(selected.length,eligible.length)}</b><span className="link-like">{S.chooseWords}<Fwd size={16}/></span></span>
+          <span className="word-pills" lang={deck.contentLanguage} dir={dirOf(deck.contentLanguage)}>{preview.map(w=><span key={w.id} className="word-pill">{w.term}</span>)}{selected.length>preview.length&&<span className="word-pill more" dir="ltr">+{selected.length-preview.length}</span>}</span>
+        </button>
+        {nBatches>1&&<p className="practice-note">{S.batches(nBatches)}</p>}
+        <details className="learn-details story-custom"><summary>{S.customize} · <span dir="ltr">{settings.level}</span> · {S.genres[settings.genre]}</summary>
+          <fieldset className="practice-field"><legend>{S.level}</legend>
+            <div className="chips">{CEFR_LEVELS.map(l=><button type="button" key={l} dir="ltr" className={'chip'+(settings.level===l?' on':'')} aria-pressed={settings.level===l} onClick={()=>save({...settings,level:l})}>{l}</button>)}</div>
+            <p className="practice-note">{S.levelHint}</p></fieldset>
+          <fieldset className="practice-field"><legend>{S.genre}</legend>
+            <div className="chips">{STORY_GENRES.map(g=><button type="button" key={g} className={'chip'+(settings.genre===g?' on':'')} aria-pressed={settings.genre===g} onClick={()=>save({...settings,genre:g})}>{S.genres[g]}</button>)}</div></fieldset>
+          {consent&&<button type="button" className="btn btn-quiet sm" onClick={()=>{giveConsent(false);setConsentState(false);notify(S.withdrawn);}}>{S.withdraw}</button>}
+        </details>
+        <button type="button" className="btn btn-ink btn-lg practice-start story-go" disabled={!selected.length} onClick={start}><Sparkles size={18} aria-hidden="true"/>{S.start}</button>
+        <p className="practice-note">{P.noFsrs}</p>
+      </section>)}
+    {deck&&<section className="story-texts" aria-labelledby="story-texts-h">
+      <div className="section-head"><h2 id="story-texts-h" className="hub-heading">{S.yourTexts}</h2>
+        <button type="button" className="btn btn-quiet sm" onClick={()=>go(textsPath(deck.id)+'/new')}><Plus size={16} aria-hidden="true"/>{S.addText}</button></div>
+      {texts.length?<ul className="hub-list">{texts.map(p=><li key={p.id} className="hub-item">
+          <div className="hub-text"><b dir="auto">{p.title}</b><small dir={dirOf(p.contentLanguage)} lang={p.contentLanguage} className="passage-snippet">{p.body.replace(/\s+/g,' ').slice(0,90)}</small></div>
+          <div className="hub-actions">
+            <button type="button" className="btn btn-ink sm" aria-label={`${P.readAction}: ${p.title}`} onClick={()=>go(passagePath(deck.id,p.id)+'/read')}><BookOpen size={16} aria-hidden="true"/>{P.readAction}</button>
+            <button type="button" className="btn btn-quiet sm" aria-label={`${T.listening.action}: ${p.title}`} onClick={()=>go(passagePath(deck.id,p.id)+'/listen')}><Headphones size={16} aria-hidden="true"/>{T.listening.action}</button>
+          </div></li>)}</ul>
+        :<p className="practice-note empty-texts">{H.deckEmptyBody}</p>}
+    </section>}
+    {!deck&&<div className="empty small"><FileText size={26} strokeWidth={1.6}/><h2>{S.noWordsTitle}</h2><p>{S.noWordsBody}</p></div>}
   </div>;
+}
+
+/** Word selection (#64): every active card of the deck, select/deselect all, a live counter; stays fast with 1,000+ cards. */
+function WordPicker({deckId,lib,words,go}:{deckId:string;lib:Library;words:Word[];go:(path:string)=>void}){
+  const S=T.story,X=S.picker,deck=lib.decks.find(d=>d.id===deckId);
+  const eligible=useMemo(()=>eligibleWords(words,deckId),[words,deckId]);
+  const level=readSettings().level;
+  const [sel,setSel]=useState<Set<string>>(()=>new Set(keepEligible(readSelection(deckId)??defaultSelection(eligible,level),eligible)));
+  const [q,setQ]=useState('');
+  if(!deck)return <NotFound go={go}/>;
+  const commit=(next:Set<string>)=>{setSel(next);writeSelection(deckId,eligible.filter(w=>next.has(w.id)).map(w=>w.id));};
+  const state=selectState(sel,eligible),n=eligible.filter(w=>sel.has(w.id)).length;
+  const needle=q.trim().normalize('NFC').toLocaleLowerCase();
+  const shown=needle?eligible.filter(w=>w.term.normalize('NFC').toLocaleLowerCase().includes(needle)||meaningText(w).toLocaleLowerCase().includes(needle)):eligible;
+  const toggle=(id:string)=>{const next=new Set(sel);if(next.has(id))next.delete(id);else next.add(id);commit(next);};
+  return <div className="page library word-picker">
+    <PageHead title={X.title} lead={deckName(deck)}/>
+    <div className="pick-tools">
+      <div className="pick-all" role="group" aria-label={X.title}>
+        <button type="button" className="btn btn-quiet sm" disabled={state==='all'} onClick={()=>commit(new Set(eligible.map(w=>w.id)))}><CheckSquare size={16} aria-hidden="true"/>{X.selectAll}</button>
+        <button type="button" className="btn btn-quiet sm" disabled={state==='none'} onClick={()=>commit(new Set())}><Square size={16} aria-hidden="true"/>{X.deselectAll}</button>
+      </div>
+      {eligible.length>12&&<SearchBox value={q} onChange={setQ} placeholder={X.search} label={X.search}/>}
+      <p className="practice-note">{X.scope}</p>
+    </div>
+    {shown.length?<ul className="pick-list">{shown.map(w=><li key={w.id}><label className={'pick-row'+(sel.has(w.id)?' on':'')}>
+        <input type="checkbox" checked={sel.has(w.id)} onChange={()=>toggle(w.id)}/>
+        <span className="pick-text"><b dir={dirOf(deck.contentLanguage)} lang={deck.contentLanguage}>{w.term}</b><small dir="auto">{meaningText(w)}</small></span></label></li>)}</ul>
+      :<p className="practice-note">{X.noMatch}</p>}
+    {/* Portalled to <body>: `.content` animates with a transform, and WebKit (iPhone Safari) then pins position:fixed
+        to that box instead of the screen — the bar ended up after the last word. */}
+    {createPortal(<div className="pick-bar" dir={T.dir} lang={T.locale}>
+      <span className="pick-count" aria-live="polite"><b>{X.count(n,eligible.length)}</b>{n>0&&<small>{X.batches(n,Math.ceil(n/BATCH_SIZE[level]))}</small>}{n===0&&<small>{X.none}</small>}</span>
+      {/* A real step back when the hub is the previous screen; otherwise an ordinary navigation (no history replace). */}
+      <button type="button" className="btn btn-ink" onClick={()=>{const to=hubDeck(deckId);if(previousRoute()===to&&history.length>1)history.back();else window.location.hash='/'+to;}}>{X.done}</button>
+    </div>,document.body)}
+  </div>;
+}
+
+/** Consent → generating (cancellable) → saved story, or one clear failure with a way forward. Never shows unvalidated text. */
+function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Library;words:Word[];onChanged:()=>Promise<unknown>;go:(path:string)=>void}){
+  const S=T.story,G=S.gen,deck=lib.decks.find(d=>d.id===deckId);
+  const [plan]=useState(readPlan);
+  const eligible=useMemo(()=>eligibleWords(words,deckId),[words,deckId]);
+  const batch=useMemo(()=>plan&&plan.deckId===deckId?keepEligible(batchToGenerate(plan),eligible):[],[plan,deckId,eligible]);
+  const cards=useMemo(()=>batch.map(id=>eligible.find(w=>w.id===id)!).filter(Boolean),[batch,eligible]);
+  const [phase,setPhase]=useState<'consent'|'working'|'failed'>(hasConsent()?'working':'consent');
+  const [reason,setReason]=useState<StoryFailure|null>(null),[slow,setSlow]=useState(false),[attempt,setAttempt]=useState(0);
+  const ctl=useRef<AbortController|null>(null);
+  useEffect(()=>{
+    if(phase!=='working'||!plan||!deck||!cards.length)return;
+    const c=new AbortController();ctl.current=c;setSlow(false);
+    const t=setTimeout(()=>setSlow(true),5000);
+    // Started on the next tick: a remount (React StrictMode in development) clears it before any request is sent.
+    const kick=setTimeout(()=>void (async()=>{
+      let req:StoryRequest;
+      try{req=buildStoryRequest(deck,cards,plan.state.level,plan.genre);}catch{setReason('request');setPhase('failed');return;}
+      writePlan({...plan,pending:batch});
+      const r=await requestStory(req,c.signal,T.locale==='en'?'en':'ar');
+      if(c.signal.aborted)return; // left the screen or cancelled: nothing is saved
+      if(!r.ok){setReason(r.reason);setPhase('failed');return;}
+      try{
+        const p=await createPassage({deckId,title:r.story.title,body:r.story.story,contentLanguage:deck.contentLanguage,translation:r.story.translation,
+          questions:r.story.questions.map(q=>({question:q.question,answer:q.answer,quote:q.quote}))});
+        const usedIds=cards.filter((_,i)=>r.used.includes(req.words[i].term)).map(w=>w.id);
+        writePlan(recordStory({...plan,pending:batch},p.id,batch,usedIds));
+        await onChanged();
+        replaceRoute(storyPath(deckId,p.id));
+      }catch{setReason('provider');setPhase('failed');}
+    })(),0);
+    return ()=>{clearTimeout(t);clearTimeout(kick);c.abort();};
+  },[phase,attempt]); // eslint-disable-line react-hooks/exhaustive-deps
+  if(!deck)return <NotFound go={go}/>;
+  if(!plan||plan.deckId!==deckId||!cards.length)return <div className="page practice"><div className="practice-empty"><h2>{G.failTitle}</h2><p>{S.err.request}</p>
+    <div className="btn-row"><button type="button" className="btn btn-ink" onClick={()=>stepBackTo(hubDeck(deckId))}>{S.title}</button></div></div></div>;
+  const n=planIndex(plan,'');
+  const label=S.plan(plan.stories.length+1,Math.max(n.total,plan.stories.length+1));
+  if(phase==='consent')return <div className="page practice story-consent">
+    <PageHead title={S.consent.title} lead={label}/>
+    <div className="consent-card">
+      <p>{S.consent.body}</p>
+      <ul className="checks">{S.consent.sends.map(x=><li key={x} className="ok"><span className="check-dot" aria-hidden="true"><Check size={14}/></span><span>{x}</span></li>)}</ul>
+      <p className="practice-note">{S.consent.never}</p>
+      <h2 className="consent-words-h">{S.consent.words}</h2>
+      <ul className="consent-words">{cards.map(w=><li key={w.id}><b dir={dirOf(deck.contentLanguage)} lang={deck.contentLanguage}>{w.term}</b><small dir="auto">{meaningText(w)}</small></li>)}</ul>
+      <p className="practice-note" dir="ltr">{langName(deck.contentLanguage)} → {langName(deck.meaningLanguage)} · {plan.state.level} · {S.genres[plan.genre]}</p>
+    </div>
+    <div className="btn-row story-consent-actions">
+      <button type="button" className="btn btn-ink btn-lg" onClick={()=>{giveConsent(true);setPhase('working');}}>{S.consent.agree}</button>
+      <button type="button" className="btn btn-quiet" onClick={()=>stepBackTo(hubDeck(deckId))}>{S.consent.decline}</button>
+    </div>
+  </div>;
+  if(phase==='failed'&&reason){
+    const canRetry=!['off','request','quota'].includes(reason);
+    return <div className="page practice"><div className="practice-empty story-failed" role="alert"><h2>{reason==='cancelled'?S.err.cancelled:G.failTitle}</h2>
+      {reason!=='cancelled'&&<p>{S.err[reason]}</p>}
+      <div className="btn-row">{canRetry&&<button type="button" className="btn btn-ink" onClick={()=>{setReason(null);setPhase('working');setAttempt(a=>a+1);}}><RotateCcw size={16} aria-hidden="true"/>{G.retry}</button>}
+        <button type="button" className="btn btn-quiet" onClick={()=>stepBackTo(hubDeck(deckId))}>{G.useTexts}</button></div></div></div>;
+  }
+  return <div className="page practice story-working" aria-busy="true">
+    <section className="finish"><div className="finish-orb story-orb" aria-hidden="true"><Wash/></div>
+      <p className="lead">{label}</p><h1 role="status">{slow?G.checking:G.writing}</h1>
+      <div className="word-pills center" lang={deck.contentLanguage}>{cards.map(w=><span key={w.id} className="word-pill">{w.term}</span>)}</div>
+      <div className="finish-actions"><button type="button" className="btn btn-quiet" onClick={()=>{ctl.current?.abort();setReason('cancelled');setPhase('failed');}}><X size={16} aria-hidden="true"/>{G.cancel}</button></div>
+    </section>
+  </div>;
+}
+
+/** The generated story: highlighted target words (tap → saved meaning), listen, optional translation, coverage, then practice. */
+function StoryView({deckId,id,lib,words,passages,go}:{deckId:string;id:string;lib:Library;words:Word[];passages:Passage[];go:(path:string)=>void}){
+  const S=T.story,V=S.view,P=T.practice,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
+  const [tr,setTr]=useState(false),[open,setOpen]=useState<Word|null>(null);
+  const plan=readPlan(),entry=plan?.deckId===deckId?plan.stories.find(s=>s.passageId===id):undefined;
+  const inText=useMemo(()=>p?cardsInPassage(p,words):[],[p,words]);
+  if(!p||!deck)return <NotFound go={go}/>;
+  const byTerm=new Map(inText.map(w=>[w.term.normalize('NFC').trim().toLocaleLowerCase(),w]));
+  const parts=highlightParts(p.body,inText.map(w=>w.term));
+  const nameOf=(wid:string)=>words.find(w=>w.id===wid)?.term;
+  const missing=entry?entry.batch.filter(x=>!entry.used.includes(x)).map(nameOf).filter(Boolean):[];
+  const lost=plan&&entry?plan.state.missedTwice.filter(x=>entry.batch.includes(x)).map(nameOf).filter(Boolean):[];
+  const pos=plan&&entry?planIndex(plan,id):null,more=!!plan&&!!entry&&!planFinished(plan.state)&&plan.stories[plan.stories.length-1]?.passageId===id;
+  return <div className="page practice story-view">
+    <PageHead title={p.title} lead={pos?S.plan(pos.i+1,pos.total):deckName(deck)}/>
+    <div className="story-tools">
+      <SpeakButton text={p.body} label={V.listen} lang={p.contentLanguage} className="btn btn-quiet sm" showLabel/>
+      {p.translation&&<button type="button" className="btn btn-quiet sm" aria-expanded={tr} onClick={()=>setTr(v=>!v)}><Languages size={16} aria-hidden="true"/>{tr?V.hideTranslation:V.translation}</button>}
+    </div>
+    {inText.length>0&&<p className="practice-note">{V.tapHint}</p>}
+    <article className="passage-body story-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>
+      {splitParas(parts).map((para,i)=><p key={i}>{para.map((x,j)=>x.term
+        ?<button type="button" key={j} className={'story-word'+(open&&byTerm.get(x.term.toLocaleLowerCase())?.id===open.id?' on':'')} aria-label={V.meaningOf(x.text)} onClick={()=>setOpen(byTerm.get(x.term!.toLocaleLowerCase())??null)}>{x.text}</button>
+        :<span key={j}>{x.text}</span>)}</p>)}
+    </article>
+    {open&&<div className="word-pop" role="status"><div><b dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{open.term}</b><span dir="auto">{meaningText(open)}</span></div>
+      <SpeakButton text={open.term} label={T.listen(open.term)} lang={p.contentLanguage} slower={false}/>
+      <button type="button" className="icon-btn" aria-label={T.close} onClick={()=>setOpen(null)}><X size={18}/></button></div>}
+    {tr&&p.translation&&<article className="passage-translation" dir={dirOf(deck.meaningLanguage)} lang={deck.meaningLanguage}>{p.translation.split(/\n+/).map((x,i)=><p key={i}>{x}</p>)}</article>}
+    {entry&&<section className="story-coverage">
+      <h2 className="hub-heading">{V.used}</h2>
+      <div className="word-pills" lang={p.contentLanguage}>{entry.used.map(nameOf).filter(Boolean).map(t=><span key={t} className="word-pill ok"><Check size={13} aria-hidden="true"/>{t}</span>)}</div>
+      {missing.length>0&&lost.length<missing.length&&<p className="practice-note">{V.missing} <span lang={p.contentLanguage}>{missing.filter(t=>!lost.includes(t)).join('، ')}</span></p>}
+      {lost.length>0&&<p className="practice-note">{V.missedTwice} <span lang={p.contentLanguage}>{lost.join('، ')}</span></p>}
+    </section>}
+    <div className="story-actions">
+      <button type="button" className="btn btn-ink btn-lg" onClick={()=>go(passagePath(deckId,id)+'/read')}><BookOpen size={18} aria-hidden="true"/>{P.readAction}</button>
+      <button type="button" className="btn btn-quiet btn-lg" onClick={()=>go(passagePath(deckId,id)+'/listen')}><Headphones size={18} aria-hidden="true"/>{T.listening.action}</button>
+      {more&&<button type="button" className="btn btn-quiet" onClick={()=>go(hubDeck(deckId)+'/new')}><Sparkles size={16} aria-hidden="true"/>{V.next}</button>}
+      {plan&&entry&&planFinished(plan.state)&&<p className="practice-note">{V.allDone}</p>}
+    </div>
+  </div>;
+}
+/** Paragraph breaks inside highlighted runs. */
+function splitParas(parts:{text:string;term?:string}[]){
+  const out:{text:string;term?:string}[][]=[[]];
+  for(const x of parts){if(x.term){out[out.length-1].push(x);continue;}
+    x.text.split(/\n+/).forEach((seg,i)=>{if(i>0)out.push([]);if(seg)out[out.length-1].push({text:seg});});}
+  return out.filter(p=>p.length);
 }
 
 /** Read and listen to one passage: the whole text in its own language, one listen button (with «أبطأ»), optional translation and facts. */
@@ -1053,8 +1260,9 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
       <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
     </div>}
   </div>;
-  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}
-    onSwitch={()=>go(passagePath(deckId,p.id)+'/listen')} switchLabel={T.listening.action}/>;
+  if(done){const next=planNextFor(p.id),story=readPlan()?.stories.some(x=>x.passageId===p.id);
+    return <PracticeResult items={items} answers={answers} wordsPractised={cardsInPassage(p,words).length} onAgain={()=>setItems(null)} onBack={()=>go(story?storyPath(deckId,p.id):passagePath(deckId,p.id))}
+    onSwitch={()=>go(passagePath(deckId,p.id)+'/listen')} switchLabel={T.listening.action} onNextStory={next?()=>go(hubDeck(next)+'/new'):null} onDeck={()=>go(deckPath(deckId))}/>;}
   const item=items[idx];
   return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
     <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
@@ -1067,19 +1275,26 @@ function ReadingPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:str
   </div>;
 }
 
-function PracticeResult({items,answers,onAgain,onBack,onSwitch,switchLabel}:{items:PracticeItem[];answers:Answered[];onAgain:()=>void;onBack:()=>void;onSwitch:()=>void;switchLabel:string}){
+/** #64: what to offer after a session — the next story of the plan, if this passage belongs to one that isn't finished. */
+function planNextFor(passageId:string){const p=readPlan();return p&&p.stories.some(s=>s.passageId===passageId)&&!planFinished(p.state)?p.deckId:null;}
+function PracticeResult({items,answers,wordsPractised,onAgain,onBack,onSwitch,switchLabel,onNextStory,onDeck}:{items:PracticeItem[];answers:Answered[];wordsPractised:number;onAgain:()=>void;onBack:()=>void;onSwitch:()=>void;switchLabel:string;onNextStory:(()=>void)|null;onDeck:()=>void}){
   useEffect(()=>{markPracticed();},[]); // #30: practised today → no practice nudge today (only the day is synced)
-  const P=T.practice,sc=score(answers),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
+  const P=T.practice,R=T.story.result,sc=score(answers),wrong=Math.max(0,sc.total-sc.right-sc.almost),missed=items.filter(it=>{const a=answers.find(x=>x.id===it.id);return a&&a.verdict!=='correct'&&a.verdict!=='knew';});
   return <div className="page practice"><section className="finish">
     <div className="finish-orb" aria-hidden="true"><Wash/></div>
     <h1>{P.result(sc.right,sc.total)}</h1>
+    <dl className="result-counts"><div className="ok"><dt>{R.right}</dt><dd>{sc.right}</dd></div><div className="no"><dt>{R.wrong}</dt><dd>{wrong}</dd></div><div className="near"><dt>{R.almost}</dt><dd>{sc.almost}</dd></div></dl>
     {sc.almost>0&&<p className="lead">{P.almostCount(sc.almost)}</p>}
+    {wordsPractised>0&&<p className="finish-note">{R.words(wordsPractised)}</p>}
     <p className="finish-note">{P.noFsrs}</p>
     {missed.length>0&&<ul className="checks practice-missed">{missed.map(it=><li key={it.id} className="no"><span className="check-dot" aria-hidden="true"><X size={14}/></span>
       <span><b dir="auto">{it.kind==='dictation'?T.listening.kind.dictation:promptOf(it)}</b><small dir="auto">{answerOf(it)}</small></span></li>)}</ul>}
-    <div className="finish-actions"><button type="button" className="btn btn-ink" onClick={onAgain}>{P.again}</button>
+    <div className="finish-actions">
+      {onNextStory&&<button type="button" className="btn btn-ink" onClick={onNextStory}><Sparkles size={16} aria-hidden="true"/>{R.nextBatch}</button>}
+      <button type="button" className={'btn '+(onNextStory?'btn-quiet':'btn-ink')} onClick={onAgain}>{R.retry}</button>
       <button type="button" className="btn btn-quiet" onClick={onSwitch}>{switchLabel}</button>
-      <button type="button" className="btn btn-quiet" onClick={onBack}>{P.backToText}</button></div>
+      <button type="button" className="btn btn-quiet" onClick={onBack}>{P.backToText}</button>
+      <button type="button" className="btn btn-quiet" onClick={onDeck}>{R.backToDeck}</button></div>
   </section></div>;
 }
 
@@ -1113,7 +1328,7 @@ function usePlayer(lang:string){
 }
 
 const LISTENING_KINDS:ListeningKind[]=['dictation','comprehension'];
-function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;lib:Library;passages:Passage[];go:(path:string)=>void}){
+function ListeningPractice({deckId,id,lib,passages,words,go}:{deckId:string;id:string;lib:Library;passages:Passage[];words:Word[];go:(path:string)=>void}){
   const P=T.practice,L=T.listening,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
   const lang=p?.contentLanguage??DEFAULT_CONTENT_LANGUAGE,voice=useVoiceState(lang),player=usePlayer(lang);
   const avail=useMemo(()=>p?listeningAvailability(p):{dictation:0,comprehension:0},[p]);
@@ -1149,8 +1364,9 @@ function ListeningPractice({deckId,id,lib,passages,go}:{deckId:string;id:string;
       <button type="button" className="btn btn-ink btn-lg practice-start" disabled={!chosen.length} onClick={start}>{P.start}</button>
     </div>}
   </div>;
-  if(done)return <PracticeResult items={items} answers={answers} onAgain={()=>setItems(null)} onBack={()=>go(passagePath(deckId,p.id))}
-    onSwitch={()=>go(passagePath(deckId,p.id)+'/read')} switchLabel={T.practice.readAction}/>;
+  if(done){const next=planNextFor(p.id),story=readPlan()?.stories.some(x=>x.passageId===p.id);
+    return <PracticeResult items={items} answers={answers} wordsPractised={cardsInPassage(p,words).length} onAgain={()=>setItems(null)} onBack={()=>go(story?storyPath(deckId,p.id):passagePath(deckId,p.id))}
+    onSwitch={()=>go(passagePath(deckId,p.id)+'/read')} switchLabel={T.practice.readAction} onNextStory={next?()=>go(hubDeck(next)+'/new'):null} onDeck={()=>go(deckPath(deckId))}/>;}
   const item=items[idx];
   return <div className="page practice" data-unsaved={inProgress?'true':undefined}>
     <div className="review-top"><span className="review-count">{P.of(idx+1,items.length)}</span>
@@ -1750,7 +1966,9 @@ function routeLabel(route:string,lib:Library,passages:readonly Passage[]=[]):str
     if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);if(d)return deckName(d);}
     if(v.kind==='texts')return T.texts.title;
     if(v.kind==='hub'){const d=v.deckId?lib.decks.find(x=>x.id===v.deckId):null;return d?deckName(d):T.hub.title;}
-    if(v.kind==='passage'){const p=passages.find(x=>x.id===v.id);if(p)return p.title;}
+    if(v.kind==='passage'||v.kind==='story'){const p=passages.find(x=>x.id===v.id);if(p)return p.title;}
+    if(v.kind==='pick')return T.story.picker.title;
+    if(v.kind==='gen')return T.story.title;
   }
   return T.nav[page];
 }
@@ -1767,10 +1985,12 @@ function backFor(page:Page,sub:string,lib:Library,passages:readonly Passage[]=[]
     if(v.kind==='folder')return to('words');
     // #61: a deck's texts in Practice → Practice; Practice itself → wherever the learner came from.
     if(v.kind==='hub')return v.deckId?to(HUB):previousOr('');
+    // #64: word selection, generation and a story → that deck's Practice.
+    if(v.kind==='pick'||v.kind==='gen'||v.kind==='story')return to(hubDeck(v.deckId));
     // #21: texts → their deck; a text → the deck's texts; the editor → the text (or the list for a new one).
     if(v.kind==='texts'||v.kind==='lesson')return to(deckPath(v.deckId));
     if(v.kind==='passage')return to(textsPath(v.deckId));
-    if(v.kind==='practice')return to(passagePath(v.deckId,v.id));
+    if(v.kind==='practice'){const s=readPlan()?.stories.some(x=>x.passageId===v.id);return to(s?storyPath(v.deckId,v.id):passagePath(v.deckId,v.id));}
     if(v.kind==='passageEdit')return to(v.id&&passages.some(p=>p.id===v.id)?passagePath(v.deckId,v.id):textsPath(v.deckId));
     if(v.kind==='deck'){const d=lib.decks.find(x=>x.id===v.id);return to(d&&lib.folders.some(f=>f.id===d.folderId)?folderPath(d.folderId):'words');}
     return null;
