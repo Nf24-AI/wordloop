@@ -298,7 +298,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       const {context,page,errors}=await freshPage(browser,base());
       await seed(page);
       await mockStory(page);
-      await page.evaluate(()=>localStorage.setItem('wordloop-ai-consent','"v1"'));
+      await page.evaluate(()=>localStorage.setItem('wordloop-ai-consent','"v2"'));
       await openPractice(page,base());
       await page.locator('.story-go').click();
       await page.locator('.story-view').waitFor();
