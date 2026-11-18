@@ -6,9 +6,10 @@
   "upload_source_maps": true,
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": [
-      "/api/*"
-    ]
+    "binding": "ASSETS",
+    // #70: every request reaches the Worker first so the optional PIN gate (AUTH_MODE="pin") can protect pages and assets too.
+    // With AUTH_MODE unset the Worker hands non-API paths straight to the assets, exactly as before.
+    "run_worker_first": true
   },
   "triggers": {
     "crons": [

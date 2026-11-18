@@ -700,3 +700,6 @@ export async function updatePassage(id:string,patch:Partial<PassageInput>):Promi
 export async function deletePassage(id:string):Promise<void>{
   await libraryChange(['meta'],async meta=>{if(!await request(meta.get(passageKey(id))))throw Error('لم نجد النص');meta.delete(passageKey(id));});
 }
+/** #70: which tester's words live in this browser (a profile ref from the Staging PIN gate). Kept by backup restore. */
+export async function localOwner():Promise<string|null>{const v=await request<{key:string;value:string}|undefined>((await transaction('meta','readonly')).objectStore('meta').get('accessOwner'));return v?.value||null;}
+export async function claimLocalOwner(ref:string){const tx=await transaction('meta','readwrite'),end=settled(tx);tx.objectStore('meta').put({key:'accessOwner',value:ref});await end;}

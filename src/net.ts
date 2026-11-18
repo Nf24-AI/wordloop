@@ -10,5 +10,7 @@ export async function accessFetch(path:string,init:RequestInit|undefined,locale:
   try{res=await fetch(path,{...init,redirect:'manual',credentials:'same-origin'});}
   catch(e){if(typeof navigator!=='undefined'&&navigator.onLine===false)throw new PushNetworkError('offline',t.offline);throw e;}
   if(res.type==='opaqueredirect'||(res.status>=300&&res.status<400))throw new PushNetworkError('signin',t.signin);
+  // #70: the Staging PIN gate answers an expired or revoked session with 401 {code:'auth'}.
+  if(res.status===401&&(await res.clone().json().catch(()=>null) as {code?:string}|null)?.code==='auth')throw new PushNetworkError('signin',t.signin);
   return res;
 }

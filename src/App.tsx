@@ -1,6 +1,6 @@
 import {createPortal} from 'react-dom';
 import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type FocusEvent as ReactFocusEvent,type FormEvent,type KeyboardEvent as ReactKeyboardEvent,type ReactNode} from 'react';
-import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,Sparkles,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play} from 'lucide-react';
+import {Archive,ArrowDownUp,ArrowDownToLine,CheckSquare,ClipboardPaste,Sparkles,ArrowLeft,ArrowRight,ArrowUpFromLine,Bell,BellOff,BookOpen,CalendarClock,Check,ChevronDown,CloudOff,Download,Folder as FolderIcon,FolderInput,FolderPlus,HardDrive,Headphones,Home,Languages,Layers3,Lightbulb,LineChart,MoreHorizontal,Pencil,Plus,RotateCcw,Search,Send,Settings,ShieldCheck,Smartphone,Snail,Square,Trash2,Volume2,Wifi,WifiOff,X,FileText,Eye,EyeOff,Pause,Play,LogOut} from 'lucide-react';
 import {addWord,addWords,archiveWord,archiveWords,moveWords,sortWords,CARD_SORTS,type CardSort,buildBackup,cardLanguages,CONTENT_TYPES,createDeck,createFolder,DEFAULT_CONTENT_LANGUAGE,DEFAULT_DECK_ID,DEFAULT_DECK_NAME,DEFAULT_FOLDER_ID,DEFAULT_FOLDER_NAME,DEFAULT_MEANING_LANGUAGE,deleteDeck,deleteFolder,dueInScope,editWord,inScope,inferContentType,lastBackupDate,libraryCounts,listLibrary,listReviews,listWords,MAX_MEANINGS,moveWord,normalizeTerm,NOTE_LIMIT,onOtherTabChange,rememberBackup,renameFolder,restoreBackup,reviewWord,scopedSummary,summary,TERM_LIMIT,updateDeck,validateBackup,type CardEdit,type ContentType,type Deck,type Folder,type Grade,type Review,type ReviewScope,type Word,createPassage,deletePassage,listPassages,PASSAGE_LIMITS,updatePassage,type Passage} from './data';
 import {pickVoice,RATE} from './voice';
 import {buildListening,buildReading,cardsInPassage,checkAnswer,compareDictation,listeningAvailability,readingAvailability,score,type Answered,type DictationItem,type ListeningKind,type PracticeItem,type ReadingKind} from './practice';
@@ -12,6 +12,7 @@ import {bulkCounts,checkRows,parseBulk,splitMeanings,BULK_EXAMPLE_LIMIT,BULK_MAX
 import {batchToGenerate,buildStoryRequest,defaultSelection,eligibleWords,giveConsent,hasConsent,keepEligible,newPlan,readPlan,readSelection,readSettings,recordStory,requestStory,selectState,storyLanguageOk,storyStatus,type StoryStatus,writePlan,writeSelection,writeSettings,type Plan,type PracticeSettings,type StoryFailure} from './practicePlan';
 import {batchesLeft,highlightParts,planFinished,termsIn,BATCH_SIZE,CEFR_LEVELS,STORY_GENRES,type StoryRequest} from './story';
 import {buildDemoStory,isDemoTitle} from './demoStory';
+import {accessState,signOut} from './access';
 import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
 
 /* ───────────── Language (#6) ─────────────
@@ -1879,6 +1880,11 @@ function SettingsPage({words,online,lastBackup,setLastBackup,installPrompt,onIns
     </div></section>
 
     <div className="settings-grid">
+      {accessState().mode==='pin'&&<section className="panel" aria-labelledby="access-title">
+        <div className="panel-head"><h2 id="access-title"><LogOut size={19} aria-hidden="true"/> {St.accessTitle}</h2></div>
+        <p className="panel-note">{St.accessNote}</p>
+        <button type="button" className="btn btn-quiet" onClick={()=>void signOut()}><LogOut size={18} aria-hidden="true"/>{St.accessOut}</button>
+      </section>}
       <section className="panel" aria-labelledby="lang-title">
         <div className="panel-head"><h2 id="lang-title"><Languages size={19} aria-hidden="true"/> {St.languageTitle}</h2></div>
         <p className="panel-note">{St.languageNote}</p>
