@@ -7,8 +7,6 @@
   "assets": {
     "not_found_handling": "single-page-application",
     "binding": "ASSETS",
-    // #70: every request reaches the Worker first so the optional PIN gate (AUTH_MODE="pin") can protect pages and assets too.
-    // With AUTH_MODE unset the Worker hands non-API paths straight to the assets, exactly as before.
     "run_worker_first": true
   },
   "triggers": {
