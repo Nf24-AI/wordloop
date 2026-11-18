@@ -136,11 +136,14 @@ const post=(body,headers={})=>new Request(base+'/api/practice/story',{method:'PO
 function fakeDb({table=true}={}){
   const rows=new Map(),calls=[];
   return {rows,calls,prepare(sql){return {bind(...a){return {
-    async first(){calls.push(sql);if(!table)throw Error('no such table: ai_usage');if(sql.includes('SUM'))return {n:[...rows].filter(([k])=>k.startsWith(a[0]+'|')).reduce((n,[,v])=>n+v,0)};return rows.has(a[0]+'|'+a[1])?{n:rows.get(a[0]+'|'+a[1])}:null;},
-    async run(){calls.push(sql);if(!table)throw Error('no such table');const k=a[0]+'|'+a[1];rows.set(k,(rows.get(k)??0)+1);return {};}};}};}};
+    async first(){calls.push(sql);if(!table)throw Error('no such table: ai_usage');if(sql.includes('SUM'))return {n:[...rows].filter(([k])=>k.startsWith(a[0]+'|')&&k!==a[0]+'|neurons').reduce((n,[,v])=>n+v,0)};return rows.has(a[0]+'|'+a[1])?{n:rows.get(a[0]+'|'+a[1])}:null;},
+    async run(){calls.push(sql);if(!table)throw Error('no such table');
+      if(sql.includes("'neurons',?2")){const k=a[0]+'|neurons',cur=rows.get(k)??0;if(cur+a[1]>a[2])return {meta:{changes:0}};rows.set(k,cur+a[1]);return {meta:{changes:1}};}
+      if(sql.startsWith('UPDATE ai_usage SET n=MAX')){const k=a[0]+'|neurons';rows.set(k,Math.max(0,(rows.get(k)??0)-a[1]+a[2]));return {meta:{changes:1}};}
+      const k=a[0]+'|'+a[1];rows.set(k,(rows.get(k)??0)+1);return {meta:{changes:1}};}};}};}};
 }
 const limiter=(ok=true)=>({limit:async()=>({success:ok})});
-const provider=(...outs)=>{const p={id:'fake',calls:[],async complete(m){p.calls.push(m.map(x=>x.role));const o=outs[Math.min(p.calls.length-1,outs.length-1)];if(o instanceof Error)throw o;return typeof o==='function'?o():o;}};return p;};
+const provider=(...outs)=>{const p={id:'fake',calls:[],async complete(m){p.calls.push(m.map(x=>x.role));const o=outs[Math.min(p.calls.length-1,outs.length-1)];if(o instanceof Error)throw o;const v=typeof o==='function'?await o():o;return v&&typeof v==='object'&&'out' in v?v:{out:v,usage:null};}};return p;};
 const onEnv=(o={})=>({AI_STORIES:'on',PUSH_DB:fakeDb(),PUSH_LIMIT:limiter(),...o});
 const readBody=async r=>{try{return JSON.parse(await r.text());}catch{return null;}};
 
@@ -213,7 +216,7 @@ test('STORY-API-05: client cancellation and the concurrency cap',async()=>{
   const r=await pending;assert.equal((await r.json()).code,'cancelled');
   // MAX_IN_FLIGHT concurrent requests are served; one more is told «busy» without touching the provider.
   let release;const gate=new Promise(r=>release=r);
-  const held={id:'held',calls:0,async complete(){this.calls++;await gate;return JSON.stringify(EN_STORY);}};
+  const held={id:'held',calls:0,async complete(){this.calls++;await gate;return {out:JSON.stringify(EN_STORY),usage:null};}};
   const env=onEnv({AI_USER_DAILY:'100'});
   const running=Array.from({length:MAX_IN_FLIGHT},()=>storyEndpoint(post(enReq),env,readBody,held));
   await new Promise(r=>setTimeout(r,20));
@@ -223,8 +226,9 @@ test('STORY-API-05: client cancellation and the concurrency cap',async()=>{
   assert.equal(held.calls,MAX_IN_FLIGHT);
 });
 
-test('STORY-API-06: only catalog-verified models are allowed; the default supports JSON mode',()=>{
-  assert.equal(STORY_MODELS[DEFAULT_STORY_MODEL].jsonMode,true);
+test('STORY-API-06: only catalog-verified models are allowed; JSON mode only where Cloudflare lists it (Gemma 4: prompt-only JSON + validator)',()=>{
+  assert.equal(STORY_MODELS['@cf/meta/llama-3.3-70b-instruct-fp8-fast'].jsonMode,true);
+  assert.equal(STORY_MODELS[DEFAULT_STORY_MODEL].jsonMode,false,'gemma-4-26b is not on the JSON-mode list (2026-11-18)');
   assert.ok(Object.keys(STORY_MODELS).every(m=>m.startsWith('@cf/')));
   assert.ok(!Object.keys(STORY_MODELS).some(m=>m.includes('qwen3-30b')),'qwen3-30b-a3b is scheduled for deprecation on 2026-11-20');
 });
@@ -290,4 +294,44 @@ test('DEMO-02: status endpoint reports only on/off; off on the repo config, on o
   let n=0;const f=async()=>{n++;return new Response('{"ai":"off"}');};
   assert.equal(await storyStatus('ar',f,true),'off');assert.equal(await storyStatus('ar',f),'off');assert.equal(n,1,'cached');
   assert.equal(await storyStatus('ar',async()=>{throw new TypeError('Load failed');},true),'unknown');
+});
+
+/* ───────── #64 neuron budget (free allocation guard) ───────── */
+test('BUDGET-01: every call reserves its worst case first; over budget → refused BEFORE the provider; settled to real usage',async()=>{
+  const {worstCaseNeurons,usageNeurons,STORY_MODELS,DEFAULT_STORY_MODEL,NEURON_CEILING,modelText}=await import('../worker/story.ts');
+  assert.equal(DEFAULT_STORY_MODEL,'@cf/google/gemma-4-26b-a4b-it');
+  const rate=STORY_MODELS[DEFAULT_STORY_MODEL];assert.deepEqual([rate.inM,rate.outM],[9091,27273]);
+  assert.equal(usageNeurons({prompt_tokens:1000,completion_tokens:1000},rate),37);
+  assert.equal(usageNeurons(null,rate),null);
+  const msgs=[{role:'system',content:'x'.repeat(3000)},{role:'user',content:'y'.repeat(1000)}];
+  const w=worstCaseNeurons(msgs,rate);assert.ok(w>=50&&w<=70,String(w));
+  // Real use: the reservation is settled down to the reported usage.
+  const db=fakeDb(),env=onEnv({PUSH_DB:db});
+  const p=provider({out:JSON.stringify(EN_STORY),usage:{prompt_tokens:900,completion_tokens:700}});
+  assert.equal((await storyEndpoint(post(enReq),env,readBody,p)).status,200);
+  const day=new Date().toISOString().slice(0,10);
+  assert.equal(db.rows.get(day+'|neurons'),usageNeurons({prompt_tokens:900,completion_tokens:700},rate));
+  // Unknown usage keeps the worst case (never under-counts).
+  const db2=fakeDb();await storyEndpoint(post(enReq),onEnv({PUSH_DB:db2}),readBody,provider(JSON.stringify(EN_STORY)));
+  assert.ok(db2.rows.get(day+'|neurons')>=50);
+  // A budget too small for one worst case: refused, provider never called, story count untouched by neurons.
+  const q=provider(JSON.stringify(EN_STORY)),db3=fakeDb();
+  const r=await storyEndpoint(post(enReq),onEnv({PUSH_DB:db3,AI_NEURON_DAILY:'20'}),readBody,q);
+  assert.equal(r.status,429);assert.equal((await r.json()).code,'quota');assert.equal(q.calls.length,0);
+  // The var can never lift the cap above the ceiling (below the 10,000/day free allocation).
+  const db4=fakeDb();db4.rows.set(day+'|neurons',NEURON_CEILING-10);
+  const q4=provider(JSON.stringify(EN_STORY));
+  assert.equal((await storyEndpoint(post(enReq),onEnv({PUSH_DB:db4,AI_NEURON_DAILY:'999999'}),readBody,q4)).status,429);assert.equal(q4.calls.length,0);
+  // A repair that does not fit is not attempted.
+  const db5=fakeDb(),bad={...EN_STORY,questions:[]};
+  const q5=provider(JSON.stringify(bad),JSON.stringify(EN_STORY));
+  const first=worstCaseNeurons([{role:'system',content:''}],rate); // any positive budget smaller than two calls
+  const r5=await storyEndpoint(post(enReq),onEnv({PUSH_DB:db5,AI_NEURON_DAILY:String(w+5)}),readBody,q5);
+  assert.ok(first>0);assert.equal(q5.calls.length,1,'the repair was refused for budget');assert.equal(r5.status,429);
+  // Neurons never count as stories in the global story cap.
+  const db6=fakeDb();db6.rows.set(day+'|neurons',5000);
+  assert.equal((await storyEndpoint(post(enReq),onEnv({PUSH_DB:db6,AI_GLOBAL_DAILY:'1'}),readBody,provider(JSON.stringify(EN_STORY)))).status,200);
+  // OpenAI-style answers (Gemma) are read from choices[0].message.content.
+  assert.equal(modelText({choices:[{message:{content:'{"a":1}',reasoning_content:'…'}}]}),'{"a":1}');
+  assert.equal(modelText({response:'x'}),'x');
 });

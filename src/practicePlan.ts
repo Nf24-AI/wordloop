@@ -42,7 +42,8 @@ export function buildStoryRequest(deck:Pick<Deck,'contentLanguage'|'meaningLangu
 
 /* ───────── local settings / plan (this device only) ───────── */
 const SETTINGS='wordloop-practice-settings',PLAN='wordloop-practice-plan',SEL='wordloop-practice-selection',CONSENT='wordloop-ai-consent';
-export const CONSENT_VERSION='v1';
+/** v2 (2026-11-18): the daily-counter disclosure was added, so earlier consents are asked again. */
+export const CONSENT_VERSION='v2';
 const read=<T>(k:string,fallback:T):T=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v??fallback;}catch{return fallback;}};
 const write=(k:string,v:unknown)=>{try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch{/* private mode */}};
 export type PracticeSettings={level:Cefr;genre:StoryGenre;deckId:string|null};
