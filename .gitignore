@@ -4,3 +4,8 @@ dist/
 .dev.vars
 .env
 *.zip
+
+# #64 eval: never commit Cloudflare tokens
+*.token
+*token*.txt
+.cf-eval*

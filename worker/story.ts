@@ -23,12 +23,14 @@ export type StoryEnv={AI?:Ai;AI_STORIES?:string;AI_STORY_MODEL?:string;AI_USER_D
 type Msg={role:'system'|'user'|'assistant';content:string};
 
 /* ───────── provider abstraction: Practice never knows which model answered ───────── */
-export type Usage={prompt_tokens?:number;completion_tokens?:number}|null;
+export type Usage={prompt_tokens?:number;completion_tokens?:number;neurons?:number}|null;
 export interface StoryProvider{readonly id:string;complete(messages:Msg[],signal:AbortSignal):Promise<{out:unknown;usage:Usage}>}
 /** Models this endpoint may use, with Cloudflare's NEURONS per million input / output tokens (pricing page, verified
  *  2026-11-18: gemma-4 9,091 / 27,273; the others are their $ price ÷ $0.011 per 1,000 neurons). */
-export const STORY_MODELS:Record<string,{jsonMode:boolean;inM:number;outM:number}>={
-  '@cf/google/gemma-4-26b-a4b-it':{jsonMode:false,inM:9091,outM:27273},
+export const STORY_MODELS:Record<string,{jsonMode:boolean;inM:number;outM:number;noThinking?:boolean}>={
+  // Reasoning ON by default would spend the whole output budget on hidden thinking and return empty content
+  // (measured 2026-11-18: finish_reason=length, content ''); the schema's chat_template_kwargs.enable_thinking turns it off.
+  '@cf/google/gemma-4-26b-a4b-it':{jsonMode:false,inM:9091,outM:27273,noThinking:true},
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast':{jsonMode:true,inM:26637,outM:204819},
   '@cf/mistralai/mistral-small-3.1-24b-instruct':{jsonMode:false,inM:31910,outM:50455},
 };
@@ -43,12 +45,18 @@ export function modelText(out:unknown):unknown{
   if(isObj(c)&&isObj(c.message)&&c.message.content!=null)return c.message.content;
   return out;
 }
+/** The exact model input (shared by the Worker and the eval script, so the eval measures what production would send). */
+export function modelInput(model:string,messages:Msg[]):Record<string,unknown>{
+  const spec=STORY_MODELS[model];if(!spec)throw Error('model not allowed');
+  const input:Record<string,unknown>={messages,max_tokens:MAX_OUTPUT_TOKENS,temperature:0.7};
+  if(spec.jsonMode)input.response_format={type:'json_schema',json_schema:STORY_JSON_SCHEMA};
+  if(spec.noThinking)input.chat_template_kwargs={enable_thinking:false};
+  return input;
+}
 export function workersAiProvider(ai:Ai,model:string):StoryProvider{
   const spec=STORY_MODELS[model];if(!spec)throw Error('model not allowed');
   return {id:model,async complete(messages,signal){
-    const input:Record<string,unknown>={messages,max_tokens:MAX_OUTPUT_TOKENS,temperature:0.7};
-    if(spec.jsonMode)input.response_format={type:'json_schema',json_schema:STORY_JSON_SCHEMA};
-    const out=await raceAbort(ai.run(model,input),signal);
+    const out=await raceAbort(ai.run(model,modelInput(model,messages)),signal);
     return {out:modelText(out),usage:isObj(out)&&isObj(out.usage)?out.usage as Usage:null};
   }};
 }
@@ -90,6 +98,7 @@ export interface NeuronMeter{reserve(messages:Msg[]):Promise<number|'over'|'off'
 export const worstCaseNeurons=(messages:Msg[],rate:{inM:number;outM:number})=>
   Math.ceil((Math.ceil(messages.reduce((n,m)=>n+m.content.length,0)/2)+16*messages.length)*rate.inM/1e6+MAX_OUTPUT_TOKENS*rate.outM/1e6);
 export const usageNeurons=(u:Usage,rate:{inM:number;outM:number})=>
+  u&&Number.isFinite(u.neurons)?Math.ceil(u.neurons!): // Workers AI reports neurons directly
   u&&Number.isFinite(u.prompt_tokens)&&Number.isFinite(u.completion_tokens)?Math.ceil(u.prompt_tokens!*rate.inM/1e6+u.completion_tokens!*rate.outM/1e6):null;
 export const RESERVE_SQL="INSERT INTO ai_usage (day,who,n) SELECT ?1,'neurons',?2 WHERE ?2<=?3 ON CONFLICT(day,who) DO UPDATE SET n=n+excluded.n WHERE ai_usage.n+excluded.n<=?3";
 export const SETTLE_SQL="UPDATE ai_usage SET n=MAX(0,n-?2+?3) WHERE day=?1 AND who='neurons'";
@@ -108,7 +117,8 @@ export function d1Meter(db:D1Database,day:string,budget:number,rate:{inM:number;
 
 let inFlight=0;
 export const MAX_IN_FLIGHT=4;
-export const STORY_TIMEOUT_MS=30000;
+// Measured 2026-11-18 (Gemma 4, 20 cases): median 14.5 s, max 30.1 s for a story that needed its one repair.
+export const STORY_TIMEOUT_MS=45000;
 
 /** GET /api/practice/story/status — lets the app say «AI is off» BEFORE the learner presses Start (no request, no consent).
  *  Reports only on/off: no model, quota or account detail. «on» still needs the quota table at generation time. */
