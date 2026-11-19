@@ -23,9 +23,21 @@ let T:Dict=dictionaries[storedLocale()];
 /* ───────────── Navigation ───────────── */
 type Page='home'|'review'|'words'|'add'|'stats'|'settings';
 const PAGES:Page[]=['home','review','words','add','stats','settings'];
-const navItems:{id:Page;icon:typeof Home}[]=[
-  {id:'home',icon:Home},{id:'review',icon:Layers3},{id:'words',icon:BookOpen},{id:'stats',icon:LineChart},{id:'settings',icon:Settings},
+/** #74: «الممارسة» is a first-class destination. It is not a separate page: it opens the existing Practice hub inside
+ *  the Library route (`#/words/practice`), so there is exactly one Practice screen. */
+type NavId=Page|'practice';
+const navItems:{id:NavId;icon:typeof Home}[]=[
+  {id:'home',icon:Home},{id:'review',icon:Layers3},{id:'practice',icon:Headphones},{id:'words',icon:BookOpen},{id:'stats',icon:LineChart},{id:'settings',icon:Settings},
 ];
+const PRACTICE_KINDS=new Set(['hub','pick','gen','story','practice']);
+/** Practice screens: the hub, word picking, generation, stories, and reading/listening a saved text. */
+function isPracticeRoute(page:Page,sub:string){return page==='words'&&PRACTICE_KINDS.has(parseLibrary(sub).kind);}
+/** Which navigation item is the current place. On a Practice screen it is «الممارسة», not «مكتبتي». */
+function navActive(id:NavId,page:Page,sub:string){
+  if(id==='practice')return isPracticeRoute(page,sub);
+  if(id==='words')return page==='words'&&!isPracticeRoute(page,sub);
+  return page===id;
+}
 /** Route = page + optional sub-path, e.g. `#/words/d/<deck>` → page `words`, sub `d/<deck>`; `#/add/<deck>` → add to that deck. */
 function hashParts(){const [h,...rest]=window.location.hash.replace(/^#\/?/,'').split('/');return {page:(PAGES.includes(h as Page)?h:'home') as Page,sub:PAGES.includes(h as Page)?rest.join('/'):''};}
 function readHash():Page{return hashParts().page;}
@@ -2119,6 +2131,8 @@ export default function App(){
   const changeLocale=useCallback((l:Locale)=>{if(l===locale)return;storeLocale(l);setLocaleState(l);setError('');setToast({id:Date.now(),text:dictionaries[l].settings.languageChanged,tone:'ok'});void syncPush(words).catch(console.warn); /* #30: notification language follows the interface */},[locale,words]);
   const navigate=(to:Page)=>{if(to===page&&!sub){window.scrollTo({top:0,behavior:'smooth'});return;}guardLeave(()=>{window.location.hash=to==='home'?'/':'/'+to;});};
   const go=useCallback((path:string)=>{guardLeave(()=>{window.location.hash='/'+path;});},[]);
+  /** #74: navigation items. «الممارسة» opens the existing Practice hub; tapping it there again just scrolls to the top. */
+  const navTo=(id:NavId)=>{if(id!=='practice'){navigate(id);return;}if(page==='words'&&sub==='practice'){window.scrollTo({top:0,behavior:'smooth'});return;}go(HUB);};
   // #42: one «unsaved changes» question for every way out (Back button, tabs, Back gesture, Cancel on a sheet).
   const [leave,setLeave]=useState<{proceed:()=>void}|null>(null);
   useEffect(()=>{askLeave=proceed=>setLeave({proceed});return()=>{askLeave=proceed=>proceed();};},[]);
@@ -2152,7 +2166,7 @@ export default function App(){
       <a href="#/" className="rail-brand" aria-label={T.homeLink}><Logo/></a>
       <p className="rail-tagline">{T.tagline}</p>
       <button type="button" className="btn btn-ink rail-add" aria-haspopup={ctxDeck?undefined:'dialog'} aria-expanded={ctxDeck?undefined:quickOpen} onClick={onAdd}><Plus size={18}/>{ctxDeck?T.lib.addCard:T.addOrReview}</button>
-      <nav aria-label={T.navMain}><ul>{navItems.map(item=><li key={item.id}><button type="button" onClick={()=>navigate(item.id)} className={'rail-link'+(page===item.id?' on':'')} aria-current={page===item.id?'page':undefined}><item.icon size={20} strokeWidth={1.8}/><span>{T.nav[item.id]}</span>{item.id==='review'&&due>0&&<b className="count" aria-label={T.dueBadge(due)}>{due}</b>}</button></li>)}</ul></nav>
+      <nav aria-label={T.navMain}><ul>{navItems.map(item=><li key={item.id}><button type="button" onClick={()=>navTo(item.id)} className={'rail-link'+(navActive(item.id,page,sub)?' on':'')} aria-current={navActive(item.id,page,sub)?'page':undefined}><item.icon size={20} strokeWidth={1.8}/><span>{T.nav[item.id]}</span>{item.id==='review'&&due>0&&<b className="count" aria-label={T.dueBadge(due)}>{due}</b>}</button></li>)}</ul></nav>
       <div className="rail-foot"><span className={'net'+(online?'':' off')}>{online?<Wifi size={14}/>:<WifiOff size={14}/>}{online?T.online:T.offline}</span><button type="button" className="rail-privacy" onClick={()=>navigate('settings')}><ShieldCheck size={14} aria-hidden="true"/>{T.settings.privacyTitle}</button></div>
     </aside>
     <div className="main-col">
@@ -2172,10 +2186,10 @@ export default function App(){
       </main>
     </div>
     <nav className="tabbar" aria-label={T.navTabs}>
-      {(['home','review','add','words','stats'] as Page[]).map(id=>{
+      {(['home','review','add','practice','words','stats'] as (NavId)[]).map(id=>{
         if(id==='add')return <button key={id} type="button" className="tab-add" aria-haspopup={ctxDeck?undefined:'dialog'} aria-expanded={ctxDeck?undefined:quickOpen} onClick={onAdd} aria-label={ctxDeck?T.lib.addCard:T.quickLabel} aria-current={page==='add'?'page':undefined}><Plus size={26}/></button>;
         const item=navItems.find(n=>n.id===id)!;
-        return <button key={id} type="button" className={'tab'+(page===id?' on':'')} aria-current={page===id?'page':undefined} onClick={()=>navigate(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{T.nav[id]}</span></button>;
+        return <button key={id} type="button" className={'tab'+(navActive(id,page,sub)?' on':'')} aria-current={navActive(id,page,sub)?'page':undefined} onClick={()=>navTo(id)}><span className="tab-icon"><item.icon size={21} strokeWidth={1.8}/>{id==='review'&&due>0&&<b className="dot-count">{due>99?'99+':due}</b>}</span><span>{T.nav[id]}</span></button>;
       })}
     </nav>
     <ConfirmDialog open={!!leave} title={T.leave.title} body={T.leave.body} confirm={T.leave.yes} cancel={T.leave.stay}
