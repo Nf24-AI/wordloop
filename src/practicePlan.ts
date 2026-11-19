@@ -46,13 +46,15 @@ const SETTINGS='wordloop-practice-settings',PLAN='wordloop-practice-plan',SEL='w
 export const CONSENT_VERSION='v2';
 const read=<T>(k:string,fallback:T):T=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v??fallback;}catch{return fallback;}};
 const write=(k:string,v:unknown)=>{try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch{/* private mode */}};
-export type PracticeSettings={level:Cefr;genre:StoryGenre;deckId:string|null};
+/** `lang` + `source` (Practice 2.0): the learning language and where the words come from; `deckId` is the legacy choice, still read as a hint. */
+export type PracticeSettings={level:Cefr;genre:StoryGenre;deckId:string|null;lang:string|null;source:'auto'|'all'|'manual'};
 export function readSettings():PracticeSettings{
   const s=read<Partial<PracticeSettings>>(SETTINGS,{});
-  return {level:(CEFR_LEVELS as readonly unknown[]).includes(s.level)?s.level as Cefr:'A2',genre:(STORY_GENRES as readonly unknown[]).includes(s.genre)?s.genre as StoryGenre:'story',deckId:typeof s.deckId==='string'?s.deckId:null};
+  return {level:(CEFR_LEVELS as readonly unknown[]).includes(s.level)?s.level as Cefr:'A2',genre:(STORY_GENRES as readonly unknown[]).includes(s.genre)?s.genre as StoryGenre:'story',deckId:typeof s.deckId==='string'?s.deckId:null,
+    lang:typeof s.lang==='string'&&s.lang.length<=35?s.lang:null,source:s.source==='all'||s.source==='manual'?s.source:'auto'};
 }
 export const writeSettings=(s:PracticeSettings)=>write(SETTINGS,s);
-/** The learner's own selection per deck (survives Reading ↔ Listening and reloads). null = never chosen → default. */
+/** The learner's own selection per key (a learning language, see practiceSetup.selectionKey) (survives Reading ↔ Listening and reloads). null = never chosen → default. */
 export function readSelection(deckId:string):string[]|null{const m=read<Record<string,string[]>>(SEL,{});return Array.isArray(m[deckId])?m[deckId].filter(x=>typeof x==='string'):null;}
 export function writeSelection(deckId:string,ids:string[]|null){const m=read<Record<string,string[]>>(SEL,{});if(ids)m[deckId]=ids;else delete m[deckId];write(SEL,m);}
 export const hasConsent=()=>read<string|null>(CONSENT,null)===CONSENT_VERSION;
