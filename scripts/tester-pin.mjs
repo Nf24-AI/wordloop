@@ -51,16 +51,26 @@ export function readPepper(file=process.env.PIN_PEPPER_FILE){
 export function createSql({pepper,pin,label,days,profile=id(),testerId=id(),now=Date.now()}){
   return `INSERT INTO testers (id,label,profile,pin_hash,created_at,expires_at) VALUES (${sqlText(testerId)},${sqlText(label)},${sqlText(profile)},${sqlText(pinHashNode(pepper,pin))},${now},${now+days*864e5});`;
 }
+/** Wrangler on Windows can crash while exiting («Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)») AFTER the
+ *  query ran. Such a run counts only when its own output proves success: JSON results with success:true, or «Executed N». */
+export function completed(stdout,json){
+  if(json){try{const j=JSON.parse(stdout);return Array.isArray(j)&&j.length>0&&j.every(x=>x&&x.success===true);}catch{return false;}}
+  return /Executed \d+ (?:commands?|queries)/.test(stdout||'');
+}
 function wrangler(args,{json=false}={}){
-  const r=spawnSync(process.platform==='win32'?'npx.cmd':'npx',['wrangler','d1','execute',DB_NAME,'--remote',...(json?['--json']:[]),...args],{cwd:REPO,encoding:'utf8',shell:process.platform==='win32'});
-  if(r.status!==0)throw Error('wrangler failed: '+(r.stderr||r.stdout||'').split('\n').filter(l=>!/pin_hash|token/i.test(l)).slice(-4).join(' '));
+  // Node runs the project's wrangler directly — no shell, so SQL in --command reaches it as ONE argument on every OS.
+  const r=spawnSync(process.execPath,[join(REPO,'node_modules','wrangler','bin','wrangler.js'),'d1','execute',DB_NAME,'--remote',...(json?['--json']:[]),...args],{cwd:REPO,encoding:'utf8'});
+  if(r.status!==0&&!completed(r.stdout,json))throw Error('wrangler failed: '+(r.stderr||r.stdout||'').split('\n').filter(l=>!/pin_hash|token/i.test(l)).slice(-4).join(' '));
   return r.stdout;
 }
-function execSql(sql,dry){
-  if(dry){console.log(sql);return;}
+/** Writes go through a temporary --file (several statements at once; the SQL never appears in a process list). */
+function execSql(sql,dry,{json=false}={}){
+  if(dry){console.log(sql);return '';}
   const dir=join(tmpdir(),'wl-pin-'+id());mkdirSync(dir);const f=join(dir,'q.sql');
-  try{writeFileSync(f,sql);wrangler(['--file',f]);}finally{rmSync(dir,{recursive:true,force:true});}
+  try{writeFileSync(f,sql);return wrangler(['--file',f],{json});}finally{rmSync(dir,{recursive:true,force:true});}
 }
+/** Reads use --command (only that returns rows); writes use --file. */
+const query=sql=>JSON.parse(wrangler(['--command',sql],{json:true}))[0]?.results??[];
 const flag=(args,name,def)=>{const i=args.indexOf(name);return i>=0?args[i+1]:def;};
 const days=args=>{const d=Number(flag(args,'--days','7'));if(!Number.isInteger(d)||d<1||d>30)throw Error('--days: 1–30');return d;};
 
@@ -78,7 +88,7 @@ async function main(argv){
     let sql,label,profile;
     if(cmd==='renew'){
       const old=hexId(args[0]);
-      const rows=JSON.parse(wrangler(['--command',`SELECT label,profile FROM testers WHERE id=${sqlText(old)}`],{json:true}))[0]?.results??[];
+      const rows=query(`SELECT label,profile FROM testers WHERE id=${sqlText(old)}`);
       if(!rows.length)throw Error('No tester with that id.');
       ({label,profile}=rows[0]);
       sql=`UPDATE testers SET revoked_at=${Date.now()} WHERE id=${sqlText(old)};\nDELETE FROM tester_sessions WHERE tester_id=${sqlText(old)};\n`;
@@ -94,10 +104,10 @@ async function main(argv){
   if(cmd==='revoke'){const t=hexId(args[0]);execSql(`UPDATE testers SET revoked_at=${Date.now()} WHERE id=${sqlText(t)};\nDELETE FROM tester_sessions WHERE tester_id=${sqlText(t)};`,dry);console.log(dry?'':'Revoked: the PIN and all its sessions stop working on the next request.');return;}
   if(cmd==='signout'){const t=hexId(args[0]);execSql(`DELETE FROM tester_sessions WHERE tester_id=${sqlText(t)};`,dry);console.log(dry?'':'All sessions ended; the PIN still works.');return;}
   if(cmd==='list'){
-    const out=JSON.parse(wrangler(['--command',`SELECT id,label,datetime(created_at/1000,'unixepoch') AS created,datetime(expires_at/1000,'unixepoch') AS expires,
+    console.table(query(`SELECT id,label,datetime(created_at/1000,'unixepoch') AS created,datetime(expires_at/1000,'unixepoch') AS expires,
       CASE WHEN revoked_at IS NULL THEN '' ELSE datetime(revoked_at/1000,'unixepoch') END AS revoked,
-      (SELECT count(*) FROM tester_sessions s WHERE s.tester_id=testers.id AND s.expires_at>${Date.now()}) AS sessions FROM testers ORDER BY created_at`],{json:true}));
-    console.table(out[0]?.results??[]);return;
+      (SELECT count(*) FROM tester_sessions s WHERE s.tester_id=testers.id AND s.expires_at>${Date.now()}) AS sessions FROM testers ORDER BY created_at`));
+    return;
   }
   console.log(readFileSync(fileURLToPath(import.meta.url),'utf8').split('\n').slice(1,13).map(l=>l.replace(/^\/\/ ?/,'')).join('\n'));
 }

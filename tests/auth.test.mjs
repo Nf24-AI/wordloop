@@ -256,3 +256,13 @@ test('AUTH-19 secrets never reach logs, the repository or the client bundle sour
   const wr=readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8').replace(/\/\/.*$/gm,'');
   assert.doesNotMatch(wr,/PIN_PEPPER|AUTH_MODE/,'the switch and the secret are set by the owner, not committed');
 });
+
+test('AUTH-20 PIN tool: a wrangler crash on exit after a successful query is not a failure; a real failure still is',async()=>{
+  const {completed}=await import('../scripts/tester-pin.mjs');
+  assert.equal(completed('[{"results":[],"success":true}]',true),true);
+  assert.equal(completed('[{"results":[],"success":false}]',true),false);
+  assert.equal(completed('[]',true),false);
+  assert.equal(completed('Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)',true),false);
+  assert.equal(completed('🚣 Executed 2 commands in 0.4ms',false),true);
+  assert.equal(completed('X [ERROR] File could not be uploaded',false),false);
+});
