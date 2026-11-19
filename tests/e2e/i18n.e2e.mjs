@@ -52,7 +52,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.title(),'Settings · WordLoop');
       assert.equal(await page.getAttribute('.lang-switch [data-locale=en]','aria-checked'),'true');
       assert.match(await page.locator('.toast').textContent(),/English/);
-      assert.deepEqual(await page.locator('.tabbar .tab').allTextContents(),['Home','Review','Library','Progress']);
+      assert.deepEqual(await page.locator('.tabbar .tab').allTextContents(),['Home','Review','Practice','Library','Progress']);
       // LTR: the first tab (Home) is on the left edge.
       const home=await page.locator('.tabbar .tab').first().boundingBox(),last=await page.locator('.tabbar .tab').last().boundingBox();
       assert.ok(home.x<last.x,'Home tab is left of Progress in LTR');

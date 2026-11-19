@@ -87,7 +87,7 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 .offline-note{display:flex;align-items:center;gap:8px;margin:4px var(--gutter) 0;padding:10px 14px;border-radius:var(--r-md);background:#fbf0de;color:#6e430f;font-size:14px}
 .content{max-inline-size:1120px;margin-inline:auto;padding:20px var(--gutter) calc(120px + env(safe-area-inset-bottom));animation:page-in .42s var(--ease) both}
 @keyframes page-in{from{opacity:0;transform:translateY(8px)}}
-.tabbar{position:fixed;inset-inline:0;inset-block-end:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);align-items:end;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:#fffdf9eb;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-block-start:1px solid var(--line)}
+.tabbar{position:fixed;inset-inline:0;inset-block-end:0;z-index:30;display:grid;grid-template-columns:repeat(6,1fr);align-items:end;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:#fffdf9eb;-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-block-start:1px solid var(--line)}
 .tab{display:grid;justify-items:center;gap:2px;min-block-size:54px;padding:6px 2px;border:0;background:none;color:#6d736b;font-size:12px;font-weight:500}
 .tab.on{color:var(--ink);font-weight:700}
 .tab-icon{position:relative;display:grid;place-items:center;inline-size:52px;block-size:30px;border-radius:var(--r-pill);transition:background-color .2s}
