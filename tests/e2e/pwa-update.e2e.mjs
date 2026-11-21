@@ -13,7 +13,9 @@ const ROOT=new URL('../../dist/client/',import.meta.url);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2','.png':'image/png','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.json':'application/json'};
 let server,base,state={version:'A',accessExpired:false,loads:0};
 let swSource,built;
-const idOf=v=>v==='A'?built:built.slice(0,10)+v.toLowerCase().padStart(2,'0');
+// The id of a later «deployed» version. It must differ from the built one: a build id that already ends in «0b»
+// (1 in 256 builds) used to make «version B» identical to A, so no update was ever offered and UPD-02 timed out.
+const idOf=v=>{if(v==='A')return built;const tail=v.toLowerCase().padStart(2,'0');return built.slice(0,10)+(built.endsWith(tail)?'f'+tail[1]:tail);};
 
 before(async()=>{
   const r=spawnSync(process.execPath,['node_modules/vite/bin/vite.js','build','--mode','staging'],{stdio:'ignore'});
