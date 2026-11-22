@@ -15,6 +15,8 @@ import {batchesLeft,highlightParts,planFinished,storyLanguageSupported,termsIn,B
 import {buildDemoStory,isDemoTitle} from './demoStory';
 import {accessState,signOut} from './access';
 import {aiLessonsAvailable,buildLessonRequest,lessonGenerator,lessonToPassageInput,validateLesson,LESSON_LEVELS,LESSON_MAX_CARDS,LESSON_MODES,LESSON_QUESTION_COUNTS,type GeneratedLesson,type LessonIssue,type LessonLevel,type LessonMode,type LessonQuestionCount,type LessonRequest} from './lessons';
+import {ALargeSmall,Highlighter,Maximize2,Minimize2,Minus,Moon,Sun} from 'lucide-react';
+import {FONT_SCALES,READER_FONTS,READER_THEMES,isRead,markRead,readPrefs,readerParagraphs,readingMinutes,suggestionsFor,writePrefs,type ReaderPrefs,type Suggestion} from './reader';
 
 /* ───────────── Language (#6) ─────────────
  * The active dictionary. App sets it from its `locale` state on every render and remounts the tree
@@ -667,7 +669,7 @@ function LibraryPage({words,reviews,lib,passages,sub,onChanged,notify,go}:{words
   if(view.kind==='hub')return <ReadingSetup key={view.deckId??''} deckId={view.deckId} lib={lib} words={words} passages={passages} notify={notify} go={go}/>;
   if(view.kind==='pick')return <WordPicker key={view.deckId} deckId={view.deckId} lib={lib} words={words} go={go}/>;
   if(view.kind==='gen')return <StoryGenerate key={view.deckId} deckId={view.deckId} lib={lib} words={words} onChanged={onChanged} go={go}/>;
-  if(view.kind==='story')return <StoryView key={view.id} deckId={view.deckId} id={view.id} lib={lib} words={words} passages={passages} go={go}/>;
+  if(view.kind==='story')return <StoryView key={view.id} deckId={view.deckId} id={view.id} lib={lib} words={words} passages={passages} onChanged={onChanged} go={go}/>;
   if(view.kind==='texts')return <TextsView deckId={view.deckId} lib={lib} passages={passages} go={go}/>;
   if(view.kind==='passage')return <PassageView key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} onChanged={onChanged} notify={notify} go={go}/>;
   if(view.kind==='practice'&&view.mode==='read')return <ReadingPractice key={view.id} deckId={view.deckId} id={view.id} lib={lib} passages={passages} words={words} go={go}/>;
@@ -1151,10 +1153,9 @@ function StoryGenerate({deckId,lib,words,onChanged,go}:{deckId:string;lib:Librar
   </div>;
 }
 
-/** The generated story: highlighted target words (tap → saved meaning), listen, optional translation, coverage, then practice. */
-function StoryView({deckId,id,lib,words,passages,go}:{deckId:string;id:string;lib:Library;words:Word[];passages:Passage[];go:(path:string)=>void}){
-  const S=T.story,V=S.view,P=T.practice,p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
-  const [tr,setTr]=useState(false),[open,setOpen]=useState<Word|null>(null);
+/** A story: finds the learner's cards that really occur in it, then hands the page to the book reader (#77). */
+function StoryView({deckId,id,lib,words,passages,onChanged,go}:{deckId:string;id:string;lib:Library;words:Word[];passages:Passage[];onChanged:()=>Promise<unknown>;go:(path:string)=>void}){
+  const p=passages.find(x=>x.id===id&&x.deckId===deckId),deck=lib.decks.find(d=>d.id===deckId);
   const plan=readPlan(),entry=plan?.deckId===deckId?plan.stories.find(s=>s.passageId===id):undefined;
   // Exact matches (the practice engine's rule) plus inflected forms (barata ← barato), the same matcher as story coverage.
   const inText=useMemo(()=>{
@@ -1166,47 +1167,208 @@ function StoryView({deckId,id,lib,words,passages,go}:{deckId:string;id:string;li
   if(!p||!deck)return <NotFound go={go}/>;
   const byTerm=new Map(inText.map(w=>[w.term.normalize('NFC').trim().toLocaleLowerCase(),w]));
   const parts=highlightParts(p.body,inText.map(w=>w.term),p.contentLanguage);
+  return <BookReader p={p} deck={deck} lib={lib} words={words} passages={passages} byTerm={byTerm} parts={parts} plan={plan} entry={entry} onChanged={onChanged} go={go}/>;
+}
+
+/* ───────────── Reading 2.0 — the book reader (#77) ─────────────
+ * The story is the page: a warm sheet, a serif column, almost no chrome. The app's own bars are hidden while it is
+ * open (`html[data-reader]`), and the reader brings its own Back. Preferences and «finished» marks are local
+ * (reader.ts); nothing here grades a card or touches FSRS. */
+type OpenWord={at:string;term:string};
+function BookReader({p,deck,lib,words,passages,byTerm,parts,plan,entry,onChanged,go}:{p:Passage;deck:Deck;lib:Library;words:Word[];passages:Passage[];byTerm:Map<string,Word>;parts:{text:string;term?:string}[];plan:Plan|null;entry:Plan['stories'][number]|undefined;onChanged:()=>Promise<unknown>;go:(path:string)=>void}){
+  const R=T.reader,S=T.story,V=S.view,P=T.practice,deckId=p.deckId,id=p.id;
+  const [prefs,setPrefs]=useState<ReaderPrefs>(()=>readPrefs());
+  const [panel,setPanel]=useState(false),[tr,setTr]=useState(false),[open,setOpen]=useState<OpenWord|null>(null);
+  const [done,setDone]=useState(()=>isRead(id)),[justDone,setJustDone]=useState(false),[away,setAway]=useState(false);
+  const article=useRef<HTMLElement>(null),bar=useRef<HTMLDivElement>(null),typeBtn=useRef<HTMLButtonElement>(null),doneHead=useRef<HTMLHeadingElement>(null);
+  const trigger=useRef<HTMLElement|null>(null),anchor=useRef<{el:Element;top:number}|null>(null);
+  // The app's bars step aside while the reader is open; the appearance applies to the whole page behind it.
+  useLayoutEffect(()=>{const h=document.documentElement;h.dataset.reader='on';return ()=>{delete h.dataset.reader;delete h.dataset.readerTheme;};},[]);
+  useLayoutEffect(()=>{document.documentElement.dataset.readerTheme=prefs.theme;},[prefs.theme]);
+  /** Change a preference without losing the place: the paragraph at the top of the screen stays where it is. */
+  const change=(patch:Partial<ReaderPrefs>)=>{
+    const a=article.current;anchor.current=null;
+    if(a&&a.getBoundingClientRect().top<0){const el=[...a.children].find(c=>c.getBoundingClientRect().bottom>0);if(el)anchor.current={el,top:el.getBoundingClientRect().top};}
+    const next={...prefs,...patch};setPrefs(next);writePrefs(next);
+  };
+  useLayoutEffect(()=>{const a=anchor.current;anchor.current=null;if(a&&a.el.isConnected)window.scrollBy(0,a.el.getBoundingClientRect().top-a.top);},[prefs]);
+  // Focused reading: the bar slides away while reading down and comes back on the way up, on a tap, or on keyboard focus.
+  useEffect(()=>{
+    if(!prefs.focus){setAway(false);return;}
+    let last=window.scrollY;
+    const on=()=>{const y=window.scrollY;if(Math.abs(y-last)<8)return;setAway(y>last&&y>96);last=y;};
+    window.addEventListener('scroll',on,{passive:true});return ()=>window.removeEventListener('scroll',on);
+  },[prefs.focus]);
+  // The settings panel is not modal: Escape or a tap outside closes it.
+  useEffect(()=>{
+    if(!panel)return;
+    const out=(e:PointerEvent)=>{if(!bar.current?.contains(e.target as Node))setPanel(false);};
+    const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setPanel(false);typeBtn.current?.focus();}};
+    document.addEventListener('pointerdown',out);document.addEventListener('keydown',key);
+    return ()=>{document.removeEventListener('pointerdown',out);document.removeEventListener('keydown',key);};
+  },[panel]);
+  useEffect(()=>{if(justDone)doneHead.current?.focus();},[justDone]);
+  const closeWord=useCallback(()=>setOpen(null),[]);
+  // When the word's sheet closes, focus goes back to the word (in the same commit, so nothing is focus-less in between).
+  const wasOpen=useRef(false);
+  useLayoutEffect(()=>{if(wasOpen.current&&!open)trigger.current?.focus({preventScroll:true});wasOpen.current=!!open;},[open]);
+
+  const owned=useMemo(()=>words.filter(w=>!w.archived).map(w=>w.term),[words]);
+  const suggestions=useMemo(()=>suggestionsFor(p.contentLanguage,deck.meaningLanguage),[p.contentLanguage,deck.meaningLanguage]);
+  const paras=readerParagraphs(parts,suggestions,owned);
+  const hasSaved=paras.some(x=>x.some(s=>s.kind==='saved')),hasSuggested=paras.some(x=>x.some(s=>s.kind==='suggested'));
   const nameOf=(wid:string)=>words.find(w=>w.id===wid)?.term;
   const missing=entry?entry.batch.filter(x=>!entry.used.includes(x)).map(nameOf).filter(Boolean):[];
   const lost=plan&&entry?plan.state.missedTwice.filter(x=>entry.batch.includes(x)).map(nameOf).filter(Boolean):[];
   const pos=plan&&entry?planIndex(plan,id):null,more=!!plan&&!!entry&&!planFinished(plan.state)&&plan.stories[plan.stories.length-1]?.passageId===id;
-  return <div className="page practice story-view">
-    <PageHead title={p.title} lead={pos?S.plan(pos.i+1,pos.total):deckName(deck)}/>
-    {(entry?.demo||isDemoTitle(p.title))&&<p className="story-demo-banner" role="note"><FileText size={16} aria-hidden="true"/>{S.demo.banner}</p>}
-    <div className="story-tools">
-      <SpeakButton text={p.body} label={V.listen} lang={p.contentLanguage} className="btn btn-quiet sm" showLabel/>
-      {p.translation&&<button type="button" className="btn btn-quiet sm" aria-expanded={tr} onClick={()=>setTr(v=>!v)}><Languages size={16} aria-hidden="true"/>{tr?V.hideTranslation:V.translation}</button>}
+  const avail=readingAvailability(p,words),quiz=avail.cloze+avail.meaning+avail.comprehension>0;
+  const back=backFor('words',readSub(),lib,passages);
+  const leave=()=>guardLeave(()=>stepBackTo(back?.target??HUB));
+  const finish=()=>{markRead(id);setDone(true);setJustDone(true);};
+  const openCard=open?byTerm.get(open.term.normalize('NFC').trim().toLocaleLowerCase())??words.find(w=>!w.archived&&normalizeTerm(w.term)===normalizeTerm(open.term))??null:null;
+  const sizes=FONT_SCALES.length;
+  return <div className={'page story-view reader'+(prefs.font==='sans'?' sans':'')+(prefs.focus?' focus':'')} style={{'--rd-scale':FONT_SCALES[prefs.size]} as CSSProperties}>
+    <div ref={bar} className={'reader-bar'+(away&&!panel?' away':'')} onFocus={e=>{if((e.target as HTMLElement).matches(':focus-visible'))setAway(false);}}>
+      <button type="button" className="reader-back" aria-label={back?T.backTo(back.label):T.back} onClick={leave}><BackArrow size={20}/><span>{T.back}</span></button>
+      <div className="reader-tools" role="group" aria-label={R.controls}>
+        <button type="button" className={'reader-tool'+(prefs.highlights?' on':'')} aria-pressed={prefs.highlights} aria-label={R.highlights} title={R.highlights} onClick={()=>change({highlights:!prefs.highlights})}><Highlighter size={19} strokeWidth={1.8} aria-hidden="true"/></button>
+        <button type="button" ref={typeBtn} className={'reader-tool'+(panel?' on':'')} aria-expanded={panel} aria-controls="reader-panel" aria-label={R.type} title={R.type} onClick={()=>setPanel(v=>!v)}><ALargeSmall size={21} strokeWidth={1.8} aria-hidden="true"/></button>
+        <button type="button" className={'reader-tool'+(prefs.focus?' on':'')} aria-pressed={prefs.focus} aria-label={R.focus} title={R.focus} onClick={()=>change({focus:!prefs.focus})}>{prefs.focus?<Minimize2 size={18} strokeWidth={1.8} aria-hidden="true"/>:<Maximize2 size={18} strokeWidth={1.8} aria-hidden="true"/>}</button>
+      </div>
+      {panel&&<div id="reader-panel" className="reader-panel" role="group" aria-label={R.type}>
+        <div className="reader-row"><span id="rd-size">{R.fontSize}</span>
+          <div className="reader-stepper" role="group" aria-labelledby="rd-size">
+            <button type="button" className="reader-tool" aria-label={R.smaller} disabled={prefs.size===0} onClick={()=>change({size:prefs.size-1})}><Minus size={18} aria-hidden="true"/></button>
+            <output aria-live="polite" aria-label={R.sizeOf(prefs.size+1,sizes)} dir="ltr">{prefs.size+1}/{sizes}</output>
+            <button type="button" className="reader-tool" aria-label={R.larger} disabled={prefs.size===sizes-1} onClick={()=>change({size:prefs.size+1})}><Plus size={18} aria-hidden="true"/></button>
+          </div></div>
+        <div className="reader-row"><span id="rd-font">{R.fontStyle}</span>
+          <div className="reader-seg" role="group" aria-labelledby="rd-font">{READER_FONTS.map(f=><button type="button" key={f} className={f} aria-pressed={prefs.font===f} onClick={()=>change({font:f})}>{R.fonts[f]}</button>)}</div></div>
+        <div className="reader-row"><span id="rd-theme">{R.theme}</span>
+          <div className="reader-seg" role="group" aria-labelledby="rd-theme">{READER_THEMES.map(t=><button type="button" key={t} aria-pressed={prefs.theme===t} onClick={()=>change({theme:t})}>{t==='light'?<Sun size={15} aria-hidden="true"/>:t==='dark'?<Moon size={15} aria-hidden="true"/>:null}{R.themes[t]}</button>)}</div></div>
+        <div className="reader-row"><span id="rd-hl">{R.highlights}</span>
+          <button type="button" className="reader-switch" role="switch" aria-checked={prefs.highlights} aria-labelledby="rd-hl" onClick={()=>change({highlights:!prefs.highlights})}><i aria-hidden="true"/></button></div>
+      </div>}
     </div>
-    {inText.length>0&&<p className="practice-note">{V.tapHint}</p>}
-    <article className="passage-body story-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>
-      {splitParas(parts).map((para,i)=><p key={i}>{para.map((x,j)=>x.term
-        ?<button type="button" key={j} className={'story-word'+(open&&byTerm.get(x.term.toLocaleLowerCase())?.id===open.id?' on':'')} aria-label={V.meaningOf(x.text)} onClick={()=>setOpen(byTerm.get(x.term!.toLocaleLowerCase())??null)}>{x.text}</button>
+    <header className="page-head reader-head"><div>
+      <h1 tabIndex={-1} dir="auto">{p.title}</h1>
+      <p className="lead"><span>{pos?S.plan(pos.i+1,pos.total):deckName(deck)}</span><span>{R.minutes(readingMinutes(p.body))}</span>{plan&&entry&&<span title={R.yourLevel}><span className="sr-only">{R.yourLevel} </span><bdi dir="ltr">{plan.state.level}</bdi></span>}</p>
+    </div></header>
+    {(entry?.demo||isDemoTitle(p.title))&&<p className="story-demo-banner" role="note"><FileText size={16} aria-hidden="true"/>{S.demo.banner}</p>}
+    <div className="reader-aids story-tools">
+      <SpeakButton text={p.body} label={V.listen} lang={p.contentLanguage} className="reader-link" showLabel/>
+      {p.translation&&<button type="button" className="reader-link" aria-expanded={tr} onClick={()=>setTr(v=>!v)}><Languages size={16} aria-hidden="true"/>{tr?V.hideTranslation:V.translation}</button>}
+    </div>
+    <span id="rd-hint-saved" className="sr-only">{R.hintSaved}</span><span id="rd-hint-suggested" className="sr-only">{R.hintSuggested}</span>
+    <article ref={article} className="reader-body story-body" dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}
+      onClick={e=>{if(prefs.focus&&!(e.target as HTMLElement).closest('.story-word')&&!window.getSelection()?.toString())setAway(v=>!v);}}>
+      {paras.map((para,i)=><p key={i}>{para.map((x,j)=>x.kind&&prefs.highlights
+        ?<span role="button" tabIndex={0} key={j} className={'story-word '+x.kind+(open?.at===i+':'+j?' on':'')} aria-haspopup="dialog" aria-describedby={'rd-hint-'+x.kind}
+          onClick={e=>{trigger.current=e.currentTarget;setOpen({at:i+':'+j,term:x.term!});}}
+          onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();trigger.current=e.currentTarget;setOpen({at:i+':'+j,term:x.term!});}}}>{x.text}</span>
         :<span key={j}>{x.text}</span>)}</p>)}
     </article>
-    {open&&<div className="word-pop" role="status"><div><b dir={dirOf(p.contentLanguage)} lang={p.contentLanguage}>{open.term}</b><span dir="auto">{meaningText(open)}</span></div>
-      <SpeakButton text={open.term} label={T.listen(open.term)} lang={p.contentLanguage} slower={false}/>
-      <button type="button" className="icon-btn" aria-label={T.close} onClick={()=>setOpen(null)}><X size={18}/></button></div>}
-    {tr&&p.translation&&<article className="passage-translation" dir={dirOf(deck.meaningLanguage)} lang={deck.meaningLanguage}>{p.translation.split(/\n+/).map((x,i)=><p key={i}>{x}</p>)}</article>}
-    {entry&&<section className="story-coverage">
-      <h2 className="hub-heading">{V.used}</h2>
+    {tr&&p.translation&&<article className="passage-translation reader-translation" dir={dirOf(deck.meaningLanguage)} lang={deck.meaningLanguage}>{p.translation.split(/\n+/).map((x,i)=><p key={i}>{x}</p>)}</article>}
+    {prefs.highlights&&(hasSaved||hasSuggested)&&<ul className="reader-legend" aria-label={R.legend}>
+      {hasSaved&&<li><i className="saved" aria-hidden="true"/>{R.legendSaved}</li>}{hasSuggested&&<li><i className="suggested" aria-hidden="true"/>{R.legendSuggested}</li>}</ul>}
+    {!done
+      ?<div className="reader-finish"><button type="button" className="reader-finish-btn" onClick={finish}>{R.finish}</button></div>
+      :<section className="reader-done story-actions" aria-labelledby="reader-done-h">
+        <h2 id="reader-done-h" ref={doneHead} tabIndex={-1}><Check size={18} aria-hidden="true"/>{justDone?R.doneTitle:R.doneBefore}</h2>
+        <p>{quiz?R.quizOffer:R.noQuiz}</p>
+        <div className="reader-done-actions">
+          {quiz&&<button type="button" className="btn btn-ink btn-lg" onClick={()=>go(passagePath(deckId,id)+'/read')}><BookOpen size={18} aria-hidden="true"/>{P.readAction}</button>}
+          <button type="button" className="btn btn-quiet btn-lg" onClick={()=>go(passagePath(deckId,id)+'/listen')}><Headphones size={18} aria-hidden="true"/>{T.listening.action}</button>
+          {more&&<button type="button" className="btn btn-quiet btn-lg" onClick={()=>go(hubDeck(deckId)+'/new')}><Sparkles size={16} aria-hidden="true"/>{V.next}</button>}
+          <button type="button" className="btn btn-quiet btn-lg" onClick={leave}>{R.enough}</button>
+        </div>
+        {quiz&&<p className="reader-small">{P.noFsrs}</p>}
+        {plan&&entry&&planFinished(plan.state)&&<p className="reader-small">{V.allDone}</p>}
+      </section>}
+    {entry&&<details className="story-coverage reader-coverage">
+      <summary>{V.used} <bdi dir="ltr">({entry.used.length})</bdi></summary>
       <div className="word-pills" lang={p.contentLanguage}>{entry.used.map(nameOf).filter(Boolean).map(t=><span key={t} className="word-pill ok"><Check size={13} aria-hidden="true"/>{t}</span>)}</div>
-      {missing.length>0&&lost.length<missing.length&&<p className="practice-note">{V.missing} <span lang={p.contentLanguage}>{missing.filter(t=>!lost.includes(t)).join('، ')}</span></p>}
-      {lost.length>0&&<p className="practice-note">{V.missedTwice} <span lang={p.contentLanguage}>{lost.join('، ')}</span></p>}
-    </section>}
-    <div className="story-actions">
-      <button type="button" className="btn btn-ink btn-lg" onClick={()=>go(passagePath(deckId,id)+'/read')}><BookOpen size={18} aria-hidden="true"/>{P.readAction}</button>
-      <button type="button" className="btn btn-quiet btn-lg" onClick={()=>go(passagePath(deckId,id)+'/listen')}><Headphones size={18} aria-hidden="true"/>{T.listening.action}</button>
-      {more&&<button type="button" className="btn btn-quiet" onClick={()=>go(hubDeck(deckId)+'/new')}><Sparkles size={16} aria-hidden="true"/>{V.next}</button>}
-      {plan&&entry&&planFinished(plan.state)&&<p className="practice-note">{V.allDone}</p>}
-    </div>
+      {missing.length>0&&lost.length<missing.length&&<p className="reader-small">{V.missing} <span lang={p.contentLanguage}>{missing.filter(t=>!lost.includes(t)).join('، ')}</span></p>}
+      {lost.length>0&&<p className="reader-small">{V.missedTwice} <span lang={p.contentLanguage}>{lost.join('، ')}</span></p>}
+    </details>}
+    {open&&<WordSheet key={open.at} term={open.term} card={openCard} suggestion={suggestions.find(s=>normalizeTerm(s.term)===normalizeTerm(open.term))??null}
+      passage={p} deck={deck} lib={lib} anchor={trigger.current} onClose={closeWord} onChanged={onChanged}/>}
   </div>;
 }
-/** Paragraph breaks inside highlighted runs. */
-function splitParas(parts:{text:string;term?:string}[]){
-  const out:{text:string;term?:string}[][]=[[]];
-  for(const x of parts){if(x.term){out[out.length-1].push(x);continue;}
-    x.text.split(/\n+/).forEach((seg,i)=>{if(i>0)out.push([]);if(seg)out[out.length-1].push({text:seg});});}
-  return out.filter(p=>p.length);
+
+/**
+ * What a highlighted word opens: a bottom sheet on phones, a small anchored card on wide screens. A dialog: focus moves
+ * in and stays in, Escape / the close button / a tap outside / Back close it, and focus returns to the word.
+ * It shows only what is stored: the card's own meaning(s), or the bundled phrase list's meaning. Nothing is guessed.
+ */
+function WordSheet({term,card,suggestion,passage,deck,lib,anchor,onClose,onChanged}:{term:string;card:Word|null;suggestion:Suggestion|null;passage:Passage;deck:Deck;lib:Library;anchor:HTMLElement|null;onClose:()=>void;onChanged:()=>Promise<unknown>}){
+  const R=T.reader,box=useRef<HTMLDivElement>(null),pushed=useRef(false),titleId=useId();
+  const [place,setPlace]=useState<CSSProperties|null>(null),[busy,setBusy]=useState(false),[added,setAdded]=useState(false),[error,setError]=useState('');
+  const wide=()=>window.innerWidth>=720;
+  // An extra history entry lets Back (button or gesture) close the sheet instead of leaving the story (same as the quick sheet).
+  useEffect(()=>{
+    if(!history.state?.wlSheet)history.pushState({wlSheet:true},'',location.href);
+    pushed.current=true;
+    const onPop=()=>{if(pushed.current){pushed.current=false;onClose();}};
+    window.addEventListener('popstate',onPop);return ()=>window.removeEventListener('popstate',onPop);
+  },[onClose]);
+  const dismiss=useCallback(()=>{if(pushed.current&&history.state?.wlSheet)history.back();else{pushed.current=false;onClose();}},[onClose]);
+  useLayoutEffect(()=>{
+    const el=box.current;if(!el)return;
+    if(wide()&&anchor){
+      const r=anchor.getBoundingClientRect(),w=el.offsetWidth,h=el.offsetHeight,gap=10;
+      const left=Math.min(Math.max(12,r.left+r.width/2-w/2),window.innerWidth-w-12);
+      const below=r.bottom+gap+h<=window.innerHeight-12||r.top-gap-h<12;
+      setPlace({left,top:Math.max(12,below?r.bottom+gap:r.top-gap-h)});
+    }else if(wide())setPlace({left:(window.innerWidth-el.offsetWidth)/2,top:window.innerHeight/3});
+    else setPlace(null);
+  },[anchor]);
+  // Focus moves into the card once it is placed (it is not focusable while still hidden on wide screens).
+  useEffect(()=>{box.current?.focus({preventScroll:true});},[place]);
+  // Anchored card: it belongs to the word, so it closes when the page scrolls or resizes away from it.
+  useEffect(()=>{
+    if(!wide())return;
+    // (A few pixels of settling scroll right after the tap do not count.)
+    const y0=window.scrollY,go=()=>{if(Math.abs(window.scrollY-y0)>32)dismiss();},size=()=>dismiss();
+    window.addEventListener('scroll',go,{passive:true});window.addEventListener('resize',size,{once:true});
+    return ()=>{window.removeEventListener('scroll',go);window.removeEventListener('resize',size);};
+  },[dismiss]);
+  // Escape closes the sheet wherever focus happens to be.
+  useEffect(()=>{const esc=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();dismiss();}};document.addEventListener('keydown',esc);return ()=>document.removeEventListener('keydown',esc);},[dismiss]);
+  function keys(e:ReactKeyboardEvent){
+    if(e.key!=='Tab')return;
+    const f=[...(box.current?.querySelectorAll<HTMLElement>('button:not(:disabled)')??[])];if(!f.length){e.preventDefault();return;}
+    const first=f[0],last=f[f.length-1],at=document.activeElement;
+    if(e.shiftKey&&(at===first||at===box.current)){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&at===last){e.preventDefault();first.focus();}
+  }
+  const langs=card?cardLanguages(card,lib.decks):{content:passage.contentLanguage,meaning:deck.meaningLanguage};
+  const meanings=card?(card.meanings?.length?card.meanings:[card.meaning]).map(m=>m.trim()).filter(Boolean):suggestion?[suggestion.meaning]:[];
+  async function add(){
+    if(!suggestion||card||busy)return;
+    setBusy(true);setError('');
+    try{await addWord({deckId:passage.deckId,contentType:inferContentType(suggestion.term),term:suggestion.term,meanings:[suggestion.meaning],example:'',translation:'',tag:''});setAdded(true);await onChanged();box.current?.focus({preventScroll:true}); /* the Add button is gone: keep focus in the sheet */}
+    catch(e){setError(getError(e));}
+    finally{setBusy(false);}
+  }
+  return createPortal(<div className="reader-layer" dir={T.dir} lang={T.locale} onPointerDown={e=>{if(e.target===e.currentTarget)dismiss();}}>
+    <div ref={box} className={'word-pop'+(place?' anchored':'')} style={place??undefined} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={keys}>
+      <div className="pop-head">
+        <b id={titleId} dir={dirOf(langs.content)} lang={langs.content}>{card?.term??term}</b>
+        <SpeakButton text={card?.term??term} label={T.listen(card?.term??term)} lang={langs.content} slower={false}/>
+        <button type="button" className="icon-btn" aria-label={T.close} onClick={dismiss}><X size={18}/></button>
+      </div>
+      <p className={'pop-kind '+(card?'saved':'suggested')}><i aria-hidden="true"/>{card?(added?R.added:R.inLibrary):R.suggested}</p>
+      {meanings.length===0?<p className="pop-missing">{R.noMeaning}</p>
+        :meanings.length===1?<p className="pop-meaning" dir="auto" lang={langs.meaning}>{meanings[0]}</p>
+        :<ol className="pop-meaning" lang={langs.meaning} aria-label={R.meanings}>{meanings.map((m,i)=><li key={i} dir="auto">{m}</li>)}</ol>}
+      <p className="pop-langs">{langName(langs.content.split('-')[0])} · {R.meaningIn(langName(langs.meaning.split('-')[0]))}</p>
+      {!card&&suggestion&&<><p className="pop-source">{R.source}</p>
+        <button type="button" className="btn btn-ink pop-add" disabled={busy} aria-busy={busy||undefined} onClick={()=>void add()}><Plus size={17} aria-hidden="true"/>{busy?R.adding:R.add}</button></>}
+      {error&&<p className="pop-error" role="alert">{error}</p>}
+      <span className="sr-only" role="status">{added?R.added:''}</span>
+    </div>
+  </div>,document.body);
 }
 
 /** Read and listen to one passage: the whole text in its own language, one listen button (with «أبطأ»), optional translation and facts. */

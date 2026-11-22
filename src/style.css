@@ -846,22 +846,6 @@ button.skill-card:active{transform:scale(.99)}
 .story-working h1{font-size:clamp(22px,1.2rem + 1.6vw,32px)}
 @media(prefers-reduced-motion:reduce){.story-orb{animation:none}}
 /* story view */
-.story-view{display:grid;gap:14px}
-.story-tools{display:flex;flex-wrap:wrap;gap:8px}
-.story-body{font-size:clamp(18px,1rem + .5vw,21px);line-height:1.9}
-.story-word{display:inline;padding:0 3px;margin:0 -1px;border:0;border-radius:6px;background:linear-gradient(transparent 58%,#f5c84c80 58%);color:inherit;font:inherit;cursor:pointer;-webkit-user-select:text;user-select:text}
-.story-word.on{background:#f5c84c;color:var(--ink)}
-.story-word:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
-.word-pop{position:sticky;inset-block-end:calc(84px + env(safe-area-inset-bottom));z-index:15;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;padding-inline-start:16px;border-radius:var(--r-lg);background:var(--ink-btn);color:#fff;box-shadow:0 18px 40px -16px #11141288;animation:rise .25s var(--ease) both}
-.word-pop>div{display:grid;flex:1;min-inline-size:0}
-.word-pop b{font:500 18px/1.4 var(--en)}
-.word-pop span{color:#d6ddd6;overflow-wrap:anywhere}
-.word-pop .icon-btn{background:#ffffff1f;border-color:#ffffff33;color:#fff}
-@media(min-width:1024px){.word-pop{inset-block-end:16px}}
-.story-coverage{display:grid;gap:8px;padding:14px 16px;border-radius:var(--r-lg);background:#fbfaf6;border:1px solid var(--line)}
-.story-coverage .hub-heading{margin:0}
-.story-actions{display:flex;flex-wrap:wrap;gap:10px}
-.story-actions .btn-lg{flex:1 1 180px}
 /* results */
 .result-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;inline-size:100%;max-inline-size:420px;margin:4px 0}
 .result-counts div{display:grid;justify-items:center;padding:10px 6px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line)}
@@ -879,3 +863,147 @@ button.skill-card:active{transform:scale(.99)}
 .access-blocked{max-inline-size:440px;margin:0 auto;min-block-size:100dvh;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:24px 16px}
 .access-blocked h1{font-size:clamp(24px,1.2rem + 1.5vw,30px);line-height:1.3;margin:0}
 .access-blocked p{margin:0 0 8px;color:var(--ink-2);line-height:1.8}
+
+/* ───────── Reading 2.0 — the book reader (#77) ─────────
+ * A warm page, a serif column, almost no chrome. While the reader is open the app's bars step aside
+ * (html[data-reader], set by the reader itself) and the page takes the reader's own light/dark palette. */
+html[data-reader]{
+  --rd-bg:#f7f6f3;--rd-ink:#242424;--rd-soft:#5f5d58;--rd-line:#e2dfd7;--rd-card:#fffefb;--rd-tint:#2424240d;
+  --rd-saved:#f9e39b;--rd-saved-on:#f2cf5b;--rd-sug:#b8dec4;--rd-sug-on:#8fcaa3;
+  --rd-btn:#292929;--rd-btn-ink:#fff;--rd-focus:#1f5e4d;--rd-shade:#1a1d1a40;
+}
+html[data-reader][data-reader-theme=dark]{
+  --rd-bg:#191816;--rd-ink:#e8e4dc;--rd-soft:#aaa59c;--rd-line:#37342f;--rd-card:#24221f;--rd-tint:#ffffff14;
+  --rd-saved:#5c4b16;--rd-saved-on:#7d6620;--rd-sug:#23503b;--rd-sug-on:#2f6b4f;
+  --rd-btn:#ece8df;--rd-btn-ink:#1b1a18;--rd-focus:#8fd3bf;--rd-shade:#00000080;color-scheme:dark;
+}
+@media(prefers-color-scheme:dark){html[data-reader][data-reader-theme=auto]{
+  --rd-bg:#191816;--rd-ink:#e8e4dc;--rd-soft:#aaa59c;--rd-line:#37342f;--rd-card:#24221f;--rd-tint:#ffffff14;
+  --rd-saved:#5c4b16;--rd-saved-on:#7d6620;--rd-sug:#23503b;--rd-sug-on:#2f6b4f;
+  --rd-btn:#ece8df;--rd-btn-ink:#1b1a18;--rd-focus:#8fd3bf;--rd-shade:#00000080;color-scheme:dark;
+}}
+html[data-reader] body{background:var(--rd-bg)}
+/* the reader keeps the reading position itself when the text size changes (see BookReader.change) */
+html[data-reader],html[data-reader] body{overflow-anchor:none}
+/* The app reserves scroll padding for its own bars. Here it would make every tap on the reader's sticky bar
+   scroll the page (the focused button counts as «not in view»); words keep clear of the bar with a scroll margin. */
+html[data-reader]{scroll-padding-block:0}
+html[data-reader] :is(.topbar,.tabbar,.backbar,.rail){display:none}
+html[data-reader] .app{grid-template-columns:minmax(0,1fr)}
+html[data-reader] .content{max-inline-size:none;padding:0 0 calc(48px + env(safe-area-inset-bottom))}
+html[data-reader] .toast-zone{padding-inline-start:0}
+
+.reader{
+  --rd-gutter:clamp(20px,6vw,26px);--rd-face:Georgia,'Iowan Old Style','Times New Roman',serif;
+  /* shared pieces used inside the reader follow its palette */
+  --ink:var(--rd-ink);--ink-2:var(--rd-soft);--muted:var(--rd-soft);--line:var(--rd-line);--line-2:var(--rd-line);--surface:var(--rd-card);--cream:var(--rd-tint);--mint:var(--rd-tint);--teal:var(--rd-focus);--teal-deep:var(--rd-focus);
+  box-sizing:border-box;max-inline-size:calc(33em + 2*var(--rd-gutter));margin-inline:auto;padding-inline:var(--rd-gutter);
+  color:var(--rd-ink);font-family:var(--rd-face);font-size:calc(clamp(1.25rem,4.7vw,1.5625rem)*var(--rd-scale,1));line-height:1.6;
+}
+.reader.sans{--rd-face:system-ui,-apple-system,'Segoe UI',Roboto,'IBM Plex Sans Arabic',sans-serif}
+.reader :focus-visible{outline-color:var(--rd-focus)}
+
+/* bar: Back + three quiet tools. Sticky; in focused reading it slides away and returns on scroll-up, tap or focus. */
+.reader-bar{position:sticky;inset-block-start:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:8px;min-block-size:52px;padding-block-start:env(safe-area-inset-top);
+  font:500 15px/1.3 var(--ar);transition:transform .26s var(--ease)}
+.reader-bar::before{content:'';position:absolute;inset:0 -100vmax;z-index:-1;background:var(--rd-bg)}
+.reader-bar.away{transform:translateY(-110%)}
+/* keyboard focus brings it back (the reader also does this in script); a tap on one of its buttons does not pin it */
+.reader-bar.away:has(:focus-visible){transform:none}
+.reader-back{display:inline-flex;align-items:center;gap:6px;min-block-size:44px;min-inline-size:44px;margin-inline-start:-10px;padding-inline:10px 14px;border:0;border-radius:14px;background:none;color:var(--rd-soft);font:inherit}
+.reader-back svg{flex:none}
+.reader-tools{display:flex;align-items:center;gap:2px;margin-inline-end:-10px}
+.reader-tool{display:inline-grid;place-items:center;inline-size:44px;block-size:44px;border:0;border-radius:50%;background:none;color:var(--rd-soft);flex:none}
+.reader-tool.on{color:var(--rd-ink);background:var(--rd-tint)}
+@media(hover:hover){.reader-back:hover,.reader-tool:hover:not(:disabled),.reader-link:hover{color:var(--rd-ink)}}
+.reader-panel{position:absolute;inset-block-start:100%;inset-inline-end:0;z-index:1;display:grid;gap:10px;inline-size:min(360px,100%);padding:14px 16px;border-radius:18px;background:var(--rd-card);border:1px solid var(--rd-line);box-shadow:0 22px 50px -22px #00000059;color:var(--rd-ink);font:400 15px/1.4 var(--ar);animation:rd-in .18s var(--ease) both}
+.reader-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;min-block-size:44px}
+.reader-stepper{display:flex;align-items:center;gap:4px}
+.reader-stepper .reader-tool{border:1px solid var(--rd-line);color:var(--rd-ink)}
+.reader-stepper output{min-inline-size:44px;text-align:center;font-variant-numeric:tabular-nums;color:var(--rd-soft);font-size:14px}
+.reader-seg{display:inline-flex;border:1px solid var(--rd-line);border-radius:var(--r-pill);padding:2px;gap:2px}
+.reader-seg button{display:inline-flex;align-items:center;gap:6px;min-block-size:38px;padding:4px 13px;border:0;border-radius:var(--r-pill);background:none;color:var(--rd-soft);font:500 14px/1.3 var(--ar)}
+.reader-seg button.serif{font-family:Georgia,'Times New Roman',var(--ar)}
+.reader-seg button[aria-pressed=true]{background:var(--rd-btn);color:var(--rd-btn-ink)}
+.reader-switch{position:relative;display:flex;inline-size:52px;block-size:32px;padding:3px;border:0;border-radius:var(--r-pill);background:var(--rd-line);flex:none;transition:background-color .18s}
+.reader-switch::after{content:'';position:absolute;inset:-6px}
+.reader-switch i{inline-size:26px;block-size:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0000004d;transition:margin .18s var(--ease)}
+.reader-switch[aria-checked=true]{background:var(--rd-focus)}
+.reader-switch[aria-checked=true] i{margin-inline-start:20px}
+
+/* title and the one quiet line under it */
+.reader-head{display:block;margin-block:clamp(18px,5vh,46px) 0}
+.reader-head h1{font:400 1.32em/1.2 'DM Serif Display',var(--rd-face);letter-spacing:0;color:var(--rd-ink);overflow-wrap:anywhere}
+.reader.sans .reader-head h1{font:700 1.24em/1.25 var(--rd-face)}
+.reader-head .lead{display:flex;flex-wrap:wrap;max-inline-size:none;margin-block-start:10px;font:400 14px/1.7 var(--ar);color:var(--rd-soft)}
+.reader-head .lead>span+span::before{content:'·';margin-inline:8px}
+.reader .story-demo-banner{margin-block-start:14px;padding:2px 12px;border:0;border-inline-start:2px solid var(--rd-line);border-radius:0;background:none;color:var(--rd-soft);font:400 13.5px/1.7 var(--ar)}
+.reader-aids{display:flex;flex-wrap:wrap;align-items:center;gap:0 20px;margin-block-start:10px;font-family:var(--ar)}
+.reader-link{display:inline-flex;align-items:center;gap:7px;min-block-size:44px;padding:0;border:0;background:none;color:var(--rd-soft);font:500 14px/1.3 var(--ar)}
+.reader-link.is-playing{color:var(--rd-ink)}
+.reader.focus :is(.reader-aids,.reader-legend,.reader-head .lead){display:none}
+
+/* the text */
+.reader-body{margin-block-start:clamp(16px,3.5vh,30px);overflow-wrap:break-word;-webkit-user-select:text;user-select:text}
+.reader-body p{margin:0}
+.reader-body p+p{margin-block-start:1.2em}
+.story-word{padding:.05em .16em;margin:0 -.04em;border-radius:.2em;background:var(--rd-saved);color:inherit;font-weight:700;cursor:pointer;-webkit-box-decoration-break:clone;box-decoration-break:clone;-webkit-tap-highlight-color:transparent}
+.story-word.suggested{background:var(--rd-sug);text-decoration:underline dotted 1px;text-underline-offset:.22em}
+.story-word.on{background:var(--rd-saved-on)}
+.story-word.suggested.on{background:var(--rd-sug-on)}
+.story-word:focus-visible{outline:2px solid var(--rd-focus);outline-offset:2px}
+.story-word,.reader-finish-btn,.reader-done .btn{scroll-margin-block:72px 24px}
+.reader-translation{max-inline-size:none;margin:1.3em 0 0;padding:0;padding-inline-start:16px;border-inline-start:2px solid var(--rd-line);border-radius:0;background:none;color:var(--rd-soft);font:400 max(16px,.78em)/1.9 var(--ar)}
+.reader-translation p{margin:0}
+.reader-translation p+p{margin-block-start:.9em}
+.reader-legend{display:flex;flex-wrap:wrap;gap:4px 22px;margin-block-start:clamp(26px,5vh,42px);font:400 13.5px/1.7 var(--ar);color:var(--rd-soft)}
+.reader-legend li{display:inline-flex;align-items:center;gap:8px}
+.reader-legend i{inline-size:14px;block-size:14px;border-radius:3px;background:var(--rd-saved);flex:none}
+.reader-legend i.suggested{background:var(--rd-sug)}
+
+/* the end of the page: one explicit button, then an optional next step */
+.reader-finish{margin-block-start:22px}
+.reader-finish-btn{inline-size:100%;min-block-size:52px;padding:12px 20px;border:0;border-radius:12px;background:var(--rd-btn);color:var(--rd-btn-ink);font:600 16px/1.3 var(--ar);transition:transform .18s var(--ease)}
+.reader-finish-btn:active{transform:scale(.985)}
+.reader-done{display:grid;gap:12px;margin-block-start:24px;padding-block-start:22px;border-block-start:1px solid var(--rd-line);color:var(--rd-soft);font:400 15px/1.75 var(--ar)}
+.reader-done h2{display:flex;align-items:center;gap:8px;color:var(--rd-ink);font:700 18px/1.4 var(--ar)}
+.reader-done h2:focus{outline:none}
+.reader-done-actions{display:flex;flex-wrap:wrap;gap:10px}
+.reader-done-actions .btn{flex:1 1 200px;border-radius:12px}
+.reader .btn-ink,.reader .btn-ink:hover:not(:disabled){background:var(--rd-btn);color:var(--rd-btn-ink)}
+.reader .btn-quiet{background:none;border-color:var(--rd-line);color:var(--rd-ink)}
+.reader-small{color:var(--rd-soft);font:400 13.5px/1.7 var(--ar)}
+.reader-coverage{margin-block-start:14px;color:var(--rd-soft);font:400 14px/1.7 var(--ar)}
+.reader-coverage summary{padding-block:11px;cursor:pointer}
+.reader-coverage .word-pills{margin-block:2px 8px}
+.reader .word-pill{background:var(--rd-tint);color:var(--rd-ink)}
+
+/* a word's card: bottom sheet on phones, anchored to the word on wide screens (portalled to <body>) */
+.reader-layer{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-end;background:var(--rd-shade,#1a1d1a40)}
+.word-pop{display:grid;gap:8px;inline-size:100%;max-block-size:min(72dvh,560px);overflow-y:auto;overscroll-behavior:contain;padding:18px 20px calc(22px + env(safe-area-inset-bottom));border-radius:22px 22px 0 0;background:var(--rd-card,#fffefb);color:var(--rd-ink,#242424);box-shadow:0 -18px 50px -24px #00000066;font:400 15px/1.7 var(--ar);animation:rd-up .28s var(--ease) both}
+.word-pop:focus{outline:none}
+.pop-head{display:flex;align-items:center;gap:8px}
+.pop-head b{flex:1;min-inline-size:0;font:700 1.4rem/1.3 Georgia,'Times New Roman',var(--ar);overflow-wrap:anywhere;text-align:-webkit-match-parent;text-align:match-parent}
+.word-pop .icon-btn{background:none;border-color:var(--rd-line,#e2dfd7);color:var(--rd-ink,#242424)}
+.pop-kind{display:flex;align-items:center;gap:8px;color:var(--rd-soft,#5f5d58);font-size:13px}
+.pop-kind i{inline-size:12px;block-size:12px;border-radius:3px;background:var(--rd-saved,#f9e39b);flex:none}
+.pop-kind.suggested i{background:var(--rd-sug,#b8dec4)}
+.pop-meaning{margin:0;font-size:1.15rem;line-height:1.7;overflow-wrap:anywhere}
+ol.pop-meaning{padding-inline-start:1.4em;list-style:decimal}
+.pop-missing{color:var(--rd-soft,#5f5d58)}
+.pop-langs,.pop-source{color:var(--rd-soft,#5f5d58);font-size:13px}
+.pop-add{justify-self:start;margin-block-start:6px;border-radius:12px;background:var(--rd-btn,#292929);color:var(--rd-btn-ink,#fff)}
+.pop-error{color:var(--danger);font-size:14px}
+@media(min-width:720px){
+  .reader-layer{display:block;background:none}
+  .word-pop{position:fixed;inline-size:min(340px,calc(100vw - 24px));padding:16px 18px 18px;border-radius:18px;box-shadow:0 24px 54px -20px #00000073,0 0 0 1px var(--rd-line,#e2dfd7);visibility:hidden;animation:none}
+  .word-pop.anchored{visibility:visible;animation:rd-in .16s var(--ease) both}
+}
+@keyframes rd-up{from{transform:translateY(24px);opacity:0}}
+@keyframes rd-in{from{transform:translateY(-4px);opacity:0}}
+@media(forced-colors:active){
+  .story-word{outline:1px solid Highlight;text-decoration:underline}
+  .reader-finish-btn,.reader-tool,.reader-seg button{border:1px solid ButtonText}
+  .reader-seg button[aria-pressed=true]{background:Highlight;color:HighlightText}
+}
+@media print{html[data-reader] :is(.reader-bar,.reader-aids,.reader-finish,.reader-done,.reader-coverage){display:none}}

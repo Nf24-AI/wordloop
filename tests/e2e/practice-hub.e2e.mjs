@@ -113,11 +113,15 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.match(await page.locator('.page-head .lead').innerText(),/القصة 1 من 2/);
       await page.locator('.story-word',{hasText:'breakfast'}).click();
       assert.match(await page.locator('.word-pop').innerText(),/فطور/);
+      await page.keyboard.press('Escape');await page.locator('.word-pop').waitFor({state:'detached'});
       await page.getByRole('button',{name:'اعرض الترجمة'}).click();
       assert.match(await page.locator('.passage-translation').innerText(),/أستيقظ/);
       assert.ok(await page.locator('.story-coverage .word-pill').count()>=3);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
       // Reading practice on the generated story.
+      // #77: the practice is offered only after the learner says they finished reading.
+      assert.equal(await page.locator('.story-actions').count(),0);
+      await page.getByRole('button',{name:'أنهيت القراءة'}).click();
       await page.locator('.story-actions').getByRole('button',{name:'تمرين قراءة'}).click();
       await page.locator('.practice-field').nth(1).getByRole('button',{name:'الكل'}).click();
       await page.locator('.practice-start').click();
@@ -268,7 +272,11 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await page.locator('.story-coverage .word-pill').count(),6,'the whole first batch is in the text');
       await page.locator('.story-word',{hasText:'breakfast'}).click();
       assert.match(await page.locator('.word-pop').innerText(),/فطور/);
+      await page.keyboard.press('Escape');await page.locator('.word-pop').waitFor({state:'detached'});
       // Reading: every question.
+      // #77: the practice is offered only after the learner says they finished reading.
+      assert.equal(await page.locator('.story-actions').count(),0);
+      await page.getByRole('button',{name:'أنهيت القراءة'}).click();
       await page.locator('.story-actions').getByRole('button',{name:'تمرين قراءة'}).click();
       await page.locator('.practice-field').nth(1).getByRole('button',{name:'الكل'}).click();
       await page.locator('.practice-start').click();
