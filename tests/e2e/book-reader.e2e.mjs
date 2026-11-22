@@ -40,8 +40,10 @@ async function setup(browser,{lang='en-US',body=EN_BODY,cards=EN_CARDS,title='Th
   },{lang,body,cards,title,questions});
   s.story='#/words/practice/'+encodeURIComponent(s.ids.deck)+'/s/'+encodeURIComponent(s.ids.passage);
   await s.page.goto(base()+'/'+s.story);await s.page.locator('.reader-body').waitFor();
-  // Measurements below depend on the final layout: wait for the web fonts (the title face swaps in late on a cold server).
-  await s.page.evaluate(async()=>{await document.fonts.load('1em "DM Serif Display"','A');await document.fonts.ready;});
+  // Measurements below depend on the final layout: wait for the web fonts (the title face swaps in late on a cold
+  // server) and for the app's page-entry slide (8px over 0.4s on `.content`), which is still moving on a slow runner.
+  await s.page.evaluate(async()=>{await document.fonts.load('1em "DM Serif Display"','A');await document.fonts.ready;
+    await Promise.all(document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})));});
   return s;
 }
 const word=(page,text)=>page.locator('.story-word',{hasText:text}).first();
@@ -196,7 +198,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await press('كبّر الخط');await press('كبّر الخط');
       const s2=await size(),at2=await topPara();
       assert.ok(s2>s0*1.25,`text grew: ${s0} → ${s2}`);
-      assert.equal(at2.text,at0.text,'same paragraph at the top');assert.ok(Math.abs(at2.top-at0.top)<=4,`same place (within a few px of sub-pixel rounding; a line is 30px+): ${at0.top} → ${at2.top}`);
+      assert.equal(at2.text,at0.text,'same paragraph at the top');assert.ok(Math.abs(at2.top-at0.top)<=2,`same place: ${at0.top} → ${at2.top}`);
       assert.equal(await noOverflow(page),true);
       await page.getByRole('button',{name:'كبّر الخط'}).click();
       assert.equal(await page.getByRole('button',{name:'كبّر الخط'}).isDisabled(),true,'five steps, then it stops');
