@@ -95,7 +95,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.equal(await practice.getAttribute('aria-disabled'),null);
       assert.doesNotMatch(await practice.textContent(),/قريبًا/);
       await practice.click();
-      await page.locator('.practice-hub').waitFor();
+      await page.locator('.practice-landing').waitFor();
       assert.equal(await hashOf(page),'#/words/practice');
       assert.equal(await page.getByRole('dialog').isVisible(),false);
       await page.locator('.back-btn').click();
