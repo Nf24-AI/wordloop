@@ -42,7 +42,7 @@ for(const [name,engine] of Object.entries(ENGINES)){
       assert.deepEqual(items,['الرئيسية','المراجعة','الممارسة','مكتبتي','تقدّمك','الإعدادات']);
       await page.locator('.rail nav .rail-link',{hasText:'الممارسة'}).click();
       assert.equal(await hashOf(page),'#/words/practice');
-      await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='ممارسة'); // the existing Practice hub, not a new page
+      await page.waitForFunction(()=>document.querySelector('main h1')?.textContent==='جاهز تمارس اللي تعلّمته؟'); // the Practice landing
       await activeIs(page,'.rail nav','الممارسة'); // Practice is active, not Library
       await page.locator('.rail nav .rail-link',{hasText:'مكتبتي'}).click();
       assert.equal(await hashOf(page),'#/words');

@@ -770,6 +770,28 @@ a:has(>.brand){text-decoration:none;border-radius:10px}
 /* ───────── #64 Practice 2.0 ───────── */
 .sr-only{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .practice2{display:grid;gap:18px}
+/* Practice 2.0 — landing: a centred introduction, then the three skills */
+.practice-landing{display:grid;gap:clamp(24px,5vw,40px);max-inline-size:760px;margin-inline:auto}
+.landing-intro{text-align:center;display:grid;gap:12px;justify-items:center;padding-block:clamp(8px,3vw,28px) 0}
+.landing-intro h1{font-size:clamp(28px,1.6rem + 2vw,46px);font-weight:700;line-height:1.3;color:var(--ink);text-wrap:balance}
+.landing-intro .lead{max-inline-size:34em;color:var(--muted);font-size:clamp(16px,1rem + .3vw,19px);line-height:1.8;text-wrap:pretty}
+.skill-grid{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.skill-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;inline-size:100%;min-block-size:88px;padding:18px 20px;border-radius:var(--r-xl);border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow-paper);color:var(--ink);text-align:start;transition:border-color .18s,transform .18s var(--ease)}
+button.skill-card{cursor:pointer}
+@media(hover:hover){button.skill-card:hover{border-color:var(--ink-2)}}
+button.skill-card:active{transform:scale(.99)}
+.skill-icon{display:grid;place-items:center;inline-size:52px;block-size:52px;border-radius:var(--r-lg);background:var(--mint);color:var(--teal-deep)}
+.skill-listen .skill-icon{background:var(--peach);color:#8a4a2a}
+.skill-write .skill-icon{background:var(--cream);color:var(--ink-2)}
+.skill-text{display:grid;gap:4px;min-inline-size:0}
+.skill-text b{font-size:18px;font-weight:700}
+.skill-text small{font-size:15px;color:var(--muted);line-height:1.6}
+.skill-go{color:var(--muted);display:grid;place-items:center}
+.skill-card.soon{opacity:.72;box-shadow:none;background:transparent}
+.skill-soon{font-size:13px;font-weight:600;padding:4px 10px;border-radius:var(--r-pill);background:var(--cream);color:var(--ink-2);white-space:nowrap}
+@media(min-width:900px){.skill-grid{grid-template-columns:repeat(3,1fr)}.skill-card{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;align-items:start;min-block-size:220px;padding:24px}.skill-go,.skill-soon{justify-self:start}}
+@media(prefers-reduced-motion:reduce){.skill-card{transition:none}button.skill-card:active{transform:none}}
+.source-field .chips{flex-wrap:wrap}
 .deck-chips{display:flex;gap:8px;overflow-x:auto;padding-block:2px 6px;margin-inline:calc(-1 * var(--gutter));padding-inline:var(--gutter);scrollbar-width:none;overscroll-behavior-x:contain}
 .deck-chips::-webkit-scrollbar{display:none}
 .deck-chips .chip{flex:none;min-block-size:44px}

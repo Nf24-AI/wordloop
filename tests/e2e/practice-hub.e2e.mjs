@@ -61,7 +61,7 @@ async function answerAll(page,{type}={}){
   return n;
 }
 // Reload first (re-reads the seeded IndexedDB), THEN open Practice: no status request is cut off by a reload.
-async function openPractice(page,base){await page.reload();await page.waitForSelector('main h1');await page.goto(base+'/#/words/practice');await page.locator('.practice-hub').waitFor();}
+async function openPractice(page,base){await page.reload();await page.waitForSelector('main h1');await page.goto(base+'/#/words/practice/read');await page.locator('.practice-hub').waitFor();}
 
 for(const [name,engine] of Object.entries(ENGINES)){
   test(`[${name}] issues #61 #64 practice 2.0`,async t=>{
@@ -86,8 +86,12 @@ for(const [name,engine] of Object.entries(ENGINES)){
       await page.reload();await page.waitForSelector('main h1');
       const before=await fsrsSnapshot(page);
       await page.click('.tab-add');await page.locator('[data-action=practice]').click();
-      await page.locator('.story-start').waitFor();
+      // Practice 2.0: the landing first — choosing Reading opens its setup; nothing starts on its own.
+      await page.locator('.practice-landing').waitFor();
       assert.equal(await hashOf(page),'#/words/practice');
+      await page.locator('.skill-read').click();
+      await page.locator('.story-start').waitFor();
+      assert.equal(await hashOf(page),'#/words/practice/read');
       assert.match(await page.locator('.word-summary').innerText(),/6 من 8 كلمة مختارة/,'default subset = A2 batch');
       const go=page.locator('.story-go');
       assert.ok((await go.boundingBox()).height>=44);
