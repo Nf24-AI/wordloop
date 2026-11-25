@@ -1007,3 +1007,6 @@ ol.pop-meaning{padding-inline-start:1.4em;list-style:decimal}
   .reader-seg button[aria-pressed=true]{background:Highlight;color:HighlightText}
 }
 @media print{html[data-reader] :is(.reader-bar,.reader-aids,.reader-finish,.reader-done,.reader-coverage){display:none}}
+
+/* #65: a card with no meaning says so instead of showing an empty line on Home. */
+.home-no-meaning{opacity:.75;font-style:italic}

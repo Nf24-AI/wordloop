@@ -259,7 +259,7 @@ function HomePage({words,reviews,lib,lastBackup,onNavigate,go}:{words:Word[];rev
       </button>}
       {lastAdded&&<button type="button" className="nudge home-card" data-home="last-added" onClick={()=>onNavigate('words')}>
         <span className="nudge-icon mint"><BookOpen size={20}/></span>
-        <span><small className="eyebrow">{H.lastAddedTitle}</small><b {...termProps(lastAdded)} className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> <span dir="auto">{lastAdded.meanings.join('؛ ')}</span></small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
+        <span><small className="eyebrow">{H.lastAddedTitle}</small><b {...termProps(lastAdded)} className="home-term">{lastAdded.term}</b><small><i className="kind-badge">{kindLabel(lastAdded.contentType)}</i> {lastAdded.meanings.some(m=>m.trim())?<span dir="auto">{lastAdded.meanings.filter(m=>m.trim()).join('؛ ')}</span>:<span className="home-no-meaning">{H.noMeaning}</span>}</small><small>{H.addedWhen(daysBetween(lastAdded.createdAt,now),localDate(lastAdded.createdAt))}</small></span>
         <Fwd size={18}/>
       </button>}
       {/* When nothing is due the hero already names the next review; show it here only when it would otherwise be hidden. */}
